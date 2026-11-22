@@ -24,3 +24,4 @@ enum Condition {
 @export var stackable: bool
 @export var shape: Dictionary
 @export var durability: int
+@export var tier: String

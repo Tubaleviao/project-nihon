@@ -369,6 +369,11 @@
       "scale": 1,
       "hash": "8bf1d2e9e2d4cc4b"
     },
+    "FerriteHammer": {
+      "archetype": "hammer",
+      "scale": 1,
+      "hash": "e121a68b83c927f9"
+    },
     "FerriteHelmet": {
       "archetype": "helmet",
       "scale": 1,
@@ -483,6 +488,11 @@
       "archetype": "chestplate",
       "scale": 1,
       "hash": "8283281f308b201a"
+    },
+    "VeilsteelHammer": {
+      "archetype": "hammer",
+      "scale": 1,
+      "hash": "ffc7118c724614c0"
     },
     "VeilsteelIngot": {
       "archetype": "ingot",

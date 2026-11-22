@@ -15,6 +15,7 @@ function stoneRecipe({ output, branches, stones, description, rule }) {
       recipe: recipeData({
         domain: 'carpentry',
         station: '',
+        requiredTier: 'novice',
         inputs: [{ item: 'Branch', quantity: branches }, { item: 'LooseStone', quantity: stones }],
         outputs: [{ item: output, quantity: 1 }],
         skillGuards: [{ skill: 'Carpentry', tier: 'novice' }],

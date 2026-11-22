@@ -1,0 +1,23 @@
+[gd_resource type="Resource" format=3]
+
+[ext_resource type="Script" path="res://godot/items/ferritehammer.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = ""
+condition = 0
+weight = 1.6
+rarity = 0
+stackable = false
+shape = {"archetype":"hammer","parts":{"head":"Ferrite","handle":"Thornwood"},"scale":1}
+durability = 90
+equipmentCategory = "hammer"
+traits = {"Blunt":{"strength":1,"grade":"heavy"}}
+tier = "apprentice"
+repair = {"station":"forge","materials":[{"item":"FerriteIngot","quantity":1}],"skillGuards":[{"skill":"Smithing","tier":"novice"}]}
+works = {"build":1}
+combatDamage = {"blunt":4}
+state_machine_field = "condition"
+initial_state = "pristine"
+description = "A ferrite head on a thornwood handle, square-faced for the anvil. Forges at a forge or masonry bench what a stone hammer cannot."
+tags = ["item"]

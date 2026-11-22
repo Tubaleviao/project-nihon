@@ -1,5 +1,5 @@
 {
-  "schemaHash": "sha256:856b988e69791f1ccb4cb59f16ef9a3d45c86ce9a79d4d1772b5d2d402c02c4d",
+  "schemaHash": "sha256:f4e20ffca8be9e8c27eb413dcf42f97fe6a8bdedbde6f0a3883c91ff693a5a44",
   "schema": {
     "version": "3.0.0",
     "meta": {
@@ -15806,6 +15806,15 @@
               }
             }
           },
+          "tier": {
+            "name": "tier",
+            "type": "string",
+            "description": "Gear tier (Phase 229, a skill tier): the highest ability or recipe tier this item allows (GearTiers)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "apprentice"
+          },
           "repair": {
             "name": "repair",
             "type": "json",
@@ -16091,6 +16100,15 @@
                 "grade": "light"
               }
             }
+          },
+          "tier": {
+            "name": "tier",
+            "type": "string",
+            "description": "Gear tier (Phase 229, a skill tier): the highest ability or recipe tier this item allows (GearTiers)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "master"
           },
           "repair": {
             "name": "repair",
@@ -16382,6 +16400,15 @@
               }
             }
           },
+          "tier": {
+            "name": "tier",
+            "type": "string",
+            "description": "Gear tier (Phase 229, a skill tier): the highest ability or recipe tier this item allows (GearTiers)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "apprentice"
+          },
           "repair": {
             "name": "repair",
             "type": "json",
@@ -16669,6 +16696,15 @@
               }
             }
           },
+          "tier": {
+            "name": "tier",
+            "type": "string",
+            "description": "Gear tier (Phase 229, a skill tier): the highest ability or recipe tier this item allows (GearTiers)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "apprentice"
+          },
           "repair": {
             "name": "repair",
             "type": "json",
@@ -16947,6 +16983,15 @@
               }
             }
           },
+          "tier": {
+            "name": "tier",
+            "type": "string",
+            "description": "Gear tier (Phase 229, a skill tier): the highest ability or recipe tier this item allows (GearTiers)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "apprentice"
+          },
           "repair": {
             "name": "repair",
             "type": "json",
@@ -17223,6 +17268,15 @@
                 "strength": 1
               }
             }
+          },
+          "tier": {
+            "name": "tier",
+            "type": "string",
+            "description": "Gear tier (Phase 229, a skill tier): the highest ability or recipe tier this item allows (GearTiers)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "apprentice"
           },
           "works": {
             "name": "works",
@@ -17632,6 +17686,15 @@
               }
             }
           },
+          "tier": {
+            "name": "tier",
+            "type": "string",
+            "description": "Gear tier (Phase 229, a skill tier): the highest ability or recipe tier this item allows (GearTiers)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "novice"
+          },
           "repair": {
             "name": "repair",
             "type": "json",
@@ -17917,6 +17980,15 @@
                 "grade": "light"
               }
             }
+          },
+          "tier": {
+            "name": "tier",
+            "type": "string",
+            "description": "Gear tier (Phase 229, a skill tier): the highest ability or recipe tier this item allows (GearTiers)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "novice"
           },
           "repair": {
             "name": "repair",
@@ -18204,6 +18276,15 @@
               }
             }
           },
+          "tier": {
+            "name": "tier",
+            "type": "string",
+            "description": "Gear tier (Phase 229, a skill tier): the highest ability or recipe tier this item allows (GearTiers)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "novice"
+          },
           "repair": {
             "name": "repair",
             "type": "json",
@@ -18488,6 +18569,15 @@
               }
             }
           },
+          "tier": {
+            "name": "tier",
+            "type": "string",
+            "description": "Gear tier (Phase 229, a skill tier): the highest ability or recipe tier this item allows (GearTiers)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "novice"
+          },
           "repair": {
             "name": "repair",
             "type": "json",
@@ -18771,6 +18861,15 @@
               }
             }
           },
+          "tier": {
+            "name": "tier",
+            "type": "string",
+            "description": "Gear tier (Phase 229, a skill tier): the highest ability or recipe tier this item allows (GearTiers)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "novice"
+          },
           "repair": {
             "name": "repair",
             "type": "json",
@@ -18944,6 +19043,580 @@
         "pii": [],
         "gdpr": {}
       },
+      "FerriteHammer": {
+        "name": "FerriteHammer",
+        "tags": [
+          "item"
+        ],
+        "description": "A ferrite head on a thornwood handle, square-faced for the anvil. Forges at a forge or masonry bench what a stone hammer cannot.",
+        "goal": "The apprentice-tier hammer: smithing and masonry above novice need it (Phase 229)",
+        "fields": {
+          "id": {
+            "name": "id",
+            "type": "uuid",
+            "nullable": false,
+            "primaryKey": true,
+            "pii": false
+          },
+          "condition": {
+            "name": "condition",
+            "type": "enum",
+            "nullable": false,
+            "primaryKey": false,
+            "enumValues": [
+              "pristine",
+              "worn",
+              "damaged",
+              "broken"
+            ],
+            "pii": false
+          },
+          "weight": {
+            "name": "weight",
+            "type": "decimal",
+            "description": "kg; affects carry capacity",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 1.6
+          },
+          "rarity": {
+            "name": "rarity",
+            "type": "enum",
+            "nullable": false,
+            "primaryKey": false,
+            "enumValues": [
+              "common",
+              "uncommon",
+              "rare",
+              "epic",
+              "legendary"
+            ],
+            "pii": false,
+            "defaultValue": "common"
+          },
+          "stackable": {
+            "name": "stackable",
+            "type": "boolean",
+            "description": "Whether multiple instances stack in inventory",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": false
+          },
+          "shape": {
+            "name": "shape",
+            "type": "json",
+            "description": "Item shape: archetype, material per named part, and uniform scale (Phase 151)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "archetype": "hammer",
+              "parts": {
+                "head": "Ferrite",
+                "handle": "Thornwood"
+              },
+              "scale": 1
+            }
+          },
+          "durability": {
+            "name": "durability",
+            "type": "integer",
+            "description": "Remaining durability points before condition degrades",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 90
+          },
+          "equipmentCategory": {
+            "name": "equipmentCategory",
+            "type": "string",
+            "description": "Equipment category (Phase 295): knife, sword, axe, hammer, pick, shovel…",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "hammer"
+          },
+          "traits": {
+            "name": "traits",
+            "type": "json",
+            "description": "Traits and strengths (Phase 295): { <Trait>: { strength, grade? } }; the working part's material may raise them",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "Blunt": {
+                "strength": 1,
+                "grade": "heavy"
+              }
+            }
+          },
+          "tier": {
+            "name": "tier",
+            "type": "string",
+            "description": "Gear tier (Phase 229, a skill tier): the highest ability or recipe tier this item allows (GearTiers)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "apprentice"
+          },
+          "repair": {
+            "name": "repair",
+            "type": "json",
+            "description": "Structured repair spec: required station, materials consumed on repair, and skill guards (skill key + minimum tier).",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "station": "forge",
+              "materials": [
+                {
+                  "item": "FerriteIngot",
+                  "quantity": 1
+                }
+              ],
+              "skillGuards": [
+                {
+                  "skill": "Smithing",
+                  "tier": "novice"
+                }
+              ]
+            }
+          },
+          "works": {
+            "name": "works",
+            "type": "json",
+            "description": "Derived from the work table (Phase 295): { <work>: speed } for every work this item can do",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "build": 1
+            }
+          },
+          "combatDamage": {
+            "name": "combatDamage",
+            "type": "json",
+            "description": "Derived (Phase 295): combat damage per damage type, the category multiplier times its traits' shares",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "blunt": 4
+            }
+          }
+        },
+        "relations": {
+          "ferrite": {
+            "name": "ferrite",
+            "kind": "hasOne",
+            "target": "Ferrite"
+          },
+          "thornwood": {
+            "name": "thornwood",
+            "kind": "hasOne",
+            "target": "Thornwood"
+          }
+        },
+        "behaviors": {
+          "degrade": {
+            "name": "degrade",
+            "description": "Reduce durability after each craft or build it is used for",
+            "rules": [
+              "Each finished craft at a station consumes durability points"
+            ],
+            "auth": {
+              "roles": [
+                "maintainer"
+              ]
+            }
+          },
+          "repair": {
+            "name": "repair",
+            "description": "Restore to pristine condition at a forge",
+            "rules": [
+              "Repair costs one ferrite ingot"
+            ],
+            "auth": {
+              "roles": [
+                "maintainer"
+              ]
+            }
+          }
+        },
+        "stateMachine": {
+          "field": "condition",
+          "initial": "pristine",
+          "states": {
+            "pristine": {
+              "name": "pristine",
+              "description": "Freshly crafted or repaired; full stat effectiveness",
+              "terminal": false
+            },
+            "worn": {
+              "name": "worn",
+              "description": "Showing use; minor stat penalties apply",
+              "terminal": false
+            },
+            "damaged": {
+              "name": "damaged",
+              "description": "Significantly degraded; notable stat penalties; repair strongly advised",
+              "terminal": false
+            },
+            "broken": {
+              "name": "broken",
+              "description": "Unusable; must be repaired at a workshop before use",
+              "terminal": false
+            }
+          },
+          "transitions": [
+            {
+              "from": "pristine",
+              "to": "worn",
+              "trigger": "degrade",
+              "guards": [
+                "Each finished craft at a station consumes durability points"
+              ],
+              "effects": []
+            },
+            {
+              "from": "worn",
+              "to": "damaged",
+              "trigger": "degrade",
+              "guards": [
+                "Each finished craft at a station consumes durability points"
+              ],
+              "effects": []
+            },
+            {
+              "from": "damaged",
+              "to": "broken",
+              "trigger": "degrade",
+              "guards": [
+                "Each finished craft at a station consumes durability points"
+              ],
+              "effects": []
+            },
+            {
+              "from": "broken",
+              "to": "pristine",
+              "trigger": "repair",
+              "guards": [
+                "Repair costs one ferrite ingot"
+              ],
+              "effects": []
+            },
+            {
+              "from": "damaged",
+              "to": "pristine",
+              "trigger": "repair",
+              "guards": [
+                "Repair costs one ferrite ingot"
+              ],
+              "effects": []
+            },
+            {
+              "from": "worn",
+              "to": "pristine",
+              "trigger": "repair",
+              "guards": [
+                "Repair costs one ferrite ingot"
+              ],
+              "effects": []
+            }
+          ]
+        },
+        "pii": [],
+        "gdpr": {}
+      },
+      "VeilsteelHammer": {
+        "name": "VeilsteelHammer",
+        "tags": [
+          "item"
+        ],
+        "description": "A veilsteel hammer balanced for the master forge. Works every forging tier, up to master.",
+        "goal": "The master-tier hammer: the highest smithing and arcane forging recipes need it (Phase 229)",
+        "fields": {
+          "id": {
+            "name": "id",
+            "type": "uuid",
+            "nullable": false,
+            "primaryKey": true,
+            "pii": false
+          },
+          "condition": {
+            "name": "condition",
+            "type": "enum",
+            "nullable": false,
+            "primaryKey": false,
+            "enumValues": [
+              "pristine",
+              "worn",
+              "damaged",
+              "broken"
+            ],
+            "pii": false
+          },
+          "weight": {
+            "name": "weight",
+            "type": "decimal",
+            "description": "kg; affects carry capacity",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 2.2
+          },
+          "rarity": {
+            "name": "rarity",
+            "type": "enum",
+            "nullable": false,
+            "primaryKey": false,
+            "enumValues": [
+              "common",
+              "uncommon",
+              "rare",
+              "epic",
+              "legendary"
+            ],
+            "pii": false,
+            "defaultValue": "uncommon"
+          },
+          "stackable": {
+            "name": "stackable",
+            "type": "boolean",
+            "description": "Whether multiple instances stack in inventory",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": false
+          },
+          "shape": {
+            "name": "shape",
+            "type": "json",
+            "description": "Item shape: archetype, material per named part, and uniform scale (Phase 151)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "archetype": "hammer",
+              "parts": {
+                "head": "Veilsteel",
+                "handle": "Thornwood"
+              },
+              "scale": 1
+            }
+          },
+          "durability": {
+            "name": "durability",
+            "type": "integer",
+            "description": "Remaining durability points before condition degrades",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 180
+          },
+          "equipmentCategory": {
+            "name": "equipmentCategory",
+            "type": "string",
+            "description": "Equipment category (Phase 295): knife, sword, axe, hammer, pick, shovel…",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "hammer"
+          },
+          "traits": {
+            "name": "traits",
+            "type": "json",
+            "description": "Traits and strengths (Phase 295): { <Trait>: { strength, grade? } }; the working part's material may raise them",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "Blunt": {
+                "strength": 1,
+                "grade": "heavy"
+              }
+            }
+          },
+          "tier": {
+            "name": "tier",
+            "type": "string",
+            "description": "Gear tier (Phase 229, a skill tier): the highest ability or recipe tier this item allows (GearTiers)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "master"
+          },
+          "repair": {
+            "name": "repair",
+            "type": "json",
+            "description": "Structured repair spec: required station, materials consumed on repair, and skill guards (skill key + minimum tier).",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "station": "master forge",
+              "materials": [
+                {
+                  "item": "VeilsteelIngot",
+                  "quantity": 1
+                }
+              ],
+              "skillGuards": [
+                {
+                  "skill": "Smithing",
+                  "tier": "journeyman"
+                }
+              ]
+            }
+          },
+          "works": {
+            "name": "works",
+            "type": "json",
+            "description": "Derived from the work table (Phase 295): { <work>: speed } for every work this item can do",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "build": 1
+            }
+          },
+          "combatDamage": {
+            "name": "combatDamage",
+            "type": "json",
+            "description": "Derived (Phase 295): combat damage per damage type, the category multiplier times its traits' shares",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "blunt": 6
+            }
+          }
+        },
+        "relations": {
+          "veilsteel": {
+            "name": "veilsteel",
+            "kind": "hasOne",
+            "target": "Veilsteel"
+          },
+          "thornwood": {
+            "name": "thornwood",
+            "kind": "hasOne",
+            "target": "Thornwood"
+          }
+        },
+        "behaviors": {
+          "degrade": {
+            "name": "degrade",
+            "description": "Reduce durability after each craft or build it is used for",
+            "rules": [
+              "Each finished craft at a station consumes durability points"
+            ],
+            "auth": {
+              "roles": [
+                "maintainer"
+              ]
+            }
+          },
+          "repair": {
+            "name": "repair",
+            "description": "Restore to pristine condition at a master forge",
+            "rules": [
+              "Repair costs one veilsteel ingot"
+            ],
+            "auth": {
+              "roles": [
+                "maintainer"
+              ]
+            }
+          }
+        },
+        "stateMachine": {
+          "field": "condition",
+          "initial": "pristine",
+          "states": {
+            "pristine": {
+              "name": "pristine",
+              "description": "Freshly crafted or repaired; full stat effectiveness",
+              "terminal": false
+            },
+            "worn": {
+              "name": "worn",
+              "description": "Showing use; minor stat penalties apply",
+              "terminal": false
+            },
+            "damaged": {
+              "name": "damaged",
+              "description": "Significantly degraded; notable stat penalties; repair strongly advised",
+              "terminal": false
+            },
+            "broken": {
+              "name": "broken",
+              "description": "Unusable; must be repaired at a workshop before use",
+              "terminal": false
+            }
+          },
+          "transitions": [
+            {
+              "from": "pristine",
+              "to": "worn",
+              "trigger": "degrade",
+              "guards": [
+                "Each finished craft at a station consumes durability points"
+              ],
+              "effects": []
+            },
+            {
+              "from": "worn",
+              "to": "damaged",
+              "trigger": "degrade",
+              "guards": [
+                "Each finished craft at a station consumes durability points"
+              ],
+              "effects": []
+            },
+            {
+              "from": "damaged",
+              "to": "broken",
+              "trigger": "degrade",
+              "guards": [
+                "Each finished craft at a station consumes durability points"
+              ],
+              "effects": []
+            },
+            {
+              "from": "broken",
+              "to": "pristine",
+              "trigger": "repair",
+              "guards": [
+                "Repair costs one veilsteel ingot"
+              ],
+              "effects": []
+            },
+            {
+              "from": "damaged",
+              "to": "pristine",
+              "trigger": "repair",
+              "guards": [
+                "Repair costs one veilsteel ingot"
+              ],
+              "effects": []
+            },
+            {
+              "from": "worn",
+              "to": "pristine",
+              "trigger": "repair",
+              "guards": [
+                "Repair costs one veilsteel ingot"
+              ],
+              "effects": []
+            }
+          ]
+        },
+        "pii": [],
+        "gdpr": {}
+      },
       "FerriteShortSword": {
         "name": "FerriteShortSword",
         "tags": [
@@ -19054,6 +19727,15 @@
                 "strength": 1
               }
             }
+          },
+          "tier": {
+            "name": "tier",
+            "type": "string",
+            "description": "Gear tier (Phase 229, a skill tier): the highest ability or recipe tier this item allows (GearTiers)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "apprentice"
           },
           "repair": {
             "name": "repair",
@@ -19332,6 +20014,15 @@
                 "strength": 1
               }
             }
+          },
+          "tier": {
+            "name": "tier",
+            "type": "string",
+            "description": "Gear tier (Phase 229, a skill tier): the highest ability or recipe tier this item allows (GearTiers)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "master"
           },
           "repair": {
             "name": "repair",
@@ -19735,6 +20426,15 @@
               }
             }
           },
+          "tier": {
+            "name": "tier",
+            "type": "string",
+            "description": "Gear tier (Phase 229, a skill tier): the highest ability or recipe tier this item allows (GearTiers)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "journeyman"
+          },
           "repair": {
             "name": "repair",
             "type": "json",
@@ -20029,6 +20729,15 @@
                 "strength": 1
               }
             }
+          },
+          "tier": {
+            "name": "tier",
+            "type": "string",
+            "description": "Gear tier (Phase 229, a skill tier): the highest ability or recipe tier this item allows (GearTiers)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "expert"
           },
           "works": {
             "name": "works",
@@ -21757,6 +22466,15 @@
                 "grade": "heavy"
               }
             }
+          },
+          "tier": {
+            "name": "tier",
+            "type": "string",
+            "description": "Gear tier (Phase 229, a skill tier): the highest ability or recipe tier this item allows (GearTiers)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "apprentice"
           },
           "repair": {
             "name": "repair",
@@ -25433,6 +26151,15 @@
             "primaryKey": false,
             "pii": false,
             "defaultValue": 400
+          },
+          "tier": {
+            "name": "tier",
+            "type": "string",
+            "description": "Gear tier of a carpentry bench (Phase 229): the highest recipe tier crafted at it",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "novice"
           }
         },
         "relations": {
@@ -25644,6 +26371,15 @@
             "primaryKey": false,
             "pii": false,
             "defaultValue": 400
+          },
+          "tier": {
+            "name": "tier",
+            "type": "string",
+            "description": "Gear tier of a forge (Phase 229): the highest recipe tier crafted at it",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "novice"
           }
         },
         "relations": {
@@ -25855,6 +26591,15 @@
             "primaryKey": false,
             "pii": false,
             "defaultValue": 400
+          },
+          "tier": {
+            "name": "tier",
+            "type": "string",
+            "description": "Gear tier of a masonry bench (Phase 229): the highest recipe tier crafted at it",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "apprentice"
           }
         },
         "relations": {
@@ -26066,6 +26811,15 @@
             "primaryKey": false,
             "pii": false,
             "defaultValue": 400
+          },
+          "tier": {
+            "name": "tier",
+            "type": "string",
+            "description": "Gear tier of a alchemy bench (Phase 229): the highest recipe tier crafted at it",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "apprentice"
           }
         },
         "relations": {
@@ -26277,6 +27031,15 @@
             "primaryKey": false,
             "pii": false,
             "defaultValue": 400
+          },
+          "tier": {
+            "name": "tier",
+            "type": "string",
+            "description": "Gear tier of a master forge (Phase 229): the highest recipe tier crafted at it",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "master"
           }
         },
         "relations": {
@@ -26488,6 +27251,15 @@
             "primaryKey": false,
             "pii": false,
             "defaultValue": 400
+          },
+          "tier": {
+            "name": "tier",
+            "type": "string",
+            "description": "Gear tier of a arcane forge (Phase 229): the highest recipe tier crafted at it",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "journeyman"
           }
         },
         "relations": {
@@ -26699,6 +27471,15 @@
             "primaryKey": false,
             "pii": false,
             "defaultValue": 400
+          },
+          "tier": {
+            "name": "tier",
+            "type": "string",
+            "description": "Gear tier of a void-shielded workshop (Phase 229): the highest recipe tier crafted at it",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "expert"
           }
         },
         "relations": {
@@ -33952,13 +34733,14 @@
           "recipe": {
             "name": "recipe",
             "type": "json",
-            "description": "Structured craft recipe: crafting domain, required station, input items with quantities, output items with quantities, and skill guards (skill key + minimum tier).",
+            "description": "Structured craft recipe: crafting domain, required station, requiredTier (the gear tier its tool and station must reach, Phase 229 GearTiers), input items with quantities, output items with quantities, and skill guards (skill key + minimum tier).",
             "nullable": false,
             "primaryKey": false,
             "pii": false,
             "defaultValue": {
               "domain": "smithing",
               "station": "forge",
+              "requiredTier": "novice",
               "inputs": [
                 {
                   "item": "Ferrite",
@@ -34051,13 +34833,14 @@
           "recipe": {
             "name": "recipe",
             "type": "json",
-            "description": "Structured craft recipe: crafting domain, required station, input items with quantities, output items with quantities, and skill guards (skill key + minimum tier).",
+            "description": "Structured craft recipe: crafting domain, required station, requiredTier (the gear tier its tool and station must reach, Phase 229 GearTiers), input items with quantities, output items with quantities, and skill guards (skill key + minimum tier).",
             "nullable": false,
             "primaryKey": false,
             "pii": false,
             "defaultValue": {
               "domain": "smithing",
               "station": "master forge",
+              "requiredTier": "apprentice",
               "inputs": [
                 {
                   "item": "FerriteIngot",
@@ -34159,13 +34942,14 @@
           "recipe": {
             "name": "recipe",
             "type": "json",
-            "description": "Structured craft recipe: crafting domain, required station, input items with quantities, output items with quantities, and skill guards (skill key + minimum tier).",
+            "description": "Structured craft recipe: crafting domain, required station, requiredTier (the gear tier its tool and station must reach, Phase 229 GearTiers), input items with quantities, output items with quantities, and skill guards (skill key + minimum tier).",
             "nullable": false,
             "primaryKey": false,
             "pii": false,
             "defaultValue": {
               "domain": "smithing",
               "station": "forge",
+              "requiredTier": "novice",
               "inputs": [
                 {
                   "item": "FerriteIngot",
@@ -34258,13 +35042,14 @@
           "recipe": {
             "name": "recipe",
             "type": "json",
-            "description": "Structured craft recipe: crafting domain, required station, input items with quantities, output items with quantities, and skill guards (skill key + minimum tier).",
+            "description": "Structured craft recipe: crafting domain, required station, requiredTier (the gear tier its tool and station must reach, Phase 229 GearTiers), input items with quantities, output items with quantities, and skill guards (skill key + minimum tier).",
             "nullable": false,
             "primaryKey": false,
             "pii": false,
             "defaultValue": {
               "domain": "smithing",
               "station": "forge",
+              "requiredTier": "novice",
               "inputs": [
                 {
                   "item": "FerriteIngot",
@@ -34366,13 +35151,14 @@
           "recipe": {
             "name": "recipe",
             "type": "json",
-            "description": "Structured craft recipe: crafting domain, required station, input items with quantities, output items with quantities, and skill guards (skill key + minimum tier).",
+            "description": "Structured craft recipe: crafting domain, required station, requiredTier (the gear tier its tool and station must reach, Phase 229 GearTiers), input items with quantities, output items with quantities, and skill guards (skill key + minimum tier).",
             "nullable": false,
             "primaryKey": false,
             "pii": false,
             "defaultValue": {
               "domain": "smithing",
               "station": "forge",
+              "requiredTier": "novice",
               "inputs": [
                 {
                   "item": "FerriteIngot",
@@ -34473,13 +35259,14 @@
           "recipe": {
             "name": "recipe",
             "type": "json",
-            "description": "Structured craft recipe: crafting domain, required station, input items with quantities, output items with quantities, and skill guards (skill key + minimum tier).",
+            "description": "Structured craft recipe: crafting domain, required station, requiredTier (the gear tier its tool and station must reach, Phase 229 GearTiers), input items with quantities, output items with quantities, and skill guards (skill key + minimum tier).",
             "nullable": false,
             "primaryKey": false,
             "pii": false,
             "defaultValue": {
               "domain": "smithing",
               "station": "forge",
+              "requiredTier": "novice",
               "inputs": [
                 {
                   "item": "FerriteIngot",
@@ -34580,13 +35367,14 @@
           "recipe": {
             "name": "recipe",
             "type": "json",
-            "description": "Structured craft recipe: crafting domain, required station, input items with quantities, output items with quantities, and skill guards (skill key + minimum tier).",
+            "description": "Structured craft recipe: crafting domain, required station, requiredTier (the gear tier its tool and station must reach, Phase 229 GearTiers), input items with quantities, output items with quantities, and skill guards (skill key + minimum tier).",
             "nullable": false,
             "primaryKey": false,
             "pii": false,
             "defaultValue": {
               "domain": "smithing",
               "station": "forge",
+              "requiredTier": "novice",
               "inputs": [
                 {
                   "item": "FerriteIngot",
@@ -34647,6 +35435,224 @@
         "pii": [],
         "gdpr": {}
       },
+      "RecipeFerriteHammer": {
+        "name": "RecipeFerriteHammer",
+        "tags": [
+          "recipe"
+        ],
+        "description": "Forge a ferrite hammer from two ferrite ingots and one thornwood plank.",
+        "goal": "The first hammer above stone: opens apprentice-tier smithing and masonry (Phase 229)",
+        "fields": {
+          "id": {
+            "name": "id",
+            "type": "uuid",
+            "nullable": false,
+            "primaryKey": true,
+            "pii": false
+          },
+          "domain": {
+            "name": "domain",
+            "type": "enum",
+            "description": "Crafting station required",
+            "nullable": false,
+            "primaryKey": false,
+            "enumValues": [
+              "smithing",
+              "alchemy",
+              "arcane",
+              "carpentry"
+            ],
+            "pii": false
+          },
+          "outputCount": {
+            "name": "outputCount",
+            "type": "integer",
+            "description": "Number of output items produced per craft",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false
+          },
+          "recipe": {
+            "name": "recipe",
+            "type": "json",
+            "description": "Structured craft recipe: crafting domain, required station, requiredTier (the gear tier its tool and station must reach, Phase 229 GearTiers), input items with quantities, output items with quantities, and skill guards (skill key + minimum tier).",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "domain": "smithing",
+              "station": "forge",
+              "requiredTier": "novice",
+              "inputs": [
+                {
+                  "item": "FerriteIngot",
+                  "quantity": 2
+                },
+                {
+                  "item": "ThornwoodPlank",
+                  "quantity": 1
+                }
+              ],
+              "outputs": [
+                {
+                  "item": "FerriteHammer",
+                  "quantity": 1
+                }
+              ],
+              "skillGuards": [
+                {
+                  "skill": "Smithing",
+                  "tier": "novice"
+                }
+              ]
+            }
+          }
+        },
+        "relations": {
+          "inputIngot": {
+            "name": "inputIngot",
+            "kind": "hasOne",
+            "target": "FerriteIngot"
+          },
+          "inputPlank": {
+            "name": "inputPlank",
+            "kind": "hasOne",
+            "target": "ThornwoodPlank"
+          },
+          "output": {
+            "name": "output",
+            "kind": "hasOne",
+            "target": "FerriteHammer"
+          }
+        },
+        "behaviors": {
+          "craft": {
+            "name": "craft",
+            "description": "Forge a hammer head and fit its handle at a forge",
+            "rules": [
+              "Requires Smithing: Novice",
+              "Requires a functional forge",
+              "Two ingots and one thornwood plank yield one hammer"
+            ],
+            "auth": {
+              "roles": [
+                "maintainer"
+              ]
+            }
+          }
+        },
+        "pii": [],
+        "gdpr": {}
+      },
+      "RecipeVeilsteelHammer": {
+        "name": "RecipeVeilsteelHammer",
+        "tags": [
+          "recipe"
+        ],
+        "description": "Forge a veilsteel hammer from two veilsteel ingots and one thornwood plank.",
+        "goal": "The master-tier hammer: opens every forging recipe (Phase 229)",
+        "fields": {
+          "id": {
+            "name": "id",
+            "type": "uuid",
+            "nullable": false,
+            "primaryKey": true,
+            "pii": false
+          },
+          "domain": {
+            "name": "domain",
+            "type": "enum",
+            "description": "Crafting station required",
+            "nullable": false,
+            "primaryKey": false,
+            "enumValues": [
+              "smithing",
+              "alchemy",
+              "arcane",
+              "carpentry"
+            ],
+            "pii": false
+          },
+          "outputCount": {
+            "name": "outputCount",
+            "type": "integer",
+            "description": "Number of output items produced per craft",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false
+          },
+          "recipe": {
+            "name": "recipe",
+            "type": "json",
+            "description": "Structured craft recipe: crafting domain, required station, requiredTier (the gear tier its tool and station must reach, Phase 229 GearTiers), input items with quantities, output items with quantities, and skill guards (skill key + minimum tier).",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "domain": "smithing",
+              "station": "master forge",
+              "requiredTier": "apprentice",
+              "inputs": [
+                {
+                  "item": "VeilsteelIngot",
+                  "quantity": 2
+                },
+                {
+                  "item": "ThornwoodPlank",
+                  "quantity": 1
+                }
+              ],
+              "outputs": [
+                {
+                  "item": "VeilsteelHammer",
+                  "quantity": 1
+                }
+              ],
+              "skillGuards": [
+                {
+                  "skill": "Smithing",
+                  "tier": "journeyman"
+                }
+              ]
+            }
+          }
+        },
+        "relations": {
+          "inputIngot": {
+            "name": "inputIngot",
+            "kind": "hasOne",
+            "target": "VeilsteelIngot"
+          },
+          "inputPlank": {
+            "name": "inputPlank",
+            "kind": "hasOne",
+            "target": "ThornwoodPlank"
+          },
+          "output": {
+            "name": "output",
+            "kind": "hasOne",
+            "target": "VeilsteelHammer"
+          }
+        },
+        "behaviors": {
+          "craft": {
+            "name": "craft",
+            "description": "Forge a hammer head and fit its handle at a master forge",
+            "rules": [
+              "Requires Smithing: Journeyman",
+              "Requires a functional master forge",
+              "Two ingots and one thornwood plank yield one hammer"
+            ],
+            "auth": {
+              "roles": [
+                "maintainer"
+              ]
+            }
+          }
+        },
+        "pii": [],
+        "gdpr": {}
+      },
       "RecipeVeilsteelLongsword": {
         "name": "RecipeVeilsteelLongsword",
         "tags": [
@@ -34687,13 +35693,14 @@
           "recipe": {
             "name": "recipe",
             "type": "json",
-            "description": "Structured craft recipe: crafting domain, required station, input items with quantities, output items with quantities, and skill guards (skill key + minimum tier).",
+            "description": "Structured craft recipe: crafting domain, required station, requiredTier (the gear tier its tool and station must reach, Phase 229 GearTiers), input items with quantities, output items with quantities, and skill guards (skill key + minimum tier).",
             "nullable": false,
             "primaryKey": false,
             "pii": false,
             "defaultValue": {
               "domain": "smithing",
               "station": "master forge",
+              "requiredTier": "journeyman",
               "inputs": [
                 {
                   "item": "VeilsteelIngot",
@@ -34795,13 +35802,14 @@
           "recipe": {
             "name": "recipe",
             "type": "json",
-            "description": "Structured craft recipe: crafting domain, required station, input items with quantities, output items with quantities, and skill guards (skill key + minimum tier).",
+            "description": "Structured craft recipe: crafting domain, required station, requiredTier (the gear tier its tool and station must reach, Phase 229 GearTiers), input items with quantities, output items with quantities, and skill guards (skill key + minimum tier).",
             "nullable": false,
             "primaryKey": false,
             "pii": false,
             "defaultValue": {
               "domain": "smithing",
               "station": "master forge",
+              "requiredTier": "journeyman",
               "inputs": [
                 {
                   "item": "VeilsteelIngot",
@@ -34903,13 +35911,14 @@
           "recipe": {
             "name": "recipe",
             "type": "json",
-            "description": "Structured craft recipe: crafting domain, required station, input items with quantities, output items with quantities, and skill guards (skill key + minimum tier).",
+            "description": "Structured craft recipe: crafting domain, required station, requiredTier (the gear tier its tool and station must reach, Phase 229 GearTiers), input items with quantities, output items with quantities, and skill guards (skill key + minimum tier).",
             "nullable": false,
             "primaryKey": false,
             "pii": false,
             "defaultValue": {
               "domain": "alchemy",
               "station": "alchemy bench",
+              "requiredTier": "novice",
               "inputs": [
                 {
                   "item": "AethermiteDust",
@@ -35002,13 +36011,14 @@
           "recipe": {
             "name": "recipe",
             "type": "json",
-            "description": "Structured craft recipe: crafting domain, required station, input items with quantities, output items with quantities, and skill guards (skill key + minimum tier).",
+            "description": "Structured craft recipe: crafting domain, required station, requiredTier (the gear tier its tool and station must reach, Phase 229 GearTiers), input items with quantities, output items with quantities, and skill guards (skill key + minimum tier).",
             "nullable": false,
             "primaryKey": false,
             "pii": false,
             "defaultValue": {
               "domain": "alchemy",
               "station": "alchemy bench",
+              "requiredTier": "novice",
               "inputs": [
                 {
                   "item": "AethermiteDust",
@@ -35101,13 +36111,14 @@
           "recipe": {
             "name": "recipe",
             "type": "json",
-            "description": "Structured craft recipe: crafting domain, required station, input items with quantities, output items with quantities, and skill guards (skill key + minimum tier).",
+            "description": "Structured craft recipe: crafting domain, required station, requiredTier (the gear tier its tool and station must reach, Phase 229 GearTiers), input items with quantities, output items with quantities, and skill guards (skill key + minimum tier).",
             "nullable": false,
             "primaryKey": false,
             "pii": false,
             "defaultValue": {
               "domain": "alchemy",
               "station": "alchemy bench",
+              "requiredTier": "apprentice",
               "inputs": [
                 {
                   "item": "Voidite",
@@ -35214,13 +36225,14 @@
           "recipe": {
             "name": "recipe",
             "type": "json",
-            "description": "Structured craft recipe: crafting domain, required station, input items with quantities, output items with quantities, and skill guards (skill key + minimum tier).",
+            "description": "Structured craft recipe: crafting domain, required station, requiredTier (the gear tier its tool and station must reach, Phase 229 GearTiers), input items with quantities, output items with quantities, and skill guards (skill key + minimum tier).",
             "nullable": false,
             "primaryKey": false,
             "pii": false,
             "defaultValue": {
               "domain": "arcane",
               "station": "arcane forge",
+              "requiredTier": "journeyman",
               "inputs": [
                 {
                   "item": "Aethermite",
@@ -35314,13 +36326,14 @@
           "recipe": {
             "name": "recipe",
             "type": "json",
-            "description": "Structured craft recipe: crafting domain, required station, input items with quantities, output items with quantities, and skill guards (skill key + minimum tier).",
+            "description": "Structured craft recipe: crafting domain, required station, requiredTier (the gear tier its tool and station must reach, Phase 229 GearTiers), input items with quantities, output items with quantities, and skill guards (skill key + minimum tier).",
             "nullable": false,
             "primaryKey": false,
             "pii": false,
             "defaultValue": {
               "domain": "arcane",
               "station": "arcane forge",
+              "requiredTier": "apprentice",
               "inputs": [
                 {
                   "item": "ThornwoodPlank",
@@ -35435,13 +36448,14 @@
           "recipe": {
             "name": "recipe",
             "type": "json",
-            "description": "Structured craft recipe: crafting domain, required station, input items with quantities, output items with quantities, and skill guards (skill key + minimum tier).",
+            "description": "Structured craft recipe: crafting domain, required station, requiredTier (the gear tier its tool and station must reach, Phase 229 GearTiers), input items with quantities, output items with quantities, and skill guards (skill key + minimum tier).",
             "nullable": false,
             "primaryKey": false,
             "pii": false,
             "defaultValue": {
               "domain": "arcane",
               "station": "arcane forge",
+              "requiredTier": "apprentice",
               "inputs": [
                 {
                   "item": "Lumenfite",
@@ -35547,13 +36561,14 @@
           "recipe": {
             "name": "recipe",
             "type": "json",
-            "description": "Structured craft recipe: crafting domain, required station, input items with quantities, output items with quantities, and skill guards (skill key + minimum tier).",
+            "description": "Structured craft recipe: crafting domain, required station, requiredTier (the gear tier its tool and station must reach, Phase 229 GearTiers), input items with quantities, output items with quantities, and skill guards (skill key + minimum tier).",
             "nullable": false,
             "primaryKey": false,
             "pii": false,
             "defaultValue": {
               "domain": "arcane",
               "station": "void-shielded workshop",
+              "requiredTier": "expert",
               "inputs": [
                 {
                   "item": "RefinedVoiditeShard",
@@ -35657,13 +36672,14 @@
           "recipe": {
             "name": "recipe",
             "type": "json",
-            "description": "Structured craft recipe: crafting domain, required station, input items with quantities, output items with quantities, and skill guards (skill key + minimum tier).",
+            "description": "Structured craft recipe: crafting domain, required station, requiredTier (the gear tier its tool and station must reach, Phase 229 GearTiers), input items with quantities, output items with quantities, and skill guards (skill key + minimum tier).",
             "nullable": false,
             "primaryKey": false,
             "pii": false,
             "defaultValue": {
               "domain": "smithing",
               "station": "forge",
+              "requiredTier": "novice",
               "inputs": [
                 {
                   "item": "Voidite",
@@ -35762,13 +36778,14 @@
           "recipe": {
             "name": "recipe",
             "type": "json",
-            "description": "Structured craft recipe: crafting domain, required station, input items with quantities, output items with quantities, and skill guards (skill key + minimum tier).",
+            "description": "Structured craft recipe: crafting domain, required station, requiredTier (the gear tier its tool and station must reach, Phase 229 GearTiers), input items with quantities, output items with quantities, and skill guards (skill key + minimum tier).",
             "nullable": false,
             "primaryKey": false,
             "pii": false,
             "defaultValue": {
               "domain": "carpentry",
               "station": "carpentry bench",
+              "requiredTier": "novice",
               "inputs": [
                 {
                   "item": "Thornwood",
@@ -35861,13 +36878,14 @@
           "recipe": {
             "name": "recipe",
             "type": "json",
-            "description": "Structured craft recipe: crafting domain, required station, input items with quantities, output items with quantities, and skill guards (skill key + minimum tier).",
+            "description": "Structured craft recipe: crafting domain, required station, requiredTier (the gear tier its tool and station must reach, Phase 229 GearTiers), input items with quantities, output items with quantities, and skill guards (skill key + minimum tier).",
             "nullable": false,
             "primaryKey": false,
             "pii": false,
             "defaultValue": {
               "domain": "carpentry",
               "station": "carpentry bench",
+              "requiredTier": "novice",
               "inputs": [
                 {
                   "item": "ThornwoodPlank",
@@ -35969,13 +36987,14 @@
           "recipe": {
             "name": "recipe",
             "type": "json",
-            "description": "Structured craft recipe: crafting domain, required station, input items with quantities, output items with quantities, and skill guards (skill key + minimum tier).",
+            "description": "Structured craft recipe: crafting domain, required station, requiredTier (the gear tier its tool and station must reach, Phase 229 GearTiers), input items with quantities, output items with quantities, and skill guards (skill key + minimum tier).",
             "nullable": false,
             "primaryKey": false,
             "pii": false,
             "defaultValue": {
               "domain": "carpentry",
               "station": "carpentry bench",
+              "requiredTier": "novice",
               "inputs": [
                 {
                   "item": "FerriteIngot",
@@ -36091,13 +37110,14 @@
           "recipe": {
             "name": "recipe",
             "type": "json",
-            "description": "Structured craft recipe: crafting domain, required station, input items with quantities, output items with quantities, and skill guards (skill key + minimum tier).",
+            "description": "Structured craft recipe: crafting domain, required station, requiredTier (the gear tier its tool and station must reach, Phase 229 GearTiers), input items with quantities, output items with quantities, and skill guards (skill key + minimum tier).",
             "nullable": false,
             "primaryKey": false,
             "pii": false,
             "defaultValue": {
               "domain": "carpentry",
               "station": "carpentry bench",
+              "requiredTier": "novice",
               "inputs": [
                 {
                   "item": "Duskfiber",
@@ -36190,13 +37210,14 @@
           "recipe": {
             "name": "recipe",
             "type": "json",
-            "description": "Structured craft recipe: crafting domain, required station, input items with quantities, output items with quantities, and skill guards (skill key + minimum tier).",
+            "description": "Structured craft recipe: crafting domain, required station, requiredTier (the gear tier its tool and station must reach, Phase 229 GearTiers), input items with quantities, output items with quantities, and skill guards (skill key + minimum tier).",
             "nullable": false,
             "primaryKey": false,
             "pii": false,
             "defaultValue": {
               "domain": "tailoring",
               "station": "carpentry bench",
+              "requiredTier": "novice",
               "inputs": [
                 {
                   "item": "Duskfiber",
@@ -36289,13 +37310,14 @@
           "recipe": {
             "name": "recipe",
             "type": "json",
-            "description": "Structured craft recipe: crafting domain, required station, input items with quantities, output items with quantities, and skill guards (skill key + minimum tier).",
+            "description": "Structured craft recipe: crafting domain, required station, requiredTier (the gear tier its tool and station must reach, Phase 229 GearTiers), input items with quantities, output items with quantities, and skill guards (skill key + minimum tier).",
             "nullable": false,
             "primaryKey": false,
             "pii": false,
             "defaultValue": {
               "domain": "carpentry",
               "station": "masonry bench",
+              "requiredTier": "apprentice",
               "inputs": [
                 {
                   "item": "Ashite",
@@ -36388,13 +37410,14 @@
           "recipe": {
             "name": "recipe",
             "type": "json",
-            "description": "Structured craft recipe: crafting domain, required station, input items with quantities, output items with quantities, and skill guards (skill key + minimum tier).",
+            "description": "Structured craft recipe: crafting domain, required station, requiredTier (the gear tier its tool and station must reach, Phase 229 GearTiers), input items with quantities, output items with quantities, and skill guards (skill key + minimum tier).",
             "nullable": false,
             "primaryKey": false,
             "pii": false,
             "defaultValue": {
               "domain": "carpentry",
               "station": "masonry bench",
+              "requiredTier": "novice",
               "inputs": [
                 {
                   "item": "Ashite",
@@ -36487,13 +37510,14 @@
           "recipe": {
             "name": "recipe",
             "type": "json",
-            "description": "Structured craft recipe: crafting domain, required station, input items with quantities, output items with quantities, and skill guards (skill key + minimum tier).",
+            "description": "Structured craft recipe: crafting domain, required station, requiredTier (the gear tier its tool and station must reach, Phase 229 GearTiers), input items with quantities, output items with quantities, and skill guards (skill key + minimum tier).",
             "nullable": false,
             "primaryKey": false,
             "pii": false,
             "defaultValue": {
               "domain": "carpentry",
               "station": "masonry bench",
+              "requiredTier": "apprentice",
               "inputs": [
                 {
                   "item": "Cement",
@@ -36595,13 +37619,14 @@
           "recipe": {
             "name": "recipe",
             "type": "json",
-            "description": "Structured craft recipe: crafting domain, required station, input items with quantities, output items with quantities, and skill guards (skill key + minimum tier).",
+            "description": "Structured craft recipe: crafting domain, required station, requiredTier (the gear tier its tool and station must reach, Phase 229 GearTiers), input items with quantities, output items with quantities, and skill guards (skill key + minimum tier).",
             "nullable": false,
             "primaryKey": false,
             "pii": false,
             "defaultValue": {
               "domain": "smithing",
               "station": "master forge",
+              "requiredTier": "journeyman",
               "inputs": [
                 {
                   "item": "FerriteIngot",
@@ -36694,13 +37719,14 @@
           "recipe": {
             "name": "recipe",
             "type": "json",
-            "description": "Structured craft recipe: crafting domain, required station, input items with quantities, output items with quantities, and skill guards (skill key + minimum tier).",
+            "description": "Structured craft recipe: crafting domain, required station, requiredTier (the gear tier its tool and station must reach, Phase 229 GearTiers), input items with quantities, output items with quantities, and skill guards (skill key + minimum tier).",
             "nullable": false,
             "primaryKey": false,
             "pii": false,
             "defaultValue": {
               "domain": "arcane",
               "station": "arcane forge",
+              "requiredTier": "journeyman",
               "inputs": [
                 {
                   "item": "Steel",
@@ -36802,13 +37828,14 @@
           "recipe": {
             "name": "recipe",
             "type": "json",
-            "description": "Structured craft recipe: crafting domain, required station, input items with quantities, output items with quantities, and skill guards (skill key + minimum tier).",
+            "description": "Structured craft recipe: crafting domain, required station, requiredTier (the gear tier its tool and station must reach, Phase 229 GearTiers), input items with quantities, output items with quantities, and skill guards (skill key + minimum tier).",
             "nullable": false,
             "primaryKey": false,
             "pii": false,
             "defaultValue": {
               "domain": "carpentry",
               "station": "",
+              "requiredTier": "novice",
               "inputs": [
                 {
                   "item": "ThornwoodPlank",
@@ -36901,13 +37928,14 @@
           "recipe": {
             "name": "recipe",
             "type": "json",
-            "description": "Structured craft recipe: crafting domain, required station, input items with quantities, output items with quantities, and skill guards (skill key + minimum tier).",
+            "description": "Structured craft recipe: crafting domain, required station, requiredTier (the gear tier its tool and station must reach, Phase 229 GearTiers), input items with quantities, output items with quantities, and skill guards (skill key + minimum tier).",
             "nullable": false,
             "primaryKey": false,
             "pii": false,
             "defaultValue": {
               "domain": "carpentry",
               "station": "",
+              "requiredTier": "novice",
               "inputs": [
                 {
                   "item": "ThornwoodPlank",
@@ -37008,13 +38036,14 @@
           "recipe": {
             "name": "recipe",
             "type": "json",
-            "description": "Structured craft recipe: crafting domain, required station, input items with quantities, output items with quantities, and skill guards (skill key + minimum tier).",
+            "description": "Structured craft recipe: crafting domain, required station, requiredTier (the gear tier its tool and station must reach, Phase 229 GearTiers), input items with quantities, output items with quantities, and skill guards (skill key + minimum tier).",
             "nullable": false,
             "primaryKey": false,
             "pii": false,
             "defaultValue": {
               "domain": "carpentry",
               "station": "",
+              "requiredTier": "novice",
               "inputs": [
                 {
                   "item": "ThornwoodPlank",
@@ -37115,13 +38144,14 @@
           "recipe": {
             "name": "recipe",
             "type": "json",
-            "description": "Structured craft recipe: crafting domain, required station, input items with quantities, output items with quantities, and skill guards (skill key + minimum tier).",
+            "description": "Structured craft recipe: crafting domain, required station, requiredTier (the gear tier its tool and station must reach, Phase 229 GearTiers), input items with quantities, output items with quantities, and skill guards (skill key + minimum tier).",
             "nullable": false,
             "primaryKey": false,
             "pii": false,
             "defaultValue": {
               "domain": "carpentry",
               "station": "",
+              "requiredTier": "novice",
               "inputs": [
                 {
                   "item": "Branch",
@@ -37223,13 +38253,14 @@
           "recipe": {
             "name": "recipe",
             "type": "json",
-            "description": "Structured craft recipe: crafting domain, required station, input items with quantities, output items with quantities, and skill guards (skill key + minimum tier).",
+            "description": "Structured craft recipe: crafting domain, required station, requiredTier (the gear tier its tool and station must reach, Phase 229 GearTiers), input items with quantities, output items with quantities, and skill guards (skill key + minimum tier).",
             "nullable": false,
             "primaryKey": false,
             "pii": false,
             "defaultValue": {
               "domain": "carpentry",
               "station": "",
+              "requiredTier": "novice",
               "inputs": [
                 {
                   "item": "Branch",
@@ -37331,13 +38362,14 @@
           "recipe": {
             "name": "recipe",
             "type": "json",
-            "description": "Structured craft recipe: crafting domain, required station, input items with quantities, output items with quantities, and skill guards (skill key + minimum tier).",
+            "description": "Structured craft recipe: crafting domain, required station, requiredTier (the gear tier its tool and station must reach, Phase 229 GearTiers), input items with quantities, output items with quantities, and skill guards (skill key + minimum tier).",
             "nullable": false,
             "primaryKey": false,
             "pii": false,
             "defaultValue": {
               "domain": "carpentry",
               "station": "",
+              "requiredTier": "novice",
               "inputs": [
                 {
                   "item": "Branch",
@@ -37439,13 +38471,14 @@
           "recipe": {
             "name": "recipe",
             "type": "json",
-            "description": "Structured craft recipe: crafting domain, required station, input items with quantities, output items with quantities, and skill guards (skill key + minimum tier).",
+            "description": "Structured craft recipe: crafting domain, required station, requiredTier (the gear tier its tool and station must reach, Phase 229 GearTiers), input items with quantities, output items with quantities, and skill guards (skill key + minimum tier).",
             "nullable": false,
             "primaryKey": false,
             "pii": false,
             "defaultValue": {
               "domain": "carpentry",
               "station": "",
+              "requiredTier": "novice",
               "inputs": [
                 {
                   "item": "Branch",
@@ -37547,13 +38580,14 @@
           "recipe": {
             "name": "recipe",
             "type": "json",
-            "description": "Structured craft recipe: crafting domain, required station, input items with quantities, output items with quantities, and skill guards (skill key + minimum tier).",
+            "description": "Structured craft recipe: crafting domain, required station, requiredTier (the gear tier its tool and station must reach, Phase 229 GearTiers), input items with quantities, output items with quantities, and skill guards (skill key + minimum tier).",
             "nullable": false,
             "primaryKey": false,
             "pii": false,
             "defaultValue": {
               "domain": "carpentry",
               "station": "",
+              "requiredTier": "novice",
               "inputs": [
                 {
                   "item": "Branch",
@@ -37655,13 +38689,14 @@
           "recipe": {
             "name": "recipe",
             "type": "json",
-            "description": "Structured craft recipe: crafting domain, required station, input items with quantities, output items with quantities, and skill guards (skill key + minimum tier).",
+            "description": "Structured craft recipe: crafting domain, required station, requiredTier (the gear tier its tool and station must reach, Phase 229 GearTiers), input items with quantities, output items with quantities, and skill guards (skill key + minimum tier).",
             "nullable": false,
             "primaryKey": false,
             "pii": false,
             "defaultValue": {
               "domain": "carpentry",
               "station": "",
+              "requiredTier": "novice",
               "inputs": [
                 {
                   "item": "Branch",
@@ -37763,13 +38798,14 @@
           "recipe": {
             "name": "recipe",
             "type": "json",
-            "description": "Structured craft recipe: crafting domain, required station, input items with quantities, output items with quantities, and skill guards (skill key + minimum tier).",
+            "description": "Structured craft recipe: crafting domain, required station, requiredTier (the gear tier its tool and station must reach, Phase 229 GearTiers), input items with quantities, output items with quantities, and skill guards (skill key + minimum tier).",
             "nullable": false,
             "primaryKey": false,
             "pii": false,
             "defaultValue": {
               "domain": "smithing",
               "station": "carpentry bench",
+              "requiredTier": "novice",
               "inputs": [
                 {
                   "item": "LooseStone",
@@ -37871,13 +38907,14 @@
           "recipe": {
             "name": "recipe",
             "type": "json",
-            "description": "Structured craft recipe: crafting domain, required station, input items with quantities, output items with quantities, and skill guards (skill key + minimum tier).",
+            "description": "Structured craft recipe: crafting domain, required station, requiredTier (the gear tier its tool and station must reach, Phase 229 GearTiers), input items with quantities, output items with quantities, and skill guards (skill key + minimum tier).",
             "nullable": false,
             "primaryKey": false,
             "pii": false,
             "defaultValue": {
               "domain": "carpentry",
               "station": "carpentry bench",
+              "requiredTier": "novice",
               "inputs": [
                 {
                   "item": "ThornwoodPlank",
@@ -37979,13 +39016,14 @@
           "recipe": {
             "name": "recipe",
             "type": "json",
-            "description": "Structured craft recipe: crafting domain, required station, input items with quantities, output items with quantities, and skill guards (skill key + minimum tier).",
+            "description": "Structured craft recipe: crafting domain, required station, requiredTier (the gear tier its tool and station must reach, Phase 229 GearTiers), input items with quantities, output items with quantities, and skill guards (skill key + minimum tier).",
             "nullable": false,
             "primaryKey": false,
             "pii": false,
             "defaultValue": {
               "domain": "alchemy",
               "station": "carpentry bench",
+              "requiredTier": "novice",
               "inputs": [
                 {
                   "item": "ThornwoodPlank",
@@ -38087,13 +39125,14 @@
           "recipe": {
             "name": "recipe",
             "type": "json",
-            "description": "Structured craft recipe: crafting domain, required station, input items with quantities, output items with quantities, and skill guards (skill key + minimum tier).",
+            "description": "Structured craft recipe: crafting domain, required station, requiredTier (the gear tier its tool and station must reach, Phase 229 GearTiers), input items with quantities, output items with quantities, and skill guards (skill key + minimum tier).",
             "nullable": false,
             "primaryKey": false,
             "pii": false,
             "defaultValue": {
               "domain": "smithing",
               "station": "forge",
+              "requiredTier": "novice",
               "inputs": [
                 {
                   "item": "FerriteIngot",
@@ -38195,13 +39234,14 @@
           "recipe": {
             "name": "recipe",
             "type": "json",
-            "description": "Structured craft recipe: crafting domain, required station, input items with quantities, output items with quantities, and skill guards (skill key + minimum tier).",
+            "description": "Structured craft recipe: crafting domain, required station, requiredTier (the gear tier its tool and station must reach, Phase 229 GearTiers), input items with quantities, output items with quantities, and skill guards (skill key + minimum tier).",
             "nullable": false,
             "primaryKey": false,
             "pii": false,
             "defaultValue": {
               "domain": "arcane",
               "station": "forge",
+              "requiredTier": "novice",
               "inputs": [
                 {
                   "item": "FerriteIngot",
@@ -38303,13 +39343,14 @@
           "recipe": {
             "name": "recipe",
             "type": "json",
-            "description": "Structured craft recipe: crafting domain, required station, input items with quantities, output items with quantities, and skill guards (skill key + minimum tier).",
+            "description": "Structured craft recipe: crafting domain, required station, requiredTier (the gear tier its tool and station must reach, Phase 229 GearTiers), input items with quantities, output items with quantities, and skill guards (skill key + minimum tier).",
             "nullable": false,
             "primaryKey": false,
             "pii": false,
             "defaultValue": {
               "domain": "arcane",
               "station": "arcane forge",
+              "requiredTier": "apprentice",
               "inputs": [
                 {
                   "item": "VeilsteelIngot",
@@ -38430,7 +39471,8 @@
                 "RecipeSkinningKnife",
                 "RecipeBoneSaw",
                 "RecipeLockpick",
-                "RecipeForge"
+                "RecipeForge",
+                "RecipeFerriteHammer"
               ],
               "requires": [],
               "researchDuration": 10,
@@ -38478,6 +39520,11 @@
             "name": "unlocksRecipeLockpick",
             "kind": "hasOne",
             "target": "RecipeLockpick"
+          },
+          "unlocksRecipeFerriteHammer": {
+            "name": "unlocksRecipeFerriteHammer",
+            "kind": "hasOne",
+            "target": "RecipeFerriteHammer"
           }
         },
         "behaviors": {
@@ -38611,7 +39658,8 @@
                 "RecipeAshiteBlock",
                 "RecipeRefinedVoiditeShard",
                 "RecipeMasonryBench",
-                "RecipeMasterForge"
+                "RecipeMasterForge",
+                "RecipeVeilsteelHammer"
               ],
               "requires": [
                 "TechBasicSmithing"
@@ -38666,6 +39714,11 @@
             "name": "unlocksRecipeRefinedVoiditeShard",
             "kind": "hasOne",
             "target": "RecipeRefinedVoiditeShard"
+          },
+          "unlocksRecipeVeilsteelHammer": {
+            "name": "unlocksRecipeVeilsteelHammer",
+            "kind": "hasOne",
+            "target": "RecipeVeilsteelHammer"
           }
         },
         "behaviors": {
@@ -41000,13 +42053,14 @@
           "recipe": {
             "name": "recipe",
             "type": "json",
-            "description": "Structured craft recipe: crafting domain, required station, input items with quantities, output items with quantities, and skill guards (skill key + minimum tier).",
+            "description": "Structured craft recipe: crafting domain, required station, requiredTier (the gear tier its tool and station must reach, Phase 229 GearTiers), input items with quantities, output items with quantities, and skill guards (skill key + minimum tier).",
             "nullable": false,
             "primaryKey": false,
             "pii": false,
             "defaultValue": {
               "domain": "carpentry",
               "station": "carpentry bench",
+              "requiredTier": "novice",
               "inputs": [
                 {
                   "item": "ThornwoodPlank",
@@ -42772,7 +43826,7 @@
         "tags": [
           "world-system"
         ],
-        "description": "Equipment categories and traits (Phase 295): every held item is equipment of a category, and what it can do in the world (fell, mine, dig, build, pick a lock, dissect, cut bone) follows from its traits by the work table. There are no tools that cannot be used in combat; picks are the weakest weapons. Categories: knife (1-handed, Sharp + Piercing, combat x0.8): dissect; sword (1-handed, Sharp + Piercing, combat x1): combat only; greatsword (2-handed, Sharp + Piercing, combat x1.2): combat only; axe (1-handed, Sharp + Blunt (heavy), combat x1): fell, cutBone; hammer (1-handed, Blunt (heavy), combat x0.8): build; mace (1-handed, Blunt (heavy), combat x1.1): combat only; spear (2-handed, Piercing, combat x1): combat only; pick (1-handed, Piercing + Blunt (light), combat x0.5): mine; shovel (1-handed, Broad + Blunt (light), combat x0.6): dig; saw (1-handed, Sharp, combat x0.7): cutBone; lockpick (1-handed, Piercing, combat x0.8): pickLock; bow (2-handed, Piercing, combat x0.6): combat only; shield (1-handed, Blunt (heavy), combat x0.8): combat only.",
+        "description": "Equipment categories and traits (Phase 295): every held item is equipment of a category, and what it can do in the world (fell, mine, dig, build, pick a lock, dissect, cut bone) follows from its traits by the work table. There are no tools that cannot be used in combat; picks are the weakest weapons. Categories (what an item of each can do at full strength; a weaker one, such as a stone axe, may do less): knife (1-handed, Sharp + Piercing, combat x0.8): dissect; sword (1-handed, Sharp + Piercing, combat x1): combat only; greatsword (2-handed, Sharp + Piercing, combat x1.2): combat only; axe (1-handed, Sharp + Blunt (heavy), combat x1): fell, cutBone; hammer (1-handed, Blunt (heavy), combat x0.8): build; mace (1-handed, Blunt (heavy), combat x1.1): combat only; spear (2-handed, Piercing, combat x1): combat only; pick (1-handed, Piercing + Blunt (light), combat x0.5): mine; shovel (1-handed, Broad + Blunt (light), combat x0.6): dig; saw (1-handed, Sharp, combat x0.7): cutBone; lockpick (1-handed, Piercing, combat x0.8): pickLock; bow (2-handed, Piercing, combat x0.6): combat only; shield (1-handed, Blunt (heavy), combat x0.8): combat only.",
         "goal": "One rule for what a held item can do, in work and in combat, instead of a tool type per item",
         "fields": {
           "id": {
@@ -43257,6 +44311,204 @@
                 "canDo": [],
                 "combatMultiplier": 0.8
               }
+            }
+          }
+        },
+        "relations": {},
+        "behaviors": {},
+        "pii": [],
+        "gdpr": {}
+      },
+      "GearTiers": {
+        "name": "GearTiers",
+        "tags": [
+          "world-system"
+        ],
+        "description": "Skills capped by the gear (Phase 229): a combat ability needs an equipped weapon of its tier, and a recipe needs a tool and a crafting station of its tier. Empty hands and a missing tool count as novice gear, so novice abilities and recipes need nothing. Skill XP grows with any gear; only use is capped. No weapon reaches these abilities yet: Archery.executePierceShot (expert), Shieldcraft.executeShieldBash (journeyman), Shieldcraft.activateFortify (expert).",
+        "goal": "A character that knows more than its gear allows still has to make the gear in this world first",
+        "fields": {
+          "id": {
+            "name": "id",
+            "type": "uuid",
+            "nullable": false,
+            "primaryKey": true,
+            "pii": false
+          },
+          "tiers": {
+            "name": "tiers",
+            "type": "json",
+            "description": "The gear tiers: the skill tiers, lowest first",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": [
+              "novice",
+              "apprentice",
+              "journeyman",
+              "expert",
+              "master"
+            ]
+          },
+          "floor": {
+            "name": "floor",
+            "type": "string",
+            "description": "The tier that needs no gear: empty hands and a missing tool count as it",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "novice"
+          },
+          "materialTiers": {
+            "name": "materialTiers",
+            "type": "json",
+            "description": "{ <material>: tier } of an equipment piece's working part; its `tier` field must match",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "Ashite": "novice",
+              "Ferrite": "apprentice",
+              "Aethermite": "journeyman",
+              "Voidite": "expert",
+              "Veilsteel": "master"
+            }
+          },
+          "stationTools": {
+            "name": "stationTools",
+            "type": "json",
+            "description": "{ <station type>: <equipment category> | null }: the tool recipes made there use (null: none)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "carpentry bench": "axe",
+              "forge": "hammer",
+              "masonry bench": "hammer",
+              "master forge": "hammer",
+              "arcane forge": "hammer",
+              "void-shielded workshop": "hammer",
+              "alchemy bench": null
+            }
+          },
+          "abilities": {
+            "name": "abilities",
+            "type": "json",
+            "description": "{ <combat skill>: { weapons: [category], abilities: { <behavior>: requiredTier } } }",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "Swordsmanship": {
+                "weapons": [
+                  "knife",
+                  "sword",
+                  "greatsword"
+                ],
+                "abilities": {
+                  "executePowerStrike": "apprentice",
+                  "executeCounterSlash": "journeyman",
+                  "executeWhirlwindBlade": "expert"
+                }
+              },
+              "Archery": {
+                "weapons": [
+                  "bow"
+                ],
+                "abilities": {
+                  "executeSteadyShot": "apprentice",
+                  "executeMultiShot": "journeyman",
+                  "executePierceShot": "expert"
+                }
+              },
+              "Shieldcraft": {
+                "weapons": [
+                  "shield"
+                ],
+                "abilities": {
+                  "executeParry": "apprentice",
+                  "executeShieldBash": "journeyman",
+                  "activateFortify": "expert"
+                }
+              },
+              "Unarmed": {
+                "weapons": [],
+                "abilities": {
+                  "executeDisarm": "novice",
+                  "executeGrapple": "novice",
+                  "executeKnockdown": "novice"
+                }
+              }
+            }
+          },
+          "refusals": {
+            "name": "refusals",
+            "type": "json",
+            "description": "Locale keys the host refuses with: { weapon, tool, station }",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "weapon": "combat.refuse.weapon_tier",
+              "tool": "craft.refuse.tool_tier",
+              "station": "craft.refuse.station_tier"
+            }
+          },
+          "stationTiers": {
+            "name": "stationTiers",
+            "type": "json",
+            "description": "Derived: { <station type>: tier } from each crafting station's placement item",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "forge": "novice",
+              "master forge": "master",
+              "alchemy bench": "apprentice",
+              "arcane forge": "journeyman",
+              "void-shielded workshop": "expert",
+              "carpentry bench": "novice",
+              "masonry bench": "apprentice"
+            }
+          },
+          "itemTiers": {
+            "name": "itemTiers",
+            "type": "json",
+            "description": "Derived: { <item>: tier } for every piece of equipment",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "FerritePick": "apprentice",
+              "VeilsteelPick": "master",
+              "CarpenterAxe": "apprentice",
+              "SkinningKnife": "apprentice",
+              "BoneSaw": "apprentice",
+              "Lockpick": "apprentice",
+              "FerriteHammer": "apprentice",
+              "VeilsteelHammer": "master",
+              "FerriteShortSword": "apprentice",
+              "VeilsteelLongsword": "master",
+              "AethermiteBow": "journeyman",
+              "VoiditeEdge": "expert",
+              "FerriteShield": "apprentice",
+              "StoneAxe": "novice",
+              "StonePick": "novice",
+              "StoneShovel": "novice",
+              "StoneHammer": "novice",
+              "StoneKnife": "novice"
+            }
+          },
+          "abilityGaps": {
+            "name": "abilityGaps",
+            "type": "json",
+            "description": "Derived: { \"<Skill>.<ability>\": tier } that no weapon reaches yet (refused until one exists)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "Archery.executePierceShot": "expert",
+              "Shieldcraft.executeShieldBash": "journeyman",
+              "Shieldcraft.activateFortify": "expert"
             }
           }
         },

@@ -1,0 +1,18 @@
+[gd_resource type="Resource" format=3]
+
+[ext_resource type="Script" path="res://godot/world_systems/geartiers.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = ""
+tiers = ["novice","apprentice","journeyman","expert","master"]
+floor = "novice"
+materialTiers = {"Ashite":"novice","Ferrite":"apprentice","Aethermite":"journeyman","Voidite":"expert","Veilsteel":"master"}
+stationTools = {"carpentry bench":"axe","forge":"hammer","masonry bench":"hammer","master forge":"hammer","arcane forge":"hammer","void-shielded workshop":"hammer","alchemy bench":null}
+abilities = {"Swordsmanship":{"weapons":["knife","sword","greatsword"],"abilities":{"executePowerStrike":"apprentice","executeCounterSlash":"journeyman","executeWhirlwindBlade":"expert"}},"Archery":{"weapons":["bow"],"abilities":{"executeSteadyShot":"apprentice","executeMultiShot":"journeyman","executePierceShot":"expert"}},"Shieldcraft":{"weapons":["shield"],"abilities":{"executeParry":"apprentice","executeShieldBash":"journeyman","activateFortify":"expert"}},"Unarmed":{"weapons":[],"abilities":{"executeDisarm":"novice","executeGrapple":"novice","executeKnockdown":"novice"}}}
+refusals = {"weapon":"combat.refuse.weapon_tier","tool":"craft.refuse.tool_tier","station":"craft.refuse.station_tier"}
+stationTiers = {"forge":"novice","master forge":"master","alchemy bench":"apprentice","arcane forge":"journeyman","void-shielded workshop":"expert","carpentry bench":"novice","masonry bench":"apprentice"}
+itemTiers = {"FerritePick":"apprentice","VeilsteelPick":"master","CarpenterAxe":"apprentice","SkinningKnife":"apprentice","BoneSaw":"apprentice","Lockpick":"apprentice","FerriteHammer":"apprentice","VeilsteelHammer":"master","FerriteShortSword":"apprentice","VeilsteelLongsword":"master","AethermiteBow":"journeyman","VoiditeEdge":"expert","FerriteShield":"apprentice","StoneAxe":"novice","StonePick":"novice","StoneShovel":"novice","StoneHammer":"novice","StoneKnife":"novice"}
+abilityGaps = {"Archery.executePierceShot":"expert","Shieldcraft.executeShieldBash":"journeyman","Shieldcraft.activateFortify":"expert"}
+description = "Skills capped by the gear (Phase 229): a combat ability needs an equipped weapon of its tier, and a recipe needs a tool and a crafting station of its tier. Empty hands and a missing tool count as novice gear, so novice abilities and recipes need nothing. Skill XP grows with any gear; only use is capped. No weapon reaches these abilities yet: Archery.executePierceShot (expert), Shieldcraft.executeShieldBash (journeyman), Shieldcraft.activateFortify (expert)."
+tags = ["world-system"]

@@ -47,6 +47,9 @@ expect('a work rule naming an unknown category fails', (d) => { d.workTraits.dis
 expect('a work rule needing nothing fails', (d) => { d.workTraits.build.ways[0] = { traits: {}, speed: 1 }; }, /names neither a category nor a trait/);
 expect('a graded trait with no grade fails', (d, r) => { delete r.items.StoneHammer.traits.Blunt.grade; }, /StoneHammer\.traits\.Blunt needs a grade/);
 expect('an axe without Blunt (heavy) fails', (d, r) => { r.items.StoneAxe.traits.Blunt.grade = 'light'; }, /every axe has Blunt \(heavy\)/);
+expect('a one-handed category on the two_hand chain fails (#735)', (d) => { d.categories.spear.hands = 1; }, /category spear: swings the two_hand chain, so it needs hands 2/);
+expect('armour showing less defense than a weaker piece fails (#735)', (d, r) => { r.items.VeilsteelChestplate.defense = 1; }, /VeilsteelChestplate takes more off a hit than .* but shows less defense/);
+expect('an inherited name is not a grade (#735)', (d, r) => { r.items.StoneHammer.traits.Blunt.grade = 'constructor'; }, /StoneHammer\.traits\.Blunt needs a grade/);
 expect('a category as weak as the pick fails', (d) => { d.categories.sword.combatMultiplier = d.categories.pick.combatMultiplier; }, /category sword: combatMultiplier .* picks are the weakest weapons/);
 expect('a pick out-hitting another item of its tier fails', (d) => { d.categories.pick.combatMultiplier = 0.05; d.categories.lockpick.combatMultiplier = 0.06; d.traits.Piercing.damage = 0.1; }, /must deal less than/);
 expect('a former axe that no longer fells fails', (d) => { d.workTraits.fell.ways[0].traits.Piercing = {}; }, /CarpenterAxe can no longer fell/);

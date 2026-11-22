@@ -47,6 +47,7 @@ const skillWheel   = require('./gameplay/skill_wheel')
 const skillFocus   = require('./gameplay/skill_focus')
 const titles       = require('./gameplay/titles')
 const equipment    = require('./gameplay/equipment')
+const gearTiers    = require('./gameplay/gear_tiers')
 
 // Phase 125 — the travel cost must name a real item; throwing fails `npm run validate`.
 waystone.validateTravel(waystone.TRAVEL, Object.keys(items))
@@ -79,6 +80,7 @@ titles.validateTitles(titles.titlesData(), titles.titlesRefs()) // Phase 273
 stoneTools.validateStoneTools(stoneTools.stoneToolsData(), stoneTools.stoneToolsRefs()) // Phase 260
 newcomer.validateNewcomerGrounds(newcomer.newcomerGroundsData(), newcomer.newcomerGroundsRefs()) // Phase 261
 stations.validateStations(stations.stationsData(), stations.stationsRefs()) // Phase 268
+gearTiers.validateGearTiers(gearTiers.gearTiersData(), gearTiers.gearTiersRefs()) // Phase 229
 sounds.validateSounds(sounds.soundsData(), sounds.soundsRefs()) // Phase 275
 
 // Phase 129 — the status-effect table must be well formed and every creature's `onHitEffects` must name a defined effect.
@@ -267,6 +269,8 @@ module.exports = defineFabric({
       StoneShovel:              items.StoneShovel,
       StoneKnife:               items.StoneKnife,
       StoneHammer:              items.StoneHammer,
+      FerriteHammer:            items.FerriteHammer,
+      VeilsteelHammer:          items.VeilsteelHammer,
       FerriteShortSword:        items.FerriteShortSword,
       VeilsteelLongsword:       items.VeilsteelLongsword,
       AethermiteBow:            items.AethermiteBow,
@@ -314,6 +318,8 @@ module.exports = defineFabric({
       RecipeSkinningKnife:             recipes.RecipeSkinningKnife,
       RecipeBoneSaw:                   recipes.RecipeBoneSaw,
       RecipeLockpick:                  recipes.RecipeLockpick,
+      RecipeFerriteHammer:             recipes.RecipeFerriteHammer,
+      RecipeVeilsteelHammer:           recipes.RecipeVeilsteelHammer,
       RecipeVeilsteelLongsword:        recipes.RecipeVeilsteelLongsword,
       RecipeVeilsteelChestplate:       recipes.RecipeVeilsteelChestplate,
       RecipeHealthPotion:              recipes.RecipeHealthPotion,
@@ -389,6 +395,7 @@ module.exports = defineFabric({
       Blueprint:           writing.Blueprint,
       WorkSkills:          work.WorkSkills,
       Equipment:           equipment.Equipment,
+      GearTiers:           gearTiers.GearTiers,
       WorkTimes:           workTimes.WorkTimes,
       CombatCombos:        combos.CombatCombos,
       WorkClips:           workClips.WorkClips,

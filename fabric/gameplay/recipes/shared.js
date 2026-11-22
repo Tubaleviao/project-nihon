@@ -4,13 +4,13 @@ const { defineEntity } = require('@newel/core')
 // The relations/behaviors on each recipe carry the graph view used by the
 // bible/wiki generators and the technology tree; this json field is the single
 // source of truth for in-game crafting resolution — inputs (item key + quantity),
-// outputs (item key + quantity), and skill guards (skill key + minimum tier).
+// outputs (item key + quantity), skill guards (skill key + minimum tier) and the gear requiredTier (Phase 229).
 // Inputs/outputs reference entity keys from GameData.ITEMS or GameData.MATERIALS.
 function recipeData(recipe) {
   return {
     type: 'json',
     description:
-      'Structured craft recipe: crafting domain, required station, input items with quantities, output items with quantities, and skill guards (skill key + minimum tier).',
+      'Structured craft recipe: crafting domain, required station, requiredTier (the gear tier its tool and station must reach, Phase 229 GearTiers), input items with quantities, output items with quantities, and skill guards (skill key + minimum tier).',
     defaultValue: recipe,
   }
 }

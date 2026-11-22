@@ -134,6 +134,7 @@ Open-source sandbox MMORPG where players build a civilization. The world is pers
 - [Door](entities/door.md) — A plank door on ferrite hinges with a lock
 - [DuskfiberCloak](entities/duskfibercloak.md) — Hooded cloak woven from duskfiber bast
 - [EnchantedAethermiteShard](entities/enchantedaethermiteshard.md) — A refined aethermite shard that has been fully imbued at an arcane forge
+- [FerriteHammer](entities/ferritehammer.md) — A ferrite head on a thornwood handle, square-faced for the anvil
 - [FerriteHelmet](entities/ferritehelmet.md) — Simple open-faced helmet shaped from ferrite plate
 - [FerriteIngot](entities/ferriteingot.md) — Smelted ferrite bar ready for smithing
 - [FerritePick](entities/ferritepick.md) — Rough-hewn mining pick forged from ferrite ingots and a thornwood handle
@@ -157,6 +158,7 @@ Open-source sandbox MMORPG where players build a civilization. The world is pers
 - [StoneShovel](entities/stoneshovel.md) — A flat stone tied to a long branch
 - [ThornwoodPlank](entities/thornwoodplank.md) — Rough-cut plank milled from thornwood logs
 - [VeilsteelChestplate](entities/veilsteelchestplate.md) — Full torso armour forged from veilsteel plates over a ferrite under-layer
+- [VeilsteelHammer](entities/veilsteelhammer.md) — A veilsteel hammer balanced for the master forge
 - [VeilsteelIngot](entities/veilsteelingot.md) — Refined veilsteel bar alloyed in a master forge from ferrite ingots and an aethermite shard
 - [VeilsteelLongsword](entities/veilsteellongsword.md) — Two-handed longsword of veilsteel
 - [VeilsteelPick](entities/veilsteelpick.md) — Heavy-duty pick smelted from veilsteel
@@ -223,6 +225,7 @@ Open-source sandbox MMORPG where players build a civilization. The world is pers
 - [RecipeDoor](entities/recipedoor.md) — Join six thornwood planks into a door on ferrite hinges, by hand
 - [RecipeDuskfiberCloak](entities/recipeduskfibercloak.md) — Weave three duskfiber strands into a duskfiber cloak at a carpentry bench
 - [RecipeEnchantedAethermiteShard](entities/recipeenchantedaethermiteshard.md) — Imbue a refined aethermite shard with magical energy at an arcane forge to produce an enchanted catalyst
+- [RecipeFerriteHammer](entities/recipeferritehammer.md) — Forge a ferrite hammer from two ferrite ingots and one thornwood plank
 - [RecipeFerriteIngot](entities/recipeferriteingot.md) — Smelt two raw ferrite ore into one refined ferrite ingot at a forge
 - [RecipeFerritePick](entities/recipeferritepick.md) — Craft a ferrite mining pick from two ferrite ingots and one thornwood plank
 - [RecipeFerriteShortSword](entities/recipeferriteshortsword.md) — Forge a ferrite short sword from one refined ferrite ingot
@@ -246,6 +249,7 @@ Open-source sandbox MMORPG where players build a civilization. The world is pers
 - [RecipeStoneShovel](entities/recipestoneshovel.md) — Tie a flat stone to a long branch: a stone shovel
 - [RecipeThornwoodPlank](entities/recipethornwoodplank.md) — Mill two thornwood logs into three thornwood planks at a carpentry bench
 - [RecipeVeilsteelChestplate](entities/recipeveilsteelchestplate.md) — Forge a veilsteel chestplate from four veilsteel ingots and two ferrite ingots
+- [RecipeVeilsteelHammer](entities/recipeveilsteelhammer.md) — Forge a veilsteel hammer from two veilsteel ingots and one thornwood plank
 - [RecipeVeilsteelIngot](entities/recipeveilsteelingot.md) — Alloy three ferrite ingots and one refined aethermite shard into one veilsteel ingot at a master forge
 - [RecipeVeilsteelLongsword](entities/recipeveilsteellongsword.md) — Forge a veilsteel longsword from two veilsteel ingots and one ashite block at a master forge
 - [RecipeVoidResistPotion](entities/recipevoidresistpotion.md) — Brew a void-resist potion from refined voidite shard dust and aethermite dust
@@ -343,6 +347,7 @@ Open-source sandbox MMORPG where players build a civilization. The world is pers
 - [CombatCombos](entities/combatcombos.md) — Attack combos and hit timing: per weapon class the clip order, the window that keeps a chain going, the damage multiplier and impact time of each step, the stagger share and the knock-back of a struck target
 - [CombatSystem](entities/combatsystem.md) — Defines the rules governing all combat interactions — player vs creature, player vs player, and structure damage
 - [Equipment](entities/equipment.md) — Equipment categories and traits (Phase 295): every held item is equipment of a category, and what it can do in the world (fell, mine, dig, build, pick a lock, dissect, cut bone) follows from its traits by the work table
+- [GearTiers](entities/geartiers.md) — Skills capped by the gear (Phase 229): a combat ability needs an equipped weapon of its tier, and a recipe needs a tool and a crafting station of its tier
 - [GovernanceSystem](entities/governancesystem.md) — Defines the rules of in-game community governance
 - [MarketSystem](entities/marketsystem.md) — Defines the rules of the persistent player-run market
 - [NewcomerGrounds](entities/newcomergrounds.md) — Where a new character starts: a few large, gentle grounds on the open continent with trees, rock and soil in reach, only weak creatures, loose stones and branches on the ground, and a protected centre

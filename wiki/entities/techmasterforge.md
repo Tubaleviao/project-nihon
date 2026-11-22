@@ -32,6 +32,7 @@ Advanced forge construction and temperature-control techniques. Unlocks the mast
 | unlocksRecipeVeilsteelChestplate | hasOne | [RecipeVeilsteelChestplate](recipeveilsteelchestplate.md) |
 | unlocksRecipeAshiteBlock | hasOne | [RecipeAshiteBlock](recipeashiteblock.md) |
 | unlocksRecipeRefinedVoiditeShard | hasOne | [RecipeRefinedVoiditeShard](reciperefinedvoiditeshard.md) |
+| unlocksRecipeVeilsteelHammer | hasOne | [RecipeVeilsteelHammer](recipeveilsteelhammer.md) |
 
 ## States
 

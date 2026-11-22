@@ -394,6 +394,7 @@ module.exports = {
       recipe: recipeData({
         domain: 'carpentry',
         station: 'carpentry bench',
+        requiredTier: 'novice',
         inputs: [{ item: 'ThornwoodPlank', quantity: 6 }, { item: 'FerriteIngot', quantity: 4 }],
         outputs: [{ item: 'Hearth', quantity: 1 }],
         skillGuards: [{ skill: 'Carpentry', tier: 'apprentice' }],

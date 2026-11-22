@@ -21,6 +21,7 @@ A plank table set with aethermite-lined bowls for brewing. Placed from the hotba
 | stackable | boolean | False; one alchemy bench per slot |
 | shape | json | Item shape: archetype, material per named part, and uniform scale (Phase 151) |
 | durability | integer | Structural integrity |
+| tier | string | Gear tier of a alchemy bench (Phase 229): the highest recipe tier crafted at it |
 
 ## Related
 

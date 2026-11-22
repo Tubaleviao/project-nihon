@@ -14,6 +14,7 @@ module.exports = {
       recipe: recipeData({
         domain: 'smithing',
         station: 'forge',
+        requiredTier: 'novice',
         inputs: [{ item: 'Ferrite', quantity: 2 }],
         outputs: [{ item: 'FerriteIngot', quantity: 1 }],
         skillGuards: [{ skill: 'Smithing', tier: 'novice' }],
@@ -48,6 +49,7 @@ module.exports = {
       recipe: recipeData({
         domain: 'smithing',
         station: 'master forge',
+        requiredTier: 'apprentice',
         inputs: [{ item: 'FerriteIngot', quantity: 3 }, { item: 'AethermiteShard', quantity: 1 }],
         outputs: [{ item: 'VeilsteelIngot', quantity: 1 }],
         skillGuards: [{ skill: 'Smithing', tier: 'journeyman' }],
@@ -83,6 +85,7 @@ module.exports = {
       recipe: recipeData({
         domain: 'smithing',
         station: 'forge',
+        requiredTier: 'novice',
         inputs: [{ item: 'FerriteIngot', quantity: 1 }],
         outputs: [{ item: 'FerriteShortSword', quantity: 1 }],
         skillGuards: [{ skill: 'Smithing', tier: 'novice' }],
@@ -117,6 +120,7 @@ module.exports = {
       recipe: recipeData({
         domain: 'smithing',
         station: 'forge',
+        requiredTier: 'novice',
         inputs: [{ item: 'FerriteIngot', quantity: 2 }, { item: 'ThornwoodPlank', quantity: 1 }],
         outputs: [{ item: 'FerritePick', quantity: 1 }],
         skillGuards: [{ skill: 'Smithing', tier: 'novice' }],
@@ -153,6 +157,7 @@ module.exports = {
       recipe: recipeData({
         domain: 'smithing',
         station: 'master forge',
+        requiredTier: 'journeyman',
         inputs: [{ item: 'VeilsteelIngot', quantity: 2 }, { item: 'AshiteBlock', quantity: 1 }],
         outputs: [{ item: 'VeilsteelLongsword', quantity: 1 }],
         skillGuards: [{ skill: 'Smithing', tier: 'journeyman' }],
@@ -189,6 +194,7 @@ module.exports = {
       recipe: recipeData({
         domain: 'smithing',
         station: 'master forge',
+        requiredTier: 'journeyman',
         inputs: [{ item: 'VeilsteelIngot', quantity: 4 }, { item: 'FerriteIngot', quantity: 2 }],
         outputs: [{ item: 'VeilsteelChestplate', quantity: 1 }],
         skillGuards: [{ skill: 'Smithing', tier: 'journeyman' }],
@@ -226,6 +232,7 @@ module.exports = {
       recipe: recipeData({
         domain: 'smithing',
         station: 'forge',
+        requiredTier: 'novice',
         inputs: [{ item: 'Voidite', quantity: 1 }],
         outputs: [{ item: 'RefinedVoiditeShard', quantity: 1 }],
         skillGuards: [{ skill: 'Smithing', tier: 'journeyman' }],
@@ -262,6 +269,7 @@ module.exports = {
       recipe: recipeData({
         domain: 'smithing',
         station: 'forge',
+        requiredTier: 'novice',
         inputs: [{ item: 'FerriteIngot', quantity: 1 }, { item: 'ThornwoodPlank', quantity: 1 }],
         outputs: [{ item: 'SkinningKnife', quantity: 1 }],
         skillGuards: [{ skill: 'Smithing', tier: 'novice' }],
@@ -293,6 +301,7 @@ module.exports = {
       recipe: recipeData({
         domain: 'smithing',
         station: 'forge',
+        requiredTier: 'novice',
         inputs: [{ item: 'FerriteIngot', quantity: 2 }, { item: 'ThornwoodPlank', quantity: 1 }],
         outputs: [{ item: 'BoneSaw', quantity: 1 }],
         skillGuards: [{ skill: 'Smithing', tier: 'novice' }],
@@ -325,6 +334,7 @@ module.exports = {
       recipe: recipeData({
         domain: 'smithing',
         station: 'forge',
+        requiredTier: 'novice',
         inputs: [{ item: 'FerriteIngot', quantity: 1 }, { item: 'ThornwoodPlank', quantity: 1 }],
         outputs: [{ item: 'Lockpick', quantity: 1 }],
         skillGuards: [{ skill: 'Smithing', tier: 'novice' }],
@@ -356,6 +366,7 @@ module.exports = {
       recipe: recipeData({
         domain: 'smithing',
         station: 'master forge',
+        requiredTier: 'journeyman',
         inputs: [{ item: 'FerriteIngot', quantity: 2 }],
         outputs: [{ item: 'Steel', quantity: 2 }],
         skillGuards: [{ skill: 'Smithing', tier: 'journeyman' }],
@@ -378,4 +389,78 @@ module.exports = {
     },
   }),
 
+
+  // ─── RecipeFerriteHammer ─────────────────────────────────────────────────
+  // Phase 229 — the apprentice-tier Ferrite Hammer (a novice recipe); smithing above novice needs a hammer of at least that tier in hand or pack.
+  RecipeFerriteHammer: defineEntity({
+    tags: ['recipe'],
+    description: 'Forge a ferrite hammer from two ferrite ingots and one thornwood plank.',
+    goal: 'The first hammer above stone: opens apprentice-tier smithing and masonry (Phase 229)',
+    fields: {
+      id:     { type: 'uuid', primaryKey: true },
+      domain: { type: 'enum', values: ['smithing', 'alchemy', 'arcane', 'carpentry'], description: 'Crafting station required' },
+      outputCount:  { type: 'integer', description: 'Number of output items produced per craft' },
+      recipe: recipeData({
+        domain: 'smithing',
+        station: 'forge',
+        requiredTier: 'novice',
+        inputs: [{ item: 'FerriteIngot', quantity: 2 }, { item: 'ThornwoodPlank', quantity: 1 }],
+        outputs: [{ item: 'FerriteHammer', quantity: 1 }],
+        skillGuards: [{ skill: 'Smithing', tier: 'novice' }],
+      }),
+    },
+    relations: {
+      inputIngot:  { name: 'inputIngot',  kind: 'hasOne', target: 'FerriteIngot' },
+      inputPlank:  { name: 'inputPlank',  kind: 'hasOne', target: 'ThornwoodPlank' },
+      output:      { name: 'output',      kind: 'hasOne', target: 'FerriteHammer' },
+    },
+    behaviors: {
+      craft: {
+        description: 'Forge a hammer head and fit its handle at a forge',
+        rules: [
+          'Requires Smithing: Novice',
+          'Requires a functional forge',
+          'Two ingots and one thornwood plank yield one hammer',
+        ],
+        auth: { roles: ['maintainer'] },
+      },
+    },
+  }),
+
+  // ─── RecipeVeilsteelHammer ───────────────────────────────────────────────
+  // Phase 229 — the master-tier Veilsteel Hammer (an apprentice recipe); smithing above novice needs a hammer of at least that tier in hand or pack.
+  RecipeVeilsteelHammer: defineEntity({
+    tags: ['recipe'],
+    description: 'Forge a veilsteel hammer from two veilsteel ingots and one thornwood plank.',
+    goal: 'The master-tier hammer: opens every forging recipe (Phase 229)',
+    fields: {
+      id:     { type: 'uuid', primaryKey: true },
+      domain: { type: 'enum', values: ['smithing', 'alchemy', 'arcane', 'carpentry'], description: 'Crafting station required' },
+      outputCount:  { type: 'integer', description: 'Number of output items produced per craft' },
+      recipe: recipeData({
+        domain: 'smithing',
+        station: 'master forge',
+        requiredTier: 'apprentice',
+        inputs: [{ item: 'VeilsteelIngot', quantity: 2 }, { item: 'ThornwoodPlank', quantity: 1 }],
+        outputs: [{ item: 'VeilsteelHammer', quantity: 1 }],
+        skillGuards: [{ skill: 'Smithing', tier: 'journeyman' }],
+      }),
+    },
+    relations: {
+      inputIngot:  { name: 'inputIngot',  kind: 'hasOne', target: 'VeilsteelIngot' },
+      inputPlank:  { name: 'inputPlank',  kind: 'hasOne', target: 'ThornwoodPlank' },
+      output:      { name: 'output',      kind: 'hasOne', target: 'VeilsteelHammer' },
+    },
+    behaviors: {
+      craft: {
+        description: 'Forge a hammer head and fit its handle at a master forge',
+        rules: [
+          'Requires Smithing: Journeyman',
+          'Requires a functional master forge',
+          'Two ingots and one thornwood plank yield one hammer',
+        ],
+        auth: { roles: ['maintainer'] },
+      },
+    },
+  }),
 }

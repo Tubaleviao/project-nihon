@@ -11,6 +11,7 @@ rarity = 0
 stackable = false
 shape = {"archetype":"hearth","parts":{"base":"Ferrite","fuel":"Aethermite"},"scale":1}
 durability = 400
+tier = "journeyman"
 state_machine_field = "condition"
 initial_state = "pristine"
 description = "A ferrite forge fed with aethermite, for binding magic into metal. Placed from the hotbar as a arcane forge station; its owner can pick it up again."

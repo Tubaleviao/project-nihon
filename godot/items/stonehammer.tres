@@ -13,6 +13,7 @@ shape = {"archetype":"hammer","parts":{"head":"Ashite","handle":"Thornwood"},"sc
 durability = 40
 equipmentCategory = "hammer"
 traits = {"Blunt":{"strength":0.6,"grade":"heavy"}}
+tier = "novice"
 repair = {"station":"","materials":[{"item":"LooseStone","quantity":1}],"skillGuards":[{"skill":"Carpentry","tier":"novice"}]}
 works = {"build":1}
 combatDamage = {"blunt":2.4}

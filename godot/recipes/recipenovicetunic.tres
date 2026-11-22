@@ -7,6 +7,6 @@ script = ExtResource("1")
 id = ""
 domain = 0
 outputCount = 0
-recipe = {"domain":"tailoring","station":"carpentry bench","inputs":[{"item":"Duskfiber","quantity":2}],"outputs":[{"item":"NoviceTunic","quantity":1}],"skillGuards":[{"skill":"Tailoring","tier":"novice"}]}
+recipe = {"domain":"tailoring","station":"carpentry bench","requiredTier":"novice","inputs":[{"item":"Duskfiber","quantity":2}],"outputs":[{"item":"NoviceTunic","quantity":1}],"skillGuards":[{"skill":"Tailoring","tier":"novice"}]}
 description = "Sew two duskfiber strands into a plain tunic at a carpentry bench."
 tags = ["recipe"]

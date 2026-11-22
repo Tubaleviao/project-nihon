@@ -11,6 +11,7 @@ rarity = 0
 stackable = false
 shape = {"archetype":"chest","parts":{"box":"Ashite","band":"Thornwood"},"scale":1}
 durability = 400
+tier = "apprentice"
 state_machine_field = "condition"
 initial_state = "pristine"
 description = "A stone slab on a plank frame for cutting blocks and mixing cement. Placed from the hotbar as a masonry bench station; its owner can pick it up again."

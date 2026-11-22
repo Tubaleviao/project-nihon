@@ -7,6 +7,6 @@ script = ExtResource("1")
 id = ""
 domain = 0
 outputCount = 0
-recipe = {"domain":"smithing","station":"forge","inputs":[{"item":"FerriteIngot","quantity":1},{"item":"ThornwoodPlank","quantity":1}],"outputs":[{"item":"Lockpick","quantity":1}],"skillGuards":[{"skill":"Smithing","tier":"novice"}]}
+recipe = {"domain":"smithing","station":"forge","requiredTier":"novice","inputs":[{"item":"FerriteIngot","quantity":1},{"item":"ThornwoodPlank","quantity":1}],"outputs":[{"item":"Lockpick","quantity":1}],"skillGuards":[{"skill":"Smithing","tier":"novice"}]}
 description = "Draw a ferrite ingot into a lockpick on a thornwood grip."
 tags = ["recipe"]

@@ -15,6 +15,7 @@ module.exports = {
       recipe: recipeData({
         domain: 'alchemy',
         station: 'alchemy bench',
+        requiredTier: 'novice',
         inputs: [{ item: 'AethermiteDust', quantity: 1 }],
         outputs: [{ item: 'AlchemyPotion', quantity: 2 }],
         skillGuards: [{ skill: 'Alchemy', tier: 'novice' }],
@@ -51,6 +52,7 @@ module.exports = {
       recipe: recipeData({
         domain: 'alchemy',
         station: 'alchemy bench',
+        requiredTier: 'novice',
         inputs: [{ item: 'AethermiteDust', quantity: 1 }],
         outputs: [{ item: 'AlchemyPotion', quantity: 1 }],
         skillGuards: [{ skill: 'Alchemy', tier: 'novice' }],
@@ -87,6 +89,7 @@ module.exports = {
       recipe: recipeData({
         domain: 'alchemy',
         station: 'alchemy bench',
+        requiredTier: 'apprentice',
         inputs: [{ item: 'Voidite', quantity: 1 }, { item: 'AethermiteDust', quantity: 2 }],
         outputs: [{ item: 'AlchemyPotion', quantity: 1 }],
         skillGuards: [{ skill: 'Alchemy', tier: 'expert' }, { skill: 'ArcaneForging', tier: 'journeyman' }],

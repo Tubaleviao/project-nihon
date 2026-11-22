@@ -11,6 +11,7 @@ rarity = 0
 stackable = false
 shape = {"archetype":"hearth","parts":{"base":"Ferrite","fuel":"Ashite"},"scale":1}
 durability = 400
+tier = "master"
 state_machine_field = "condition"
 initial_state = "pristine"
 description = "A ferrite-clad forge on cut stone that holds the heat veilsteel needs. Placed from the hotbar as a master forge station; its owner can pick it up again."

@@ -55,6 +55,10 @@ item.StoneKnife.name,Stone Knife,Faca de Pedra
 item.StoneKnife.desc,"A sharp flake of stone. Skins and butchers, poorly.","Uma lasca afiada de pedra. Esfola e corta carne, mal."
 item.StoneHammer.name,Stone Hammer,Martelo de Pedra
 item.StoneHammer.desc,"Held to build walls, floors and roofs.","Segurado para construir paredes, pisos e telhados."
+item.FerriteHammer.name,Ferrite Hammer,Martelo de Ferrita
+item.FerriteHammer.desc,Forges and builds at apprentice tier: the first hammer above stone.,Forja e constrói no nível aprendiz: o primeiro martelo acima do de pedra.
+item.VeilsteelHammer.name,Veilsteel Hammer,Martelo de Aço-véu
+item.VeilsteelHammer.desc,"Balanced for the master forge, it works every forging tier.","Equilibrado para a forja mestra, trabalha em todos os níveis de forja."
 item.FerriteShortSword.name,Ferrite Short Sword,Espada Curta de Ferrita
 item.FerriteShortSword.desc,"A light, quick single-edged blade.","Lâmina de um só gume, leve e rápida."
 item.VeilsteelLongsword.name,Veilsteel Longsword,Espada Longa de Aço-véu

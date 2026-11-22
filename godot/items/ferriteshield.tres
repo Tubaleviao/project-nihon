@@ -14,6 +14,7 @@ durability = 180
 protection = {"slashing":0.35,"blunt":0.35,"piercing":0.3}
 equipmentCategory = "shield"
 traits = {"Blunt":{"strength":1,"grade":"heavy"}}
+tier = "apprentice"
 repair = {"station":"forge","materials":[{"item":"FerriteIngot","quantity":1}],"skillGuards":[{"skill":"Smithing","tier":"novice"}]}
 equipmentSlot = "OffHand"
 deformationMode = "RIGID"

@@ -18,6 +18,7 @@ A ferrite-clad forge on cut stone that holds the heat veilsteel needs. Placed fr
 | `stackable` | boolean | yes | False; one master forge per slot |
 | `shape` | json | yes | Item shape: archetype, material per named part, and uniform scale (Phase 151) |
 | `durability` | integer | yes | Structural integrity |
+| `tier` | string | yes | Gear tier of a master forge (Phase 229): the highest recipe tier crafted at it |
 
 ## Relations
 

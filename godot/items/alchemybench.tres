@@ -11,6 +11,7 @@ rarity = 0
 stackable = false
 shape = {"archetype":"chest","parts":{"box":"Thornwood","band":"Aethermite"},"scale":1}
 durability = 400
+tier = "apprentice"
 state_machine_field = "condition"
 initial_state = "pristine"
 description = "A plank table set with aethermite-lined bowls for brewing. Placed from the hotbar as a alchemy bench station; its owner can pick it up again."

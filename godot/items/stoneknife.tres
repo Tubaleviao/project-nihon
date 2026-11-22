@@ -13,6 +13,7 @@ shape = {"archetype":"knife","parts":{"blade":"Ashite","grip":"Thornwood"},"scal
 durability = 25
 equipmentCategory = "knife"
 traits = {"Sharp":{"strength":0.5},"Piercing":{"strength":0.5}}
+tier = "novice"
 repair = {"station":"","materials":[{"item":"LooseStone","quantity":1}],"skillGuards":[{"skill":"Carpentry","tier":"novice"}]}
 works = {"dissect":0.5}
 combatDamage = {"slashing":2.4,"piercing":2}

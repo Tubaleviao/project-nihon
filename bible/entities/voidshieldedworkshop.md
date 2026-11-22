@@ -18,6 +18,7 @@ A veilsteel cabinet lined with refined voidite, shielded for void work. Placed f
 | `stackable` | boolean | yes | False; one void-shielded workshop per slot |
 | `shape` | json | yes | Item shape: archetype, material per named part, and uniform scale (Phase 151) |
 | `durability` | integer | yes | Structural integrity |
+| `tier` | string | yes | Gear tier of a void-shielded workshop (Phase 229): the highest recipe tier crafted at it |
 
 ## Relations
 

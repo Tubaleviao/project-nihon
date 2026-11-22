@@ -13,6 +13,7 @@ shape = {"archetype":"pick","parts":{"head":"Ferrite","handle":"Thornwood"},"sca
 durability = 80
 equipmentCategory = "pick"
 traits = {"Piercing":{"strength":1},"Blunt":{"strength":1,"grade":"light"}}
+tier = "apprentice"
 repair = {"station":"forge","materials":[{"item":"FerriteIngot","quantity":1}],"skillGuards":[{"skill":"Smithing","tier":"novice"}]}
 works = {"mine":1}
 combatDamage = {"piercing":2.5,"blunt":1}

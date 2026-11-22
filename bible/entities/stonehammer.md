@@ -20,6 +20,7 @@ A heavy round stone bound to a short branch. Held to build walls, floors and roo
 | `durability` | integer | yes | Remaining durability points before condition degrades |
 | `equipmentCategory` | string | yes | Equipment category (Phase 295): knife, sword, axe, hammer, pick, shovel… |
 | `traits` | json | yes | Traits and strengths (Phase 295): { <Trait>: { strength, grade? } }; the working part's material may raise them |
+| `tier` | string | yes | Gear tier (Phase 229, a skill tier): the highest ability or recipe tier this item allows (GearTiers) |
 | `repair` | json | yes | Structured repair spec: required station, materials consumed on repair, and skill guards (skill key + minimum tier). |
 | `works` | json | yes | Derived from the work table (Phase 295): { <work>: speed } for every work this item can do |
 | `combatDamage` | json | yes | Derived (Phase 295): combat damage per damage type, the category multiplier times its traits' shares |

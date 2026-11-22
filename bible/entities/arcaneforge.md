@@ -18,6 +18,7 @@ A ferrite forge fed with aethermite, for binding magic into metal. Placed from t
 | `stackable` | boolean | yes | False; one arcane forge per slot |
 | `shape` | json | yes | Item shape: archetype, material per named part, and uniform scale (Phase 151) |
 | `durability` | integer | yes | Structural integrity |
+| `tier` | string | yes | Gear tier of a arcane forge (Phase 229): the highest recipe tier crafted at it |
 
 ## Relations
 

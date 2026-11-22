@@ -14,7 +14,7 @@ Lash six thornwood planks into a bed frame with a straw pallet, by hand.
 | `id` | uuid | yes |  |
 | `domain` | enum (`smithing`, `alchemy`, `arcane`, `carpentry`) | yes | Crafting station required |
 | `outputCount` | integer | yes | Number of output items produced per craft |
-| `recipe` | json | yes | Structured craft recipe: crafting domain, required station, input items with quantities, output items with quantities, and skill guards (skill key + minimum tier). |
+| `recipe` | json | yes | Structured craft recipe: crafting domain, required station, requiredTier (the gear tier its tool and station must reach, Phase 229 GearTiers), input items with quantities, output items with quantities, and skill guards (skill key + minimum tier). |
 
 ## Relations
 

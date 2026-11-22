@@ -64,7 +64,7 @@ module.exports = {
       researchCost: { type: 'integer', description: 'Research points spent to begin research (Phase 124); earned by the ResearchPointRule table', defaultValue: 0 },
       tier:   { type: 'integer', description: 'Technology tree tier (1 = root)' },
       tech: techData({
-        unlocks: ['RecipeFerriteIngot', 'RecipeFerriteShortSword', 'RecipeFerritePick', 'RecipeSkinningKnife', 'RecipeBoneSaw', 'RecipeLockpick', 'RecipeForge'],
+        unlocks: ['RecipeFerriteIngot', 'RecipeFerriteShortSword', 'RecipeFerritePick', 'RecipeSkinningKnife', 'RecipeBoneSaw', 'RecipeLockpick', 'RecipeForge', 'RecipeFerriteHammer'],
         requires: [],
         researchDuration: 10,
         researchMaterials: [{ item: 'Ferrite', quantity: 4 }],
@@ -78,6 +78,7 @@ module.exports = {
       unlocksRecipeSkinningKnife:    { name: 'unlocksRecipeSkinningKnife',    kind: 'hasOne', target: 'RecipeSkinningKnife' },
       unlocksRecipeBoneSaw:          { name: 'unlocksRecipeBoneSaw',          kind: 'hasOne', target: 'RecipeBoneSaw' },
       unlocksRecipeLockpick:         { name: 'unlocksRecipeLockpick',         kind: 'hasOne', target: 'RecipeLockpick' },
+      unlocksRecipeFerriteHammer:    { name: 'unlocksRecipeFerriteHammer',    kind: 'hasOne', target: 'RecipeFerriteHammer' },
     },
     stateMachine: technologyStateMachine(),
     behaviors: {
@@ -111,7 +112,7 @@ module.exports = {
       researchCost: { type: 'integer', description: 'Research points spent to begin research (Phase 124); earned by the ResearchPointRule table', defaultValue: 5 },
       tier:   { type: 'integer', description: 'Technology tree tier' },
       tech: techData({
-        unlocks: ['RecipeVeilsteelIngot', 'RecipeVeilsteelLongsword', 'RecipeVeilsteelChestplate', 'RecipeAshiteBlock', 'RecipeRefinedVoiditeShard', 'RecipeMasonryBench', 'RecipeMasterForge'],
+        unlocks: ['RecipeVeilsteelIngot', 'RecipeVeilsteelLongsword', 'RecipeVeilsteelChestplate', 'RecipeAshiteBlock', 'RecipeRefinedVoiditeShard', 'RecipeMasonryBench', 'RecipeMasterForge', 'RecipeVeilsteelHammer'],
         requires: ['TechBasicSmithing'],
         researchDuration: 45,
         researchMaterials: [{ item: 'Ashite', quantity: 20 }],
@@ -126,6 +127,7 @@ module.exports = {
       unlocksRecipeVeilsteelChestplate: { name: 'unlocksRecipeVeilsteelChestplate', kind: 'hasOne', target: 'RecipeVeilsteelChestplate' },
       unlocksRecipeAshiteBlock:         { name: 'unlocksRecipeAshiteBlock',         kind: 'hasOne', target: 'RecipeAshiteBlock' },
       unlocksRecipeRefinedVoiditeShard: { name: 'unlocksRecipeRefinedVoiditeShard', kind: 'hasOne', target: 'RecipeRefinedVoiditeShard' },
+      unlocksRecipeVeilsteelHammer:     { name: 'unlocksRecipeVeilsteelHammer',     kind: 'hasOne', target: 'RecipeVeilsteelHammer' },
     },
     stateMachine: technologyStateMachine(),
     behaviors: {
