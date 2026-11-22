@@ -52,7 +52,6 @@ var swing_started_fn: Callable = Callable()
 ## Damage factor of the combo step being resolved (1 outside a combo).
 var _damage_mult: float = 1.0
 ## Phase 296 — the item the landing hit was swung with (the impact entry's, host-derived); "" = empty hands.
-var _damage_item: String = ""
 ## Phase 296 — (defender_id) -> { <damage type>: share taken off }: the host's view of what a player wears
 ## (`EquipmentRules.protection` over the registry's worn set). Unset: no armour.
 var armour_fn: Callable = Callable()
@@ -83,7 +82,7 @@ static func is_player_target(defender_id: String) -> bool:
 	return defender_id == "player" or PlayerRegistry.looks_like_player_id(defender_id)
 
 ## Resolve a single combat round synchronously and emit the result.
-func resolve_round(attacker_id: String, defender_id: String) -> Dictionary:
+func resolve_round(attacker_id: String, defender_id: String, held_item: String = "") -> Dictionary:
 	var attacker_res := _lookup(attacker_id)
 	var defender_res := _lookup(defender_id)
 
@@ -92,7 +91,7 @@ func resolve_round(attacker_id: String, defender_id: String) -> Dictionary:
 	# baseDamage; either is split by damage type for the defender's armour.
 	var hit: Dictionary
 	if attacker_res == null and is_player_target(attacker_id):
-		hit = EquipmentRules.player_hit(_damage_item)
+		hit = EquipmentRules.player_hit(held_item)
 	else:
 		hit = EquipmentRules.creature_hit(_field(attacker_res, "baseDamage", 10.0))
 	var base_dmg: float = float(hit["total"])
@@ -266,7 +265,10 @@ func _on_combat_round_requested(attacker_id: String, defender_id: String) -> voi
 		if swing_started_fn.is_valid():
 			swing_started_fn.call(attacker_id, defender_id)
 		return
-	resolve_round(attacker_id, defender_id)
+	var held := ""
+	if impact_info_fn.is_valid() and (attacker_id == "player" or is_player_target(attacker_id)):
+		held = str(impact_info_fn.call(attacker_id).get("item", ""))
+	resolve_round(attacker_id, defender_id, held)
 
 ## Phase 287 — resolve the hits whose impact time has come. A hit the re-check refuses deals nothing and sends no sync.
 ## Returns the number that landed.
@@ -284,10 +286,8 @@ func tick_impacts() -> int:
 		if killed.has(str(e["target"])) or PendingHit.refusal(e, impact_state_fn.call(e)) != "":
 			continue
 		_damage_mult = float(e["damage_multiplier"])
-		_damage_item = str(e.get("item", ""))
-		var res := resolve_round(str(e["attacker"]), str(e["target"]))
+		var res := resolve_round(str(e["attacker"]), str(e["target"]), str(e.get("item", "")))
 		_damage_mult = 1.0
-		_damage_item = ""
 		if str(res.get("outcome", "")) == "kill":
 			killed[str(e["target"])] = true
 		landed += 1

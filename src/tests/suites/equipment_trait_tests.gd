@@ -138,14 +138,10 @@ func _test_pick_weakest() -> void:
 func _round(b: Node, attacker: String, defender: String, item: String, rng_seed: int) -> float:
 	for s in range(rng_seed, rng_seed + 50):
 		seed(s)
-		b._damage_item = item
-		var r: Dictionary = b.resolve_round(attacker, defender)
-		b._damage_item = ""
+		var r: Dictionary = b.resolve_round(attacker, defender, item)
 		if str(r.get("outcome", "")) == "hit":
 			seed(s)
-			b._damage_item = item
-			var again: Dictionary = b.resolve_round(attacker, defender)
-			b._damage_item = ""
+			var again: Dictionary = b.resolve_round(attacker, defender, item)
 			return float(again["damage"])
 	return -1.0
 

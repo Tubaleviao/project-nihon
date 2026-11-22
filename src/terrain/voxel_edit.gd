@@ -279,9 +279,9 @@ func place_block(world_pos: Vector3, normal: Vector3, material: String = "", pla
 	var inventory = s.inventory_for(player_id)
 	# Phase 260 — a builder holds an item that can do the fabric's build work (a hammer) to place a block; a station
 	# (a bench) is placed through the station path and needs none. Holding it does not wear it. (Phase 296: by work.)
-	var build_work := build_work()
-	if build_work != "" and inventory != null and inventory.has_method("find_for_work") and str(inventory.find_for_work(build_work)) == "":
-		GameBus.structure_resolved.emit(str(plan.get("player_id", player_id)), "place", false, "%s_required" % build_work)
+	var needed := build_work()
+	if needed != "" and inventory != null and inventory.has_method("find_for_work") and str(inventory.find_for_work(needed)) == "":
+		GameBus.structure_resolved.emit(str(plan.get("player_id", player_id)), "place", false, "%s_required" % needed)
 		return false
 	if inventory != null and inventory.has_method("drop_item"):
 		if not inventory.drop_item(chosen, 1):

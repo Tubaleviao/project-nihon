@@ -108,9 +108,15 @@ static func diff_actions(from: Dictionary, to: Dictionary) -> Array:
 ## The parts of a shape whose material is the item's working material (the same order as the fabric's).
 const WORKING_PARTS: Array = ["head", "blade", "pin", "tip", "limb", "face"]
 
+static var _warned_missing := false
+
 static func equipment_table() -> Dictionary:
 	var res: Resource = GameData.WORLD_SYSTEMS.get("Equipment", null)
 	if res == null:
+		# Without the table every work speed and every hit is 0: say so once instead of failing silently.
+		if not _warned_missing:
+			_warned_missing = true
+			push_error("[EquipmentRules] WORLD_SYSTEMS has no Equipment table: no item can work or hit")
 		return {}
 	var out: Dictionary = {}
 	for k in ["traits", "categories", "materialTraits", "workTraits", "harvestWorks", "damageTypes", "unarmed", "creatureDamageShares"]:
@@ -183,8 +189,11 @@ static func _way_matches(way: Dictionary, spec: Dictionary, traits: Dictionary, 
 		if not (float(have.get("strength", 0.0)) > 0.0):
 			return false
 		var want: Dictionary = need[tr] if need[tr] is Dictionary else {}
-		if want.has("grade") and _grade_index(str(tr), have.get("grade", ""), d) < _grade_index(str(tr), want["grade"], d):
-			return false
+		if want.has("grade"):
+			var want_i := _grade_index(str(tr), want["grade"], d)
+			# An unknown wanted grade matches nothing (else -1 < -1 would let a gradeless item through).
+			if want_i < 0 or _grade_index(str(tr), have.get("grade", ""), d) < want_i:
+				return false
 		if way.has("minStrength") and float(have.get("strength", 0.0)) < float(way["minStrength"]):
 			return false
 	return true
@@ -271,8 +280,8 @@ static func clip_family(item_key: String, items: Dictionary = {}) -> String:
 	return str((cat as Dictionary).get("clipFamily", "one_hand")) if cat is Dictionary else "one_hand"
 
 ## Phase 296 — what a player's hit with `item_key` ("" = empty hands) deals on the host: { total, shares }, `total`
-## the item's combatDamage × `Equipment.combatScale` and `shares` its split by damage type (summing to 1). Empty hands
-## and a held item that is not equipment deal `Equipment.unarmed`.
+## the item's combatDamage × `Equipment.combatScale` and `shares` its split by damage type (summing to 1). Empty hands,
+## a held item that is not equipment and one whose damage comes to 0 deal `Equipment.unarmed` (never less than a fist).
 static func player_hit(item_key: String) -> Dictionary:
 	var t := equipment_table()
 	var by_type: Dictionary = {}
