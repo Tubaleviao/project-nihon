@@ -21,10 +21,15 @@ enum State {
 	GESTURE,
 }
 
-## Horizontal speed (m/s) at or above which the character is walking.
-const WALK_SPEED := 0.2
-## Horizontal speed (m/s) at or above which the character is running.
-const RUN_SPEED := 3.0
+const RemoteMotionRules := preload("res://src/networking/remote_motion_rules.gd")
+
+## Phase 294 — horizontal speed (m/s) at or above which a body walks, and runs: the fabric's
+## `RemoteMotion.walkSpeed` / `runSpeed`, the same for the local player, remote players and creatures.
+static func walk_speed() -> float:
+	return RemoteMotionRules.walk_speed()
+
+static func run_speed() -> float:
+	return RemoteMotionRules.run_speed()
 ## Seconds an attack pose holds before returning to the locomotion state.
 const ATTACK_DURATION := 0.5
 ## Seconds the landing pose holds before returning to the locomotion state.
@@ -129,7 +134,7 @@ func update(speed: float, grounded: bool, velocity_y: float, delta: float) -> in
 ## Count standing-still time and fire a variant once it passes the delay. Any movement, jump or
 ## non-idle state restarts the count, so a variant never starts on a body that is moving.
 func _tick_idle(speed: float, grounded: bool, delta: float) -> void:
-	if _state != State.IDLE or speed >= WALK_SPEED or not grounded:
+	if _state != State.IDLE or speed >= walk_speed() or not grounded:
 		_idle_for = 0.0
 		return
 	_idle_for += delta
@@ -148,9 +153,9 @@ static func is_falling(airborne: float, velocity_y: float) -> bool:
 
 ## Locomotion state for a grounded body at `speed`.
 func _ground_state(speed: float) -> int:
-	if speed < WALK_SPEED:
+	if speed < walk_speed():
 		return State.IDLE
-	if speed < RUN_SPEED:
+	if speed < run_speed():
 		return State.WALK
 	return State.RUN
 
@@ -235,19 +240,19 @@ func get_blend_weight() -> float:
 ## Documented blend curve: maps horizontal speed (m/s) to a 0..1 locomotion
 ## blend weight, replacing the old per-state magic constants (WALK → 0, RUN → 1).
 ##
-##   speed <= WALK_SPEED             → 0.0  (full idle clip)
-##   WALK_SPEED < speed < RUN_SPEED  → linear 0..1 ramp (walk-band cross-fade)
-##   speed >= RUN_SPEED              → 1.0  (full run clip)
+##   speed <= walk_speed()             → 0.0  (full idle clip)
+##   walk_speed() < speed < run_speed()  → linear 0..1 ramp (walk-band cross-fade)
+##   speed >= run_speed()              → 1.0  (full run clip)
 ##
 ## Piecewise-linear in speed so the transition is smooth and predictable. A
 ## future AnimationTree consumes this directly to drive its BlendSpace1D, so the
 ## curve lives here (not in the renderer) and stays unit-testable headless.
 static func blend_curve(speed: float) -> float:
-	if speed <= WALK_SPEED:
+	if speed <= walk_speed():
 		return 0.0
-	if speed >= RUN_SPEED:
+	if speed >= run_speed():
 		return 1.0
-	return (speed - WALK_SPEED) / (RUN_SPEED - WALK_SPEED)
+	return (speed - walk_speed()) / (run_speed() - walk_speed())
 
 func _set_state(s: int) -> void:
 	_state = s

@@ -202,7 +202,7 @@ static func steps() -> Array:
 		{ "name": "admin_moves_synced", "compare": true },
 		{ "name": "attributes_synced", "compare": true },
 		{ "name": "creation_skip_button", "compare": true },
-		{ "name": "create_character", "compare": true }, { "name": "remote_player_body", "compare": true },
+		{ "name": "create_character", "compare": true }, { "name": "remote_player_body", "compare": true }, { "name": "remote_walk_smooth", "compare": true },
 		{ "name": "title_choice", "compare": true },
 		{ "name": "creation_button_synced", "compare": true },
 		{ "name": "world_regen_synced", "compare": true },
@@ -466,7 +466,7 @@ func run(root: Node, role: String) -> void:
 	await _step_admin_moves_synced()
 	await _step_attributes_synced()
 	await LateSteps.new().creation_skip_button(self)
-	await _step_create_character(); await LateSteps.new().remote_player_body(self)
+	await _step_create_character(); await LateSteps.new().remote_player_body(self); await LateSteps.new().remote_walk_smooth(self)
 	await LateSteps.new().title_choice(self)
 	await LateSteps.new().creation_button_synced(self)
 	await _step_world_regen_synced()

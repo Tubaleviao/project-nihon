@@ -31,6 +31,7 @@ func disconnect_all() -> void:
 	sl._link_free_at_ms.clear()
 	sl._ordered_at_ms.clear()
 	sl._jitter_buffer.clear()
+	_last_report = {}   # Phase 294 — a new connection hears the first report at once
 	sl._player_ids.clear()
 	# Phase 37 — a torn-down connection cannot complete the snapshot it was
 	# reassembling (see forget_player_id).
@@ -51,6 +52,11 @@ func remember_player_state(peer_id: int, position: Vector3, exact: Dictionary = 
 	sl._peer_spatial.update(peer_id, position)
 	sl._last_known_timestamps.erase(peer_id)
 
+## Phase 294 — the last movement report this machine sent ({ pk, hp, max_hp, ms }), and how often an unchanged one
+## is still sent.
+var _last_report: Dictionary = {}
+const REPORT_KEEPALIVE_MS := 500.0
+
 func _on_player_state_sync_requested(payload: Dictionary) -> void:
 	if not sl._connected():
 		return
@@ -66,6 +72,14 @@ func _on_player_state_sync_requested(payload: Dictionary) -> void:
 		"hp":       payload.get("hp",     100.0),
 		"max_hp":   payload.get("max_hp", 100.0),
 	}
+	# Phase 294 — reports go out every `RemoteMotion.players.sendIntervalMs`; one that changes nothing (a body
+	# standing still) is sent only as a keepalive every REPORT_KEEPALIVE_MS, the old report rate.
+	var now_ms := float(Time.get_ticks_msec())
+	var same: bool = packet["pk"] == _last_report.get("pk", "") and packet["hp"] == _last_report.get("hp", null) \
+			and packet["max_hp"] == _last_report.get("max_hp", null)
+	if same and now_ms - float(_last_report.get("ms", -INF)) < REPORT_KEEPALIVE_MS:
+		return
+	_last_report = { "pk": packet["pk"], "hp": packet["hp"], "max_hp": packet["max_hp"], "ms": now_ms }
 	if sl._role == sl.Role.HOST:
 		introduce_host_body(pos, float(Time.get_ticks_msec()))
 	sl._broadcast_aoi(packet, pos)

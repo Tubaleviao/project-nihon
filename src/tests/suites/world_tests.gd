@@ -1629,7 +1629,7 @@ func _test_rig_tree_stride_scale() -> void:
 	const RigTree := preload("res://src/character/rig_tree.gd")
 	const Loco := preload("res://src/character/locomotion.gd")
 	var speeds := Vector2(RigTree.WALK_STRIDE_M / RigTree.WALK_CYCLE_S, RigTree.RUN_STRIDE_M / RigTree.RUN_CYCLE_S)
-	for case in [[Loco.RUN_SPEED * 0.5 + 0.1, 0.5], [5.0, 1.0], [Loco.RUN_SPEED, 1.0]]:
+	for case in [[Loco.run_speed() * 0.5 + 0.1, 0.5], [5.0, 1.0], [Loco.run_speed(), 1.0]]:
 		var ground: float = case[0]
 		var blend := Loco.blend_curve(ground)
 		var scale := RigTree.time_scale(ground, blend if case[1] == 1.0 else 0.5, speeds)

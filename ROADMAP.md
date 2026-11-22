@@ -31,14 +31,13 @@ introductions of the arcs they belonged to, are archived in
 Set by the owner on 2026-11-10 and revised on 2026-11-12 after a repository review (Phases 252–258,
 see [the review arc](#next-a-licence-a-green-main-and-a-first-release-phases-252258)). Work the open
 phases top to bottom; the arc tables below keep their numbers and specs, but this list decides what
-comes next. A phase that needs an earlier one still waits for it. Done phases (238–244, 248–250, 252–256, 259–276, 289, 290, 283, 282, 280, 291, 281, 284, 286, 287, 292, 293)
+comes next. A phase that needs an earlier one still waits for it. Done phases (238–244, 248–250, 252–256, 259–276, 289, 290, 283, 282, 280, 291, 281, 284, 286, 287, 292, 293, 294)
 have left the list. Phases 227, 228, 230, 231, 233, 236 and 246 are parked (see
 [Parked phases](#parked-phases)). Phase 236 keeps its place in the list for when it is un-parked; the
 others are not in it.
 
 | Priority | Phase | Title |
 |---|---|---|
-| 21 | 294 | Other players and creatures walk instead of jumping |
 | 22 | 295 | Equipment categories and traits replace tools (fabric) |
 | 23 | 296 | Work and combat by trait: no more tools in the game |
 | 24 | 251 | A human playtest: what would make the game fun (a standing checkpoint) |
@@ -374,7 +373,7 @@ of a category (knife, sword, axe, hammer, pick…), and what it can do follows f
 | 291 | Right-click look puts the cursor back where it was | Done |
 | 292 | The market names the seller | Done |
 | 293 | Other players look like people | Done |
-| 294 | Other players and creatures walk instead of jumping | Open |
+| 294 | Other players and creatures walk instead of jumping | Done |
 | 295 | Equipment categories and traits replace tools (fabric) | Open |
 | 296 | Work and combat by trait: no more tools in the game | Open |
 
@@ -1392,6 +1391,25 @@ clip plays from the speed. Creature states arrive through `relay_creature_state`
 - Suite: a creature driven by `relay_creature_state` uses the same component and passes the same frame test.
 - Net harness step: two clients; one walks a straight line, the other's recorded positions of it have no step above
   the per-frame bound.
+
+Done: the fabric's `RemoteMotion` world system (`fabric/gameplay/remote_motion.js`, `tools/check_remote_motion.js`)
+holds the send intervals, buffers, extrapolation caps, teleport distance, turn rate and the walk/run thresholds, which
+`Locomotion` now reads for the local player as well. One track, `src/networking/remote_motion.gd`, plays the host's
+states back a buffer behind on a playback clock that only moves forward (it follows the measured gap between arrivals,
+so a far body's sparser states stay smooth; a pause is not a gap), extrapolates at most `extrapolateMaxMs`, and
+treats the carried distance as a correction that eases out (so a stop followed by the relay's keepalive never turns
+the body round, and a creature the host stops sending eases back to its last state), and snaps once past
+`teleportDistanceM` (100 m, validated against a 90 m/s flier over the relay's 750 ms far gap). Facing and the
+locomotion speed come only from segments between two host states. Remote
+avatars are driven every frame by `PeerWiring.tick_remote_avatars` (position, yaw at the turn rate, locomotion from
+the played-back speed); client creatures by `CreatureSlice.tick_motion` (box and model, in an exact anchored frame).
+The client used to report its body every 30 physics ticks (0.5 s) against a 100 ms buffer, so a remote body held and
+then jumped; it now reports every `players.sendIntervalMs` (100 ms, buffered 200 ms since the host's relay flush is
+also 100 ms; the crowd stress bots follow), an unchanged report only every 500 ms. A creature farther
+than `farDistanceM` from every player is sent at most every `farSendIntervalMs`. The player relay carries positions
+only (a fixed binary entry), so `fall` on a remote player is inferred from a steep, fast drop rather than a sent move
+state; the track already takes an air flag for when the wire carries one. The harness has one client, so its step
+`remote_walk_smooth` has the host walk a line and the client check its recorded avatar of it.
 
 ## Phase 295 — Equipment categories and traits replace tools (fabric)
 

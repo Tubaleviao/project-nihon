@@ -220,6 +220,7 @@ func create_character_from_recipe(recipe: Dictionary, pos: Vector3) -> String:
 ## Move an instance's body to `pos`. False for an unknown instance.
 func set_character_position(instance_id: String, pos: Vector3) -> bool:
 	return _m2.set_character_position(instance_id, pos)
+func drive_remote_body(iid: String, pos: Vector3, yaw: float, speed: float, grounded: bool, vy: float, delta: float) -> bool: return _m2.drive_remote_body(iid, pos, yaw, speed, grounded, vy, delta)   # Phase 294
 
 ## Where an instance's body is, or null for an unknown instance.
 func get_character_position(instance_id: String) -> Variant:

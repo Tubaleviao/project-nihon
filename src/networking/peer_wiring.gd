@@ -15,6 +15,8 @@ const PlayerRegistry   := preload("res://src/persistence/player_registry.gd")
 const PlayerSlice      := preload("res://src/player/player_slice.gd")
 const SpawnFinder      := preload("res://src/world/spawn_finder.gd")
 const TickProbe        := preload("res://src/core/tick_probe.gd")
+const RemoteMotion     := preload("res://src/networking/remote_motion.gd")
+const RemoteMotionRules := preload("res://src/networking/remote_motion_rules.gd")
 
 ## Phase 66 — client: the other players inside our AOI, as character instances.
 ## { peer_id: instance_id }. A peer's replicated gear lands on its instance (bound through
@@ -22,6 +24,9 @@ const TickProbe        := preload("res://src/core/tick_probe.gd")
 ## instance lives while the peer is inside AOI: leaving it (`peer_equipment_evicted`) or
 ## disconnecting frees the body, and re-entry builds a fresh one the host's resend dresses.
 var _remote_avatars: Dictionary = {}
+## Phase 294 — { peer_id: RemoteMotion }: each remote avatar's states, played back every frame by
+## `tick_remote_avatars` (a state never moves the body itself). Lives and dies with the avatar.
+var _remote_motion: Dictionary = {}
 
 func _connect_all() -> void:
 	if root.is_inside_tree():
@@ -35,6 +40,8 @@ func _connect_all() -> void:
 	connect_bus(GameBus.remote_player_state, on_remote_player_state)
 	connect_bus(GameBus.remote_player_state, _on_remote_avatar_state)
 	connect_bus(GameBus.peer_equipment_evicted, _remove_remote_avatar)
+	if root._creature != null:
+		root._creature.player_positions = player_targets   # Phase 294 — far creatures are sent less often
 
 ## Phase 33 — host: an identity was bound (first join, or a reconnect). The peer's
 ## own inventory is now known, so register it as that peer's trade/market party (the
@@ -300,7 +307,44 @@ func player_exact_targets() -> Dictionary:
 func _on_remote_avatar_state(peer_id: int, position: Vector3) -> void:
 	if not root._is_client or peer_id == root.multiplayer.get_unique_id():
 		return
-	ensure_remote_avatar(peer_id, position)
+	note_remote_state(peer_id, position, float(Time.get_ticks_msec()))
+
+## Phase 294 — a state of `peer_id` arrived at `now_ms`: queue it on the peer's motion track. The first one
+## builds the avatar there; later ones are played back by `tick_remote_avatars`. Returns the avatar's instance id.
+func note_remote_state(peer_id: int, position: Vector3, now_ms: float) -> String:
+	var iid: String = str(_remote_avatars.get(peer_id, ""))
+	if iid == "" or root._character.get_character_position(iid) == null:
+		_remote_motion.erase(peer_id)   # a new body starts a new track where it is built
+		iid = ensure_remote_avatar(peer_id, position)
+		if iid == "":
+			return ""
+	var track: RemoteMotion = _remote_motion.get(peer_id, null)
+	if track == null:
+		track = RemoteMotion.new(RemoteMotionRules.group("players"))
+		_remote_motion[peer_id] = track
+	track.push(now_ms, position)
+	return iid
+
+## Phase 294 — one rendered frame of every remote avatar: its track is played back to `now_ms` and the body is
+## put at the sample, turned, and its clip follows the speed played back.
+func tick_remote_avatars(delta: float, now_ms: float = -1.0) -> void:
+	if _remote_motion.is_empty():
+		return
+	if now_ms < 0.0:
+		now_ms = float(Time.get_ticks_msec())
+	for peer_id in _remote_motion.keys():
+		var iid: String = str(_remote_avatars.get(peer_id, ""))
+		if iid == "":
+			_remote_motion.erase(peer_id)
+			continue
+		var track: RemoteMotion = _remote_motion[peer_id]
+		track.step(now_ms, delta)
+		if track.has_position:
+			root._character.drive_remote_body(iid, track.position, track.yaw, track.speed, not track.airborne, track.velocity_y, delta)
+
+## The motion track of `peer_id`'s avatar (null when none); the suite and the harness read it.
+func remote_motion_of(peer_id: int) -> RemoteMotion:
+	return _remote_motion.get(peer_id, null)
 
 ## Phase 293 — look requests this client sent (the fallback); the harness checks a met peer needs none.
 var look_requests := 0
@@ -339,6 +383,7 @@ func prune_remote_avatars() -> void:
 			_remove_remote_avatar(int(peer_id))
 
 func _remove_remote_avatar(peer_id: int) -> void:
+	_remote_motion.erase(peer_id)
 	if _remote_avatars.has(peer_id):
 		root._character.remove_character(str(_remote_avatars[peer_id]))
 		_remote_avatars.erase(peer_id)
@@ -599,6 +644,8 @@ func tick_client_handshake(delta: float) -> void:
 ## (characters.md §37). Only the host currently spawns character visuals
 ## (_boot_host), so this is a no-op on clients until one exists.
 func sync_player_avatar(delta: float) -> void:
+	if root._is_client:
+		tick_remote_avatars(delta)   # Phase 294 — other players walk between their states
 	var player_char: String = root._character.get_player_character()
 	if player_char == "":
 		return

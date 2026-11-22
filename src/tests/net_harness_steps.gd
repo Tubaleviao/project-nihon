@@ -5,6 +5,7 @@ extends RefCounted
 const WorldPos := preload("res://src/terrain/world_pos.gd")
 const TitleRules := preload("res://src/character/title_rules.gd")
 const PlayerSlice := preload("res://src/player/player_slice.gd")
+const RemoteMotionRules := preload("res://src/networking/remote_motion_rules.gd")
 
 ## Phase 208 — the host stands a chest of its own clan (the client is not in it) at the client's feet, holding five
 ## Thornwood. The client uses it and asks to take one: both are refused, the chest still holds five, the
@@ -958,3 +959,67 @@ func remote_player_body(h: Node) -> void:
 	var iid: String = h._root._character.get_peer_character(host_id)
 	h._report(STEP, h.verdict(ok and asked == 0, true), "player_rig_in_look" if ok and asked == 0 else ("asked_for_look-%d" % asked if ok else ("no_avatar" if iid == "" else "body_%s_hair_%s" % [
 		str(h._root._character._instances.get(iid, {}).get("rig_key", "none")), str(h._root._character.get_appearance(iid).get("hair", ""))])))
+
+## Phase 294 — "two clients; one walks a straight line, the other's recorded positions of it have no step above the
+## per-frame bound". The harness has one client, so the host is the walker: it reports its body walking +X at
+## `WALK_MPS` every `RemoteMotion.players.sendIntervalMs` for `WALK_STATES` states, then steps back. The client
+## records its avatar of the host every rendered frame and checks no frame moved it more than `MAX_STEP_M` per
+## 16 ms of frame time (a slow frame may cover more ground, never faster than that), none moved it back along the
+## line, and that it walked the line. The host's own body is broadcast straight to its AOI, so the relay's thinning
+## (`RelayBatch`) is covered by the suite's track tests (keepalives, sparse and late states), not here.
+const WALK_STATES := 30
+const WALK_MPS := 4.5
+const WALK_MAX_STEP_M := 0.25
+func remote_walk_smooth(h: Node) -> void:
+	const STEP := "remote_walk_smooth"
+	var interval: float = RemoteMotionRules.player_send_interval_s()
+	if h._role == "host":
+		var peers: PackedInt32Array = h._root.multiplayer.get_peers()
+		var pid: String = h._root._networking.get_player_id(peers[0]) if peers.size() > 0 else ""
+		if pid == "":
+			h._report(STEP, "fail", "no_connected_peer")
+			return
+		var ready: bool = await h._await_client_ready("walk", pid)
+		var here: Vector3 = h._root._player.get_position()
+		for i in WALK_STATES + 1:
+			var at := here + Vector3(WALK_MPS * interval * float(i), 0.0, 0.0)
+			GameBus.player_state_sync_requested.emit({ "position": at, "world_pos": WorldPos.from_world(at.x, at.y, at.z),
+				"hp": float(PlayerSlice.MAX_HP), "max_hp": float(PlayerSlice.MAX_HP) })
+			await h._await_settle(interval)
+		await h._await_settle(3.0)
+		# Back where the body stands, so later steps see the host where it is.
+		GameBus.player_state_sync_requested.emit({ "position": here, "world_pos": WorldPos.from_world(here.x, here.y, here.z),
+			"hp": float(PlayerSlice.MAX_HP), "max_hp": float(PlayerSlice.MAX_HP) })
+		h._report(STEP, h.verdict(ready, true), "walked_smooth" if ready else "client_never_arrived")
+		return
+	var host_id: int = h._root._networking.HOST_PEER_ID
+	var announced := {}
+	var rec := { "start": null, "prev": null, "us": 0, "worst": 0.0, "frames": 0, "far": 0.0, "still_us": 0, "back": 0 }
+	var walked := func() -> bool:
+		h._announce_ready("walk", announced)
+		var iid: String = h._root._character.get_peer_character(host_id)
+		var at: Variant = h._root._character.get_character_position(iid) if iid != "" else null
+		if not (at is Vector3):
+			return false
+		var now := Time.get_ticks_usec()
+		if rec["start"] == null:
+			rec["start"] = at
+		if rec["prev"] != null:
+			var frame_ms := maxf(float(now - int(rec["us"])) / 1000.0, 16.0)
+			var step: float = (at as Vector3).distance_to(rec["prev"])
+			rec["worst"] = maxf(float(rec["worst"]), step * 16.0 / frame_ms)
+			rec["frames"] = int(rec["frames"]) + 1
+			# The walk is along +X: a frame back along it is a fault, until the last metre, where the body carried
+			# past the final state (at most one send interval) eases back to it once the host stops.
+			if (at as Vector3).x < (rec["prev"] as Vector3).x - 0.001 and float(rec["far"]) < WALK_MPS * interval * float(WALK_STATES) - 1.0:
+				rec["back"] = int(rec["back"]) + 1
+			rec["still_us"] = int(rec["still_us"]) + (now - int(rec["us"])) if step < 0.0001 else 0
+		rec["prev"] = at
+		rec["us"] = now
+		rec["far"] = maxf(float(rec["far"]), (at as Vector3).distance_to(rec["start"]))
+		# Done once the avatar walked most of the line and has stood still for half a second.
+		return float(rec["far"]) >= WALK_MPS * interval * float(WALK_STATES) * 0.8 and int(rec["still_us"]) >= 500000
+	var done: bool = await h._await_until(walked, h._step_timeout() * 4.0)
+	var smooth: bool = float(rec["worst"]) <= WALK_MAX_STEP_M and int(rec["back"]) == 0
+	h._report(STEP, h.verdict(done and smooth, true), "walked_smooth" if done and smooth else (
+		"not_walked_%.1fm" % float(rec["far"]) if not done else "step_%.3fm_per_16ms_back_%d_in_%d_frames" % [float(rec["worst"]), int(rec["back"]), int(rec["frames"])]))

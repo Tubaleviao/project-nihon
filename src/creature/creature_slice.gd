@@ -52,6 +52,8 @@ const WorldClock     := preload("res://src/world/world_clock.gd")
 const TerrainSlice   := preload("res://src/terrain/terrain_slice.gd")
 const SeamWrap       := preload("res://src/terrain/seam_wrap.gd")
 const CreatureVisuals := preload("res://src/creature/creature_visuals.gd")
+const RemoteMotionRules := preload("res://src/networking/remote_motion_rules.gd")
+const CreatureMotion := preload("res://src/creature/creature_motion.gd")
 
 ## Global cap on live instances (0 = unbounded). Host-only; see `set_population_cap`.
 var _population_cap: int = 0
@@ -106,13 +108,16 @@ var terrain_slice: Node = null
 ## created/updated from host creature_state_changed broadcasts instead.
 var is_authoritative: bool = true
 
-## Seconds between host → client creature state broadcasts.
-const CREATURE_SYNC_INTERVAL := 0.1
 var _sync_accum: float = 0.0
 
 ## Last broadcast { state, position } per instance, so the sync tick ships only
 ## changed instances (dirty tracking) instead of the whole population every tick.
 var _last_broadcast: Dictionary = {}
+
+## Phase 294 — the creatures' remote motion (client tracks, far-creature hold on the host): `creature_motion.gd`.
+var _motion := CreatureMotion.new(self)
+## `() -> Dictionary` of player positions (world metres) on the host; unset means every creature counts as near.
+var player_positions: Callable = Callable()
 
 func _ready() -> void:
 	GameBus.creature_died.connect(_on_creature_died)
@@ -124,6 +129,8 @@ func _ready() -> void:
 func _process(delta: float) -> void:
 	TickProbe.begin("creature_sync")   # Phase 162 — the stress run's per-phase tick cost
 	_tick_respawn()
+	if not is_authoritative:
+		_motion.tick(delta)
 	_tick_visuals(delta)
 	if is_authoritative:
 		_deferred_accum += delta
@@ -140,7 +147,7 @@ func _process(delta: float) -> void:
 ## `THROTTLED_SYNC_INTERVAL` under a bandwidth-capped profile: at the full rate wandering creatures alone
 ## exceed 256 kbit/s per client, so the link would fall ever further behind and no step could converge.
 ## Deltas still flow, only rarely, so creature sync is exercised on a capped link.
-var delta_interval := CREATURE_SYNC_INTERVAL
+var delta_interval: float = RemoteMotionRules.creature_send_interval_s()
 const THROTTLED_SYNC_INTERVAL := 2.0
 
 ## Return the instance_id of the nearest live creature within radius, or "".
@@ -829,6 +836,7 @@ func fold_contents(turned: bool, pole_sign: int) -> void:
 	if not is_authoritative:
 		# A client's later host deltas arrive in the host's frame: replay this fold on them.
 		_log_fold(turned, pole_sign)
+		_motion.clear()   # Phase 294 — the tracks were in the old frame
 	_invalidate_view()
 
 ## Append a fold to `_fold_log`, kept minimal: a pole fold is its own inverse (crossing the same pole
@@ -1182,7 +1190,13 @@ func _tick_respawn() -> void:
 ## Host → clients: emit a creature_state_changed delta for instances whose
 ## state or position changed since the last broadcast. Unchanged instances are
 ## skipped so the sync tick ships only genuine deltas, not the whole population.
-func _broadcast_creature_states() -> void:
+##
+## Phase 294 — a creature farther than `farDistanceM` from every player whose state is unchanged is sent at most
+## once per `farSendIntervalMs` (its motion is played back over the longer gap); a change of state always goes.
+func _broadcast_creature_states(now_ms: float = -1.0) -> void:
+	if now_ms < 0.0:
+		now_ms = float(Time.get_ticks_msec())
+	var far := _motion.far_context(player_positions)
 	for iid in _instances:
 		var inst: Dictionary = _instances[iid]
 		var state: String = inst["state"]
@@ -1190,8 +1204,16 @@ func _broadcast_creature_states() -> void:
 		var prev = _last_broadcast.get(iid, null)
 		if prev != null and prev["state"] == state and prev["position"] == pos:
 			continue
-		_last_broadcast[iid] = { "state": state, "position": pos }
+		if CreatureMotion.far_hold(far, prev, state, inst["position"], now_ms):
+			continue
+		_last_broadcast[iid] = { "state": state, "position": pos, "at": now_ms }
 		GameBus.creature_state_changed.emit(iid, inst["creature_id"], state, pos)
+
+## Phase 294 — see `creature_motion.gd`: play the client tracks back, the clock they use, one creature's track.
+func tick_motion(delta: float, now_ms: float = -1.0) -> void: _motion.tick(delta, now_ms)
+func motion_now_ms() -> float: return _motion.now_ms()
+## The motion track of a client creature (null when none); the suite reads it.
+func motion_of(iid: String) -> RefCounted: return _motion.track_of(iid)
 
 ## Client-side application of a host-authoritative creature state delta. Creates
 ## the instance record (and a visual body) on first sight, then updates its
@@ -1226,6 +1248,8 @@ func apply_creature_pos(instance_id: String, creature_id: String, state: String,
 	elif not _fold_log.is_empty():
 		pos = _to_local_frame(pos)
 	var position: Vector3 = WorldPos.to_scene(pos, Vector2i.ZERO)
+	if not is_authoritative:
+		_motion.note(instance_id, state, pos, _motion.now_ms())
 	if _instances.has(instance_id):
 		var inst: Dictionary = _instances[instance_id]
 		if creature_id != "":
@@ -1240,7 +1264,7 @@ func apply_creature_pos(instance_id: String, creature_id: String, state: String,
 		if _pool != null and inst.has("mi") and int(inst["mi"]) >= 0:
 			if state == "dead":
 				_pool.hide(int(inst["mi"]))
-			else:
+			elif not _motion.tracks.has(instance_id):
 				_place_box(instance_id, position)
 		return
 	# First sight: create a record + visual body without touching GameData counts.
@@ -1414,7 +1438,8 @@ func _on_model_detached(iid: String) -> void:
 		return
 	var inst: Dictionary = _instances[iid]
 	if inst["state"] != "dead" and int(inst.get("mi", -1)) >= 0:
-		_pool.set_transform(int(inst["mi"]), _visual_transform(inst["position"]))
+		var draw: Variant = inst.get("draw", null)   # Phase 294 — where a client draws it, not the newest state
+		_pool.set_transform(int(inst["mi"]), _visual_transform(WorldPos.to_scene(draw["pos"], Vector2i.ZERO) if draw is Dictionary else inst["position"]))
 
 ## Move an instance's box, unless a model stands in for it.
 func _place_box(iid: String, pos: Vector3) -> void:

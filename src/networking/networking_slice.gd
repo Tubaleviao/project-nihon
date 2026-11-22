@@ -1397,26 +1397,15 @@ func _buffer_remote_state(peer_id: int, position: Vector3) -> void:
 func _sample_remote_state_at(peer_id: int, now_ms: float) -> Vector3:
 	return _m3._sample_remote_state_at(peer_id, now_ms)
 
-## Drop buffered snapshots older than the playback window.
-func _prune_jitter_buffer(peer_id: int, now_ms: float) -> void:
-	if not _jitter_buffer.has(peer_id):
-		return
-	var queue: Array = _jitter_buffer[peer_id]
-	var cutoff: float = now_ms - jitter_buffer_ms - 1000.0
-	while queue.size() > 1 and float(queue[0]["at_ms"]) < cutoff:
-		queue.pop_front()
-
-## Replay buffered snapshots on the fixed playback delay, emitting the
-## interpolated remote-player state to the bus.
+## Deliver each buffered snapshot once, `jitter_buffer_ms` after it arrived. Phase 294 — the snapshots
+## themselves, not a per-frame resample: the avatar's `RemoteMotion` track interpolates, and a state every frame
+## would buffer twice and flood its list.
 func _drain_jitter_buffer() -> void:
-	var now := float(Time.get_ticks_msec())
+	var due := float(Time.get_ticks_msec()) - jitter_buffer_ms
 	for peer_id in _jitter_buffer:
 		var queue: Array = _jitter_buffer[peer_id]
-		if queue.is_empty():
-			continue
-		var pos: Vector3 = _sample_remote_state_at(int(peer_id), now)
-		GameBus.remote_player_state.emit(int(peer_id), pos)
-		_prune_jitter_buffer(int(peer_id), now)
+		while not queue.is_empty() and float(queue[0]["at_ms"]) <= due:
+			GameBus.remote_player_state.emit(int(peer_id), queue.pop_front()["position"])
 
 # ---------------------------------------------------------------------------
 # Peer lifecycle

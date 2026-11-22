@@ -15,6 +15,7 @@ const items        = require('./gameplay/items')
 const recipes      = require('./gameplay/recipes')
 const technology   = require('./gameplay/technology')
 const waystone     = require('./gameplay/waystone')
+const remoteMotion = require('./gameplay/remote_motion')
 const settlement   = require('./gameplay/settlement')
 const combat       = require('./gameplay/combat')
 const economy      = require('./gameplay/economy')
@@ -100,6 +101,9 @@ terrainMaterials.validateTerrainMaterials(terrainMaterials.TERRAIN_MATERIALS, bi
 
 // Phase 158 — the gesture table must be well formed (known kinds, unique chat commands, restRegen >= 1).
 gestures.validateGestures(gestures.gestureTable())
+
+// Phase 294 — the remote-motion table (send rates, buffer, teleport distance, turn rate, walk/run speeds).
+remoteMotion.validateMotion(remoteMotion.MOTION)
 
 // Phase 160 — every harvest entry must name a tool category some item provides and a real skill, every creature needs a
 // carcass mass, and the Skinning yield and quality tables must cover every level and never fall.
@@ -410,6 +414,8 @@ module.exports = defineFabric({
     { CombatSystem: combat.CombatSystem },
     // Gameplay — Server persistence + save lifecycle (Phase 33)
     { PersistenceSystem: persistence.PersistenceSystem },
+    // Gameplay — Remote bodies' motion on a client (Phase 294)
+    { RemoteMotion: remoteMotion.RemoteMotion },
     // Gameplay — Player economy + governance systems (Phase 24)
     {
       TradeSystem:      economy.TradeSystem,
