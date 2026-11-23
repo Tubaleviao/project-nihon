@@ -8,6 +8,7 @@ extends Resource
 @export var characterFields: Array
 @export var playerFields: Array
 @export var recordKeys: Dictionary
+@export var worldKeys: Dictionary
 @export var limit: int
 @export var onDelete: String
 @export var names: String

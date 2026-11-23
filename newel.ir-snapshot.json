@@ -1,5 +1,5 @@
 {
-  "schemaHash": "sha256:0961504f7697616ceedd55a903aa74d9c75b3e010021e097d1ac13241cf78278",
+  "schemaHash": "sha256:6e2a4154ae27305ae7de7e3f88d38fc545ed6ac4641ee2bb40f92098fef8bc4c",
   "schema": {
     "version": "3.0.0",
     "meta": {
@@ -2045,7 +2045,7 @@
         "tags": [
           "decision"
         ],
-        "description": "A player identity is a server-issued local UUID (player_id), not an account. The server mints the id on first join, persists it next to the player record, and sends it to the client so a reconnect re-binds to the same record. The client may present a cached id at join, and the server honours it only when it already owns that record and no live peer holds it — a client can therefore never claim another online player's record.",
+        "description": "A player identity is a server-issued local UUID (player_id), not an account. The server mints the id on first join, persists it next to the player record, and sends it to the client so a reconnect re-binds to the same record. The client may present a cached id at join, and the server honours it only when it already owns that record and no live peer holds it — a client can therefore never claim another online player's record. Amended by Phase 226 (CharacterRoster): player_id identifies the Player (the account that connects); progress (inventory, HP, position, appearance, skills…) belongs to one of the player's characters and keys on the character id. A pre-Phase-226 record becomes the player's first character, whose id is the old player_id.",
         "goal": "Give every player a connection-independent identity so inventory, HP, position, and appearance survive a reconnect or a server restart, without waiting for an account/auth service",
         "fields": {
           "id": {
@@ -54866,7 +54866,7 @@
         "tags": [
           "world-system"
         ],
-        "description": "Several characters per player (Phase 226). The player is the account that connects; a character is who walks the world. A player keeps up to 4 characters on a server, picked from a list after choosing a world or joining a server. A new character starts from scratch: no items, base attributes, no skills, research, books or clan, and nothing from the player's other characters. Names are unique on the server across every character. Deleting a character asks for its name typed out; its structures go to its clan, or become ownerless when it had none. The character owns: body, name, hp, position, statusEffects, attributes, attributeGrowth, inventory, equipment, skills, skillXp, skillFocus, professions, titles, cooldowns, craftCounter, research, booksLearned, tamingFlags, companions, waystones, clanMembership, ownedStructures, spawnBed. The player owns: friendCode, settings, admin, lastCharacter.",
+        "description": "Several characters per player (Phase 226). The player is the account that connects; a character is who walks the world. A player keeps up to 4 characters on a server, picked from a list after choosing a world or joining a server. A new character starts from scratch: no items, base attributes, no skills, research, books or clan, and nothing from the player's other characters. Names are unique on the server across every character. Deleting a character asks for its name typed out; its structures go to its clan, or become ownerless when it had none. The character owns: characterId, body, name, hp, position, spawnPoint, statusEffects, attributes, attributeGrowth, inventory, equipment, skills, skillXp, skillFocus, professions, titles, cooldowns, craftCounter, research, booksLearned, tamingFlags, companions, waystones, clanMembership, ownedStructures, spawnBed. The player owns: friendCode, settings, admin, lastCharacter.",
         "goal": "A player can start over as someone new without losing the character they already have",
         "fields": {
           "id": {
@@ -54884,10 +54884,12 @@
             "primaryKey": false,
             "pii": false,
             "defaultValue": {
+              "characterId": "character",
               "body": "character",
               "name": "character",
               "hp": "character",
               "position": "character",
+              "spawnPoint": "character",
               "statusEffects": "character",
               "attributes": "character",
               "attributeGrowth": "character",
@@ -54957,7 +54959,10 @@
             "primaryKey": false,
             "pii": false,
             "defaultValue": {
+              "player_id": "characterId",
               "position": "position",
+              "chunk": "position",
+              "local": "position",
               "hp": "hp",
               "respawn_deadline": "hp",
               "status_effects": "statusEffects",
@@ -54977,10 +54982,25 @@
               "attribute_growth": "attributeGrowth",
               "cooldowns": "cooldowns",
               "equipment": "equipment",
-              "spawn": "spawnBed",
+              "spawn": "spawnPoint",
               "bed": "spawnBed",
+              "bed_station": "spawnBed",
               "inventory": "inventory",
               "inventory_durability": "inventory"
+            }
+          },
+          "worldKeys": {
+            "name": "worldKeys",
+            "type": "json",
+            "description": "{ <world record section keyed by player id before Phase 226>: \"character\" }: keyed by character id after it",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "names": "character",
+              "clans": "character",
+              "structures": "character",
+              "chests": "character"
             }
           },
           "limit": {
@@ -55022,7 +55042,7 @@
           "migration": {
             "name": "migration",
             "type": "string",
-            "description": "A pre-Phase-226 save: \"firstCharacter\", each player's one record becomes their first character, unchanged",
+            "description": "A pre-Phase-226 save: \"firstCharacter\", each player's one record becomes their first character, unchanged; its id is the old player id, which the player keeps too",
             "nullable": false,
             "primaryKey": false,
             "pii": false,
@@ -55106,6 +55126,7 @@
             "description": "Load a save written before Phase 226",
             "rules": [
               "Each player record becomes that player's first character, every character field unchanged",
+              "The first character's id is the old player id and the player keeps that id, so held names, clan membership and structure and chest owners (worldKeys) keep resolving",
               "The player fields move to the player; the first character is the player's lastCharacter"
             ],
             "auth": {

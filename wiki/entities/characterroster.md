@@ -7,7 +7,7 @@ title: "CharacterRoster"
 
 `world-system`
 
-Several characters per player (Phase 226). The player is the account that connects; a character is who walks the world. A player keeps up to 4 characters on a server, picked from a list after choosing a world or joining a server. A new character starts from scratch: no items, base attributes, no skills, research, books or clan, and nothing from the player's other characters. Names are unique on the server across every character. Deleting a character asks for its name typed out; its structures go to its clan, or become ownerless when it had none. The character owns: body, name, hp, position, statusEffects, attributes, attributeGrowth, inventory, equipment, skills, skillXp, skillFocus, professions, titles, cooldowns, craftCounter, research, booksLearned, tamingFlags, companions, waystones, clanMembership, ownedStructures, spawnBed. The player owns: friendCode, settings, admin, lastCharacter.
+Several characters per player (Phase 226). The player is the account that connects; a character is who walks the world. A player keeps up to 4 characters on a server, picked from a list after choosing a world or joining a server. A new character starts from scratch: no items, base attributes, no skills, research, books or clan, and nothing from the player's other characters. Names are unique on the server across every character. Deleting a character asks for its name typed out; its structures go to its clan, or become ownerless when it had none. The character owns: characterId, body, name, hp, position, spawnPoint, statusEffects, attributes, attributeGrowth, inventory, equipment, skills, skillXp, skillFocus, professions, titles, cooldowns, craftCounter, research, booksLearned, tamingFlags, companions, waystones, clanMembership, ownedStructures, spawnBed. The player owns: friendCode, settings, admin, lastCharacter.
 
 > A player can start over as someone new without losing the character they already have
 
@@ -19,11 +19,12 @@ Several characters per player (Phase 226). The player is the account that connec
 | characterFields | json | Fields that must be the character's (a new character would otherwise inherit them) |
 | playerFields | json | Fields that must be the player's |
 | recordKeys | json | { <key of the pre-Phase-226 player save record>: <ownership field> }: where each key moves |
+| worldKeys | json | { <world record section keyed by player id before Phase 226>: "character" }: keyed by character id after it |
 | limit | integer | Characters one player may keep on one server; the host refuses one over it |
 | onDelete | string | A deleted character's structures: "clan" (to its clan, ownerless without one) or "ownerless" |
 | names | string | Name uniqueness scope: "server", across every character of every player |
 | deleteConfirm | string | What the player types to delete a character: "name", its name, checked by the host |
-| migration | string | A pre-Phase-226 save: "firstCharacter", each player's one record becomes their first character, unchanged |
+| migration | string | A pre-Phase-226 save: "firstCharacter", each player's one record becomes their first character, unchanged; its id is the old player id, which the player keeps too |
 | refusals | json | Locale keys the host refuses with: { limit, nameTaken, confirm, unknown, rateLimited } |
 
 ## Actions
@@ -69,6 +70,7 @@ Load a save written before Phase 226
 
 **Conditions:**
 - Each player record becomes that player's first character, every character field unchanged
+- The first character's id is the old player id and the player keeps that id, so held names, clan membership and structure and chest owners (worldKeys) keep resolving
 - The player fields move to the player; the first character is the player's lastCharacter
 
 

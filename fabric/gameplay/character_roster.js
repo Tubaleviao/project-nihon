@@ -19,8 +19,14 @@ const { defineEntity } = require('@newel/core')
 // NAMES          names are unique per server across ALL characters of all players (the creation `name_taken`
 //                rule): two characters of one player cannot share a name either.
 // DELETE_CONFIRM the player types the character's name to delete it; the host compares it (never the client).
+// WORLD_KEYS     { <world record section>: 'character' }: sections of the world record keyed today by player id
+//                (held names, clan membership, structure and chest owners). Once characters exist they key on the
+//                character id, so a character's clan and structures are its own.
 // MIGRATION      a save from before Phase 226 has one record per player id: it becomes that player's first
 //                character, with every character field unchanged, and the player's fields move to the player.
+//                The first character's id IS the old player id, and the player keeps that same id too (the
+//                client still presents it on reconnect), so every WORLD_KEYS section keeps resolving unchanged.
+//                Later characters get fresh ids.
 // REFUSALS       the locale keys the host refuses with; the client renders them in the reader's locale.
 //
 // The host decides everything: it sends a player's character list (name, body, last played) after the player
@@ -30,10 +36,12 @@ const OWNERS = ['character', 'player']
 
 const OWNERSHIP = {
   // The character: everything that is progress in this world.
+  characterId:     'character',   // the record's own id (today's `player_id` key)
   body:            'character',   // gender, hair, hair colour (the creation record) and the appearance
-  name:            'character',
+  name:            'character',   // stored inside the creation record today (record key `creation`, field body)
   hp:              'character',
   position:        'character',
+  spawnPoint:      'character',   // the first spawn point (Phase 66), not the bed
   statusEffects:   'character',
   attributes:      'character',
   attributeGrowth: 'character',
@@ -47,7 +55,7 @@ const OWNERSHIP = {
   cooldowns:       'character',
   craftCounter:    'character',
   research:        'character',   // technology: discovered again by each character
-  booksLearned:    'character',
+  booksLearned:    'character',   // a book read lands in the technology record today (record key `technology`)
   tamingFlags:     'character',
   companions:      'character',
   waystones:       'character',
@@ -62,6 +70,7 @@ const OWNERSHIP = {
 }
 
 // Fields that must be the character's: putting any on the player would let a second character inherit progress.
+// Every OWNERSHIP entry is pinned: the validator rejects any field moved to the other owner, missing or unknown.
 const CHARACTER_FIELDS = [
   'body', 'name', 'inventory', 'equipment', 'skills', 'skillXp', 'attributes', 'research', 'booksLearned',
   'clanMembership', 'ownedStructures', 'spawnBed',
@@ -70,7 +79,10 @@ const CHARACTER_FIELDS = [
 const PLAYER_FIELDS = ['friendCode', 'settings', 'admin']
 
 const RECORD_KEYS = {
+  player_id:         'characterId',
   position:          'position',
+  chunk:             'position',
+  local:             'position',
   hp:                'hp',
   respawn_deadline:  'hp',
   status_effects:    'statusEffects',
@@ -90,10 +102,18 @@ const RECORD_KEYS = {
   attribute_growth:  'attributeGrowth',
   cooldowns:         'cooldowns',
   equipment:         'equipment',
-  spawn:             'spawnBed',
+  spawn:             'spawnPoint',
   bed:               'spawnBed',
+  bed_station:       'spawnBed',
   inventory:         'inventory',
   inventory_durability: 'inventory',
+}
+
+const WORLD_KEYS = {
+  names:      'character',
+  clans:      'character',
+  structures: 'character',
+  chests:     'character',
 }
 
 const LIMIT = 4
@@ -119,6 +139,7 @@ function characterRosterData() {
     characterFields: CHARACTER_FIELDS.slice(),
     playerFields: PLAYER_FIELDS.slice(),
     recordKeys: { ...RECORD_KEYS },
+    worldKeys: { ...WORLD_KEYS },
     limit: LIMIT,
     limitRange: LIMIT_RANGE.slice(),
     onDelete: ON_DELETE,
@@ -137,21 +158,32 @@ function characterRosterProblems(d) {
   for (const [f, owner] of Object.entries(d.ownership)) {
     if (!OWNERS.includes(owner)) p.push(`ownership.${f}: "${owner}" is not one of ${OWNERS.join(', ')}`)
   }
-  for (const f of CHARACTER_FIELDS) {
-    if (!Object.hasOwn(d.ownership, f)) p.push(`ownership has no ${f}: it must be the character's`)
-    else if (d.ownership[f] !== 'character') p.push(`${f} is on the ${d.ownership[f]}, not the character: a new character would inherit it`)
+  for (const [f, want] of Object.entries(OWNERSHIP)) {
+    if (!Object.hasOwn(d.ownership, f)) p.push(`ownership has no ${f}: it must be the ${want}'s`)
+    else if (d.ownership[f] !== want) {
+      p.push(want === 'character'
+        ? `${f} is on the ${d.ownership[f]}, not the character: a new character would inherit it`
+        : `${f} is on the ${d.ownership[f]}, not the player`)
+    }
   }
-  for (const f of PLAYER_FIELDS) {
-    if (!Object.hasOwn(d.ownership, f)) p.push(`ownership has no ${f}: it must be the player's`)
-    else if (d.ownership[f] !== 'player') p.push(`${f} is on the ${d.ownership[f]}, not the player`)
+  for (const f of Object.keys(d.ownership)) {
+    if (!Object.hasOwn(OWNERSHIP, f)) p.push(`ownership.${f} is not a known field: add it to OWNERSHIP with its owner`)
   }
   if (!isObj(d.recordKeys)) p.push('recordKeys must be { record key: ownership field }')
   else {
     for (const [k, f] of Object.entries(d.recordKeys)) {
       if (!Object.hasOwn(d.ownership, f)) p.push(`recordKeys.${k}: "${f}" is not an ownership field`)
+      // Today's record is all progress: the migration must not move any of it onto the player.
+      else if (d.ownership[f] !== 'character') p.push(`recordKeys.${k} moves to ${f}, which is the ${d.ownership[f]}'s: a record key is progress, the character's`)
     }
     for (const k of Object.keys(RECORD_KEYS)) {
       if (!Object.hasOwn(d.recordKeys, k)) p.push(`recordKeys has no ${k}: every key of the save record needs an owner`)
+    }
+  }
+  if (!isObj(d.worldKeys)) p.push('worldKeys must be { world section: "character" }')
+  else {
+    for (const k of Object.keys(WORLD_KEYS)) {
+      if (d.worldKeys[k] !== 'character') p.push(`worldKeys.${k} must key on the character, got ${d.worldKeys[k]}`)
     }
   }
   if (!Number.isInteger(d.limit) || d.limit < LIMIT_RANGE[0] || d.limit > LIMIT_RANGE[1]) {
@@ -194,11 +226,12 @@ const CharacterRoster = defineEntity({
     characterFields: { type: 'json', description: 'Fields that must be the character\'s (a new character would otherwise inherit them)', defaultValue: CHARACTER_FIELDS },
     playerFields:    { type: 'json', description: 'Fields that must be the player\'s', defaultValue: PLAYER_FIELDS },
     recordKeys:      { type: 'json', description: '{ <key of the pre-Phase-226 player save record>: <ownership field> }: where each key moves', defaultValue: RECORD_KEYS },
+    worldKeys:       { type: 'json', description: '{ <world record section keyed by player id before Phase 226>: "character" }: keyed by character id after it', defaultValue: WORLD_KEYS },
     limit:           { type: 'integer', description: 'Characters one player may keep on one server; the host refuses one over it', defaultValue: LIMIT },
     onDelete:        { type: 'string', description: 'A deleted character\'s structures: "clan" (to its clan, ownerless without one) or "ownerless"', defaultValue: ON_DELETE },
     names:           { type: 'string', description: 'Name uniqueness scope: "server", across every character of every player', defaultValue: NAMES },
     deleteConfirm:   { type: 'string', description: 'What the player types to delete a character: "name", its name, checked by the host', defaultValue: DELETE_CONFIRM },
-    migration:       { type: 'string', description: 'A pre-Phase-226 save: "firstCharacter", each player\'s one record becomes their first character, unchanged', defaultValue: MIGRATION },
+    migration:       { type: 'string', description: 'A pre-Phase-226 save: "firstCharacter", each player\'s one record becomes their first character, unchanged; its id is the old player id, which the player keeps too', defaultValue: MIGRATION },
     refusals:        { type: 'json', description: 'Locale keys the host refuses with: { limit, nameTaken, confirm, unknown, rateLimited }', defaultValue: REFUSALS },
   },
   behaviors: {
@@ -241,6 +274,7 @@ const CharacterRoster = defineEntity({
       description: 'Load a save written before Phase 226',
       rules: [
         'Each player record becomes that player\'s first character, every character field unchanged',
+        'The first character\'s id is the old player id and the player keeps that id, so held names, clan membership and structure and chest owners (worldKeys) keep resolving',
         'The player fields move to the player; the first character is the player\'s lastCharacter',
       ],
       auth: { roles: ['maintainer'] },
@@ -266,6 +300,6 @@ const Player = defineEntity({
 })
 
 module.exports = {
-  OWNERS, OWNERSHIP, CHARACTER_FIELDS, PLAYER_FIELDS, RECORD_KEYS, LIMIT, LIMIT_RANGE, ON_DELETE_CHOICES, ON_DELETE,
+  OWNERS, OWNERSHIP, CHARACTER_FIELDS, PLAYER_FIELDS, RECORD_KEYS, WORLD_KEYS, LIMIT, LIMIT_RANGE, ON_DELETE_CHOICES, ON_DELETE,
   REFUSALS, characterRosterData, characterRosterProblems, validateCharacterRoster, CharacterRoster, Player,
 }
