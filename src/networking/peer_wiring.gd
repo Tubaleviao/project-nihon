@@ -621,6 +621,11 @@ func _release_fold_hold() -> void:
 ## the host re-answers an already-bound peer (see
 ## PlayerRegistry.resolve_identity), so the retry re-delivers the snapshot.
 func tick_client_handshake(delta: float) -> void:
+	if root._networking.awaiting_character:
+		# Phase 226 — the player is choosing a character: no join intent is out, so nothing to time out.
+		root._snapshot_elapsed = 0.0
+		root._handshake_elapsed = 0.0
+		return
 	root._snapshot_elapsed += delta
 	root._handshake_elapsed += delta
 	# Phase 135 — a delayed, capped link (`--net-profile`) stretches the deadlines by its round trip.

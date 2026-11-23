@@ -39,19 +39,18 @@ work in order.
 
 | Priority | Phase | Title |
 |---|---|---|
-| 1 | 226 | Several characters per player |
-| 2 | 297 | Finding servers nearby: dual-stack IPv6, a status port and LAN discovery |
-| 3 | 298 | The server list: a registry and the Join screen's public list |
-| 4 | 257 | Split files named by what they do |
-| 5 | 245 | The planet bake: continents, rivers with flow, erosion and biomes at 2 km |
-| 6 | 232 | Water that holds up: lake shores, the river seam and mounts at fords |
-| 7 | 247 | Ground cover: grass and bushes by biome |
-| 8 | 235 | Roads |
-| 9 | 234 | Boats |
-| 10 | 258 | The public wiki and the community channels |
-| 11 | 299 | Many registries: signed entries, gossip and no single owner |
-| 12 | 236 | Changing hair style and colour (parked: picked up only when un-parked) |
-| 13 | 251 | A human playtest: what would make the game fun (a standing checkpoint, when the owner has time) |
+| 1 | 297 | Finding servers nearby: dual-stack IPv6, a status port and LAN discovery |
+| 2 | 298 | The server list: a registry and the Join screen's public list |
+| 3 | 257 | Split files named by what they do |
+| 4 | 245 | The planet bake: continents, rivers with flow, erosion and biomes at 2 km |
+| 5 | 232 | Water that holds up: lake shores, the river seam and mounts at fords |
+| 6 | 247 | Ground cover: grass and bushes by biome |
+| 7 | 235 | Roads |
+| 8 | 234 | Boats |
+| 9 | 258 | The public wiki and the community channels |
+| 10 | 299 | Many registries: signed entries, gossip and no single owner |
+| 11 | 236 | Changing hair style and colour (parked: picked up only when un-parked) |
+| 12 | 251 | A human playtest: what would make the game fun (a standing checkpoint, when the owner has time) |
 
 Why this order:
 
@@ -59,9 +58,9 @@ Why this order:
   296 the runtime. They change what equipment is, so everything that reads gear waits for them.
 - **229 done.** Skill tiers gated by gear, built on the equipment categories 295–296 introduced: the fabric
   PR (#737) and the runtime PR.
-- **226, 297, 298: playing with others.** The 2026-11-20 session was the first with a second player.
-  Several characters per player, then finding a server on the LAN and from a public list, make that the
-  normal way to play instead of typing an address.
+- **226 done.** Several characters per player: the fabric PR (#740) and the runtime PR.
+- **297, 298: playing with others.** The 2026-11-20 session was the first with a second player. Finding a
+  server on the LAN and from a public list makes that the normal way to play instead of typing an address.
 - **257 before the big world work.** A rename of the numbered `*_part_N.gd` files is cheap now and makes
   the terrain and net code easier to read for 245 onward.
 - **245 → 232 → 247 → 235 → 234: the world.** Phase 245 replaces Phase 217's river trace, so 232's
@@ -90,7 +89,7 @@ because the menus reuse the keyboard routing Phase 219 fixes.
 | 223 | A main menu: play a local world or join a server | Done ([phases-223.md](docs/roadmap-history/phases-223.md)) |
 | 224 | The Esc menu: resume, options, exit to main menu, quit | Done ([phases-224.md](docs/roadmap-history/phases-224.md)) |
 | 225 | The options window: sound, graphics and game settings | Done |
-| 226 | Several characters per player: a new one starts from scratch, chosen in the main menu | Open |
+| 226 | Several characters per player: a new one starts from scratch, chosen in the main menu | Done |
 
 ### Arc: one character across worlds (Phases 227–231)
 
@@ -415,6 +414,29 @@ research, clan membership and owned structures all key on the player id.
   confirmation typed as the character's name). The host sends the list; the client never decides
   which characters exist.
 - Existing saves migrate: each player's one character becomes their first character, unchanged.
+- **Done** (the runtime PR): the session's player id is the CHARACTER id, so every slice and world section keeps
+  keying on it unchanged; the account is who connects. `src/character/character_roster.gd` is the host's table
+  (account → characters oldest first, last character, last played), kept in the world record (`roster`, world
+  format 6) and resident in full; `src/persistence/registry_accounts.gd` (`PlayerRegistry.accounts`) resolves a
+  join: the claim is an account, the join intent's `character` picks one of its characters (another account's is
+  refused with `characters.refuse.unknown` and nothing is bound), else its last; an unknown or busy claim, or a
+  later character's id, mints a fresh account whose first character takes the same id. A pre-226 player record is
+  adopted on first use (`adopt_legacy`): its id becomes the account and its first character, so names, clans,
+  structures and chests resolve unchanged; the world record's `local_player_id` is the local account and
+  `local_character` the one it plays. `identity_assigned` carries the `account` the client caches. List actions
+  travel as `roster_intent` (`list`, `create`, `delete`; fields capped, 250 ms per connection) and come back as
+  `roster` (`GameBus.character_roster_intent` / `character_roster_synced`, `RosterWiring`); a new character has
+  no record until entered, when it is placed like any new player; over the limit is `characters.refuse.limit`;
+  names stay server-wide (`creation.refuse.name_taken`). Delete compares the typed name (the handle for one never
+  named) on the host, refuses one in the world (`characters.refuse.in_play`), drops it from its clan (a founder
+  hands the clan to the highest-ranked member, or disbands it alone), gives its private structures, chests and
+  doors to that clan or makes them ownerless (a clan lock of no clan: abandoned), frees its name and removes
+  its record. Admin follows the account. The menu: a menu join waits for the list before its join intent
+  (`NetworkingSlice.awaiting_character`), and a local world that already has a player loads, then waits for the
+  local player's choice before binding it (`RosterWiring.local_pending`); a fresh world enters as its first
+  character. `src/ui/character_list_panel.gd` lists name, body (body type and hair-colour swatch) and last played
+  with Play, Delete (typed confirmation) and New character. Suite `character_roster_tests.gd`; net harness step
+  `character_roster`.
 
 **Acceptance criteria**
 - `npm run validate` and `check-drift` pass with the character entity; a `tools/check_*.js` rejects

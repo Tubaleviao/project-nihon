@@ -990,3 +990,21 @@ ui.work.lockpick,picking locks,arrombar fechaduras
 ui.title_unlocked_toast,New title: {0}. Pick it in the Character window.,Novo título: {0}. Escolha-o na janela do Personagem.
 ui.title_none,(no title),(sem título)
 ui.title_tooltip,The title shown under your name,O título mostrado abaixo do seu nome
+characters.title,Your characters,Seus personagens
+characters.loading,Asking the server for your characters…,Pedindo seus personagens ao servidor…
+characters.none,No characters yet. Make one below.,Nenhum personagem ainda. Crie um abaixo.
+characters.new,New character,Novo personagem
+characters.play,Play,Jogar
+characters.delete,Delete,Excluir
+characters.unnamed,New character,Novo personagem
+characters.body_default,default body,corpo padrão
+characters.row,{0} · {1} · last played {2},{0} · {1} · jogado em {2}
+characters.row_never,{0} · {1} · never played,{0} · {1} · nunca jogado
+characters.delete_confirm,Type {0} to delete this character. Its things stay in the world; this cannot be undone.,Digite {0} para excluir este personagem. As coisas dele ficam no mundo; isso não pode ser desfeito.
+characters.delete_placeholder,Character name,Nome do personagem
+characters.delete_yes,Delete character,Excluir personagem
+characters.refuse.limit,You already have as many characters as this server allows.,Você já tem tantos personagens quanto este servidor permite.
+characters.refuse.confirm,The name you typed does not match the character.,O nome digitado não corresponde ao personagem.
+characters.refuse.unknown,That character is not one of yours on this server.,Esse personagem não é um dos seus neste servidor.
+characters.refuse.rate_limited,Too many tries. Wait a moment and try again.,Tentativas demais. Espere um pouco e tente de novo.
+characters.refuse.in_play,That character is in the world right now.,Esse personagem está no mundo agora.

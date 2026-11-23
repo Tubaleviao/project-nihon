@@ -344,6 +344,25 @@ func clan_disbanded(clan_id: String, heir: String) -> void:
 				l["mode"] = ChestRules.default_mode()
 			_dirty_ids[id] = true
 
+## Phase 226 — a deleted character's private chests and doors go with its structures: to clan `clan_id`, or
+## ownerless when it is "" (a clan lock of no clan: abandoned). Its picks, grants and open chest are dropped.
+func release_owner(player_id: String, clan_id: String) -> int:
+	if player_id == "":
+		return 0
+	var moved := 0
+	for id: String in _locks:
+		var l: Dictionary = _locks[id]
+		if str(l["kind"]) == "private" and str(l["owner"]) == player_id:
+			l["kind"] = "clan"
+			l["owner"] = clan_id
+			_dirty_ids[id] = true
+			moved += 1
+	for id: String in _grants:
+		(_grants[id] as Dictionary).erase(player_id)
+	_picks.erase(player_id)
+	_open.erase(player_id)
+	return moved
+
 ## Players whose view may have changed since the last call (their open chest changed, or they opened or
 ## closed one); clears the record.
 func take_dirty() -> Array:

@@ -87,8 +87,10 @@ const DEFAULT_SHUTDOWN_PATH   := "user://shutdown_requested"
 ## the record carries `structures` (the structure index; a record without it has none, so every block placed
 ## before it is unowned), and a saved settlement's hearth station is removed on load and owed back to its
 ## founder as a Hearth item. Phase 208 bumped it to 5: the record carries `chests` (chests and doors), and a
-## record without them has each migrated settlement's stockpile turned into a clan chest at its hearth.
-const WORLD_FORMAT_VERSION := 5
+## record without them has each migrated settlement's stockpile turned into a clan chest at its hearth. Phase 226
+## bumped it to 6: the record carries `roster` (each account's characters) and `local_character`, and a record
+## without them has every player id adopted as an account whose first character is itself.
+const WORLD_FORMAT_VERSION := 6
 ## Where the region files live, relative to `server_save_dir`.
 const REGIONS_SUBDIR := "regions/"
 ## The version a record written before Phase 41 has: identifiable by the absence
@@ -500,6 +502,15 @@ func load_player(player_id: String) -> Dictionary:
 	if not FileAccess.file_exists(path):
 		return {}
 	return _read_json(path)
+
+## Phase 226 — remove a deleted character's record from disk. A non-canonical id is refused, as for a save.
+func delete_player(player_id: String) -> Error:
+	if player_id.is_empty() or sanitize_player_id(player_id) != player_id:
+		return ERR_INVALID_PARAMETER
+	var path := player_path(player_id)
+	if not FileAccess.file_exists(path):
+		return OK
+	return DirAccess.remove_absolute(ProjectSettings.globalize_path(path))
 
 ## Every player id with a record on disk. Derived from the file names, so a
 ## record written by a previous process is found on the next boot.

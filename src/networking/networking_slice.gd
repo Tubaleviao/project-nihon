@@ -94,6 +94,7 @@ const EnetTransport := preload("res://src/networking/enet_transport.gd")
 ## listing long after their record was evicted).
 const PlayerRegistry := preload("res://src/persistence/player_registry.gd")
 const CreationRules := preload("res://src/character/creation_rules.gd")
+const RosterView := preload("res://src/character/roster_view.gd")   # Phase 226
 
 const DEFAULT_PORT    := 7777
 const DEFAULT_CHANNEL := 0
@@ -260,6 +261,11 @@ var _player_ids: Dictionary = {}
 ## Phase 33 — the id this client last received from a host, presented on join so
 ## a reconnect re-binds to the same record. Set by game_root before join().
 var claimed_player_id: String = ""
+## Phase 226 — client: a menu join waits for a character pick (no join intent yet); the pick ("" = the account's
+## last); the character the host bound this connection to.
+var awaiting_character: bool = false
+var chosen_character: String = ""
+var own_character_id: String = ""
 
 ## Timestamps (peer_id -> ms) set when a peer disconnects; used to evict
 ## entries from _last_known_states after LAST_KNOWN_STATE_TTL_MS.
@@ -331,6 +337,7 @@ func _ready() -> void:
 	GameBus.gesture_intent.connect(_on_gesture_intent); GameBus.held_item_intent.connect(_m2._on_held_item_intent)
 	# Phase 181 — a creation travels client → host as an intent; a look travels host → the peers in AOI.
 	GameBus.character_creation_intent.connect(_on_character_creation_intent)
+	GameBus.character_roster_synced.connect(_m3.on_character_roster_synced)   # Phase 226
 	GameBus.player_look_changed.connect(_on_player_look_changed)
 	GameBus.title_choose_intent.connect(_m1.on_title_choose_intent)   # Phase 273
 	GameBus.title_unlocked.connect(_m1.on_title_unlocked)
@@ -1455,7 +1462,10 @@ func _on_connected_to_server() -> void:
 func request_handshake() -> void:
 	if _role != Role.CLIENT:
 		return
-	_deliver(1, { "type": "join_intent", "claimed_id": claimed_player_id, "friend_code": friend_code })
+	if awaiting_character:   # Phase 226 — no join until the character list chose one: ask for the list
+		_m3.send_roster_intent("list")
+		return
+	_deliver(1, { "type": "join_intent", "claimed_id": claimed_player_id, "friend_code": friend_code, "character": chosen_character })
 
 ## Phase 53 — host side: tell the peer where it was placed when there is something to say (an
 ## unknown friend code fell back to the normal search). The message is a catalog key, short, and

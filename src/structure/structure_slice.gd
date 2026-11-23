@@ -544,6 +544,29 @@ func commit_mine(plan: Dictionary) -> void:
 			_notify(sid, "structure.destroyed" if not _structures.has(sid) else "structure.damaged",
 				0.0 if not _structures.has(sid) else NOTICE_GAP_SEC, s)
 
+## Phase 226 — a deleted character's private structures (`CharacterRoster.onDelete`): each becomes clan
+## `clan_id`'s, or ownerless when it is "" (a clan structure of no clan: abandoned, so it decays as an emptied
+## clan's does). Returns how many changed hands.
+func release_owner(player_id: String, clan_id: String) -> int:
+	if player_id == "":
+		return 0
+	var moved := 0
+	for sid: int in _structures:
+		var s: Dictionary = _structures[sid]
+		if str(s["kind"]) != "private" or str(s["owner"]) != player_id:
+			continue
+		s["kind"] = "clan"
+		s["owner"] = clan_id
+		if clan_id != "":
+			var points := 0
+			for tile: Variant in s["cells"]:
+				for mm: Variant in s["cells"][tile]:
+					points += _points_of(str(s["cells"][tile][mm][0]))
+			_add_points(s, points)
+		moved += 1
+	_build_mode.erase(player_id)
+	return moved
+
 ## The owner a new structure by `pid` gets: their build mode, falling back to private without a clan.
 func _desired_owner(pid: String) -> Dictionary:
 	if str(_build_mode.get(pid, "private")) == "clan" and _clan_of(pid) != "":

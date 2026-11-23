@@ -34,6 +34,8 @@ func set_player_id(peer_id: int, player_id: String) -> void:
 		sl._deliver(peer_id, {
 			"type": "identity_assigned",
 			"player_id": player_id,
+			# Phase 226 — the account the client caches and presents next time (the player id is its character).
+			"account": str(sl.player_registry.accounts.get_account(peer_id)) if sl.player_registry != null and "accounts" in sl.player_registry else player_id,
 			"handle": sl._public_handle(player_id),
 			# Phase 182 — whether this player may run admin commands, so its client shows the Admin
 			# window. A hint only: the host checks every command again.
@@ -388,7 +390,20 @@ func _route_c2h(sender: int, payload: Dictionary) -> void:
 			# Phase 53 — a first join may carry a friend's handle to spawn beside.
 			if sl.player_registry != null and sl.player_registry.has_method("note_friend_code"):
 				sl.player_registry.note_friend_code(sender, str(payload.get("friend_code", "")))
-			GameBus.player_join_intent.emit(sender, str(payload.get("claimed_id", "")))
+			# Phase 226 — the claim is the account; `character` names which of its characters to enter.
+			if sl.player_registry != null and "accounts" in sl.player_registry:
+				sl.player_registry.accounts.note_character_choice(sender, str(payload.get("character", "")).left(96))
+			GameBus.player_join_intent.emit(sender, str(payload.get("claimed_id", "")).left(96))
+		"roster_intent":
+			# Phase 226 — the character list: list, create or delete, before (or after) entering the world. Only
+			# the fields each op reads are passed on, capped; the roster wiring resolves the account and the rate.
+			var op := str(payload.get("op", ""))
+			if op in ["list", "create", "delete"]:
+				GameBus.character_roster_intent.emit(op, {
+					"claimed_id": str(payload.get("claimed_id", "")).left(96),
+					"id": str(payload.get("id", "")).left(96),
+					"confirm": str(payload.get("confirm", "")).left(64),
+				}, sender)
 		"player_moved":
 			# Phase 86 — a position that does not decode is refused, not read as the origin: the
 			# previous last-known state stands.

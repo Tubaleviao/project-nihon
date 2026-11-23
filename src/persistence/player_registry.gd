@@ -83,6 +83,7 @@ const RecordSanitize := preload("res://src/persistence/record_sanitize.gd")
 const AttributeRules := preload("res://src/character/attribute_rules.gd")
 const CreationRules := preload("res://src/character/creation_rules.gd")
 const SkillFocus := preload("res://src/character/skill_focus.gd")
+const RegistryAccounts := preload("res://src/persistence/registry_accounts.gd")
 
 ## Phase 39 — how long a host-simulated peer stays down before its health reads back
 ## full. The Phase 37 cooldown shape, applied to the one deadline a body carries.
@@ -100,6 +101,11 @@ var local_player_id: String = ""
 ## peer_id (transport) → player_id (identity). The only thing keyed on the
 ## connection, and it is thrown away on disconnect.
 var _peer_ids: Dictionary = {}
+## Phase 226 — the session's player id is the CHARACTER id; `accounts` holds who connects (RegistryAccounts),
+## `roster` which characters each account keeps, `local_account` the local player's account.
+var accounts := RegistryAccounts.new(self)
+var roster := RegistryAccounts.CharacterRoster.new()
+var local_account: String = ""
 
 ## player_id → record: { player_id, position, hp, appearance, technology, flags,
 ## companions, skills }.
@@ -306,20 +312,13 @@ func resolve_identity(peer_id: int, claimed_id: String = "") -> String:
 		# `ensure_player` is a no-op and the handshake snapshot is re-sent.
 		GameBus.player_joined.emit(peer_id, str(_peer_ids[peer_id]), false)
 		return str(_peer_ids[peer_id])
-	var player_id := ""
-	var reconnected := false
-	var claimable := claimed_id != "" and claimed_id != local_player_id
-	if claimable:
-		# Records are loaded LAZILY, not all at boot (see _ensure_record_loaded):
-		# the claim is where a returning player's record is brought into memory.
-		_ensure_record_loaded(claimed_id)
-	if claimable and has_player(claimed_id) and not is_online(claimed_id):
-		player_id = claimed_id
-		reconnected = true
-	else:
-		if claimed_id != "":
-			Diag.warn("PlayerRegistry: peer %d claimed unavailable id '%s' — minting a fresh identity" % [peer_id, claimed_id])
-		player_id = mint_player_id()
+	# Phase 226 — the claim is an ACCOUNT; which of its characters is entered is RegistryAccounts.resolve's call
+	# (records are loaded LAZILY there, on the claim; see _ensure_record_loaded). {} refuses: nothing is bound.
+	var bind := accounts.resolve(peer_id, claimed_id)
+	if bind.is_empty():
+		return ""
+	var player_id: String = bind["player_id"]
+	var reconnected: bool = bind["reconnected"]
 	_peer_ids[peer_id] = player_id
 	ensure_player(player_id)
 	if not reconnected:
@@ -356,6 +355,7 @@ func _ensure_record_loaded(player_id: String) -> void:
 ## the connection held ("" when the peer was never bound).
 func unbind_peer(peer_id: int) -> String:
 	_friend_codes.erase(peer_id)
+	accounts.forget_peer(peer_id)
 	if not _peer_ids.has(peer_id):
 		return ""
 	var player_id := str(_peer_ids[peer_id])

@@ -1023,3 +1023,77 @@ func remote_walk_smooth(h: Node) -> void:
 	var smooth: bool = float(rec["worst"]) <= WALK_MAX_STEP_M and int(rec["back"]) == 0
 	h._report(STEP, h.verdict(done and smooth, true), "walked_smooth" if done and smooth else (
 		"not_walked_%.1fm" % float(rec["far"]) if not done else "step_%.3fm_per_16ms_back_%d_in_%d_frames" % [float(rec["worst"]), int(rec["back"]), int(rec["frames"])]))
+
+## Phase 226 — several characters per player over the wire. The client leaves and comes back the way a menu join
+## does: it asks for its character list before entering (`awaiting_character`), finds its one character, makes
+## a second, enters with it (a fresh record on the host: empty pack, no skills, no clan), leaves, and enters with
+## the first again, which the host binds to the original id. Both sides report the same token.
+func character_roster(h: Node) -> void:
+	const TOKEN := "listed-created-entered-reentered"
+	if h._role == "host":
+		# The client runs this on its own timeline, so the host reads what the visit left behind rather than
+		# watching it: the account's second character was entered (stamped), saved fresh, and the first is back.
+		var reg = h._root._registry
+		# The client is whoever it last joined as (a step before this one rejoins as a fresh player), so the
+		# account is found by its shape: two characters, both entered, the newer one offline, the older online.
+		var pair := ["", ""]
+		var done: bool = await h._await_until(func():
+			for account: String in reg.roster.to_data():
+				var chars: Array = reg.roster.characters_of(account)
+				if chars.size() == 2 and reg.roster.played_at(chars[1]) > 0 and not reg.is_online(chars[1]) and reg.is_online(chars[0]):
+					pair[0] = chars[0]
+					pair[1] = chars[1]
+					return true
+			return false, h._step_timeout() * 3.0)
+		var fresh := false
+		if done:
+			var data: Dictionary = reg.get_player_data(pair[1]) if reg.has_player(pair[1]) else h._root._persistence.load_player(pair[1])
+			fresh = not data.is_empty() and (data.get("inventory", {}) as Dictionary).is_empty() \
+				and (data.get("skills", {}) as Dictionary).is_empty() and (h._root._clans == null or h._root._clans.clan_of(pair[1]) == "")
+		h._report("character_roster", h.verdict(done and fresh, true), TOKEN if done and fresh else "done%d-fresh%d" % [int(done), int(fresh)])
+		return
+	var net = h._root._networking
+	var first: String = str(net.own_character_id)
+	var lists: Array = []
+	var on_list := func(peer: int, roster: Dictionary) -> void:
+		if peer == 0:
+			lists.append(roster)
+	GameBus.character_roster_synced.connect(on_list)
+	# Leave, and come back asking for the list first.
+	net.disconnect_all()
+	await h._await_settle(h.RECONNECT_WAIT_SECS * h._time_scale)
+	net.awaiting_character = true
+	var listed := false
+	if net.join(h._root._host_address, net.DEFAULT_PORT) == OK:
+		listed = await h._await_until(func(): return not lists.is_empty(), h._step_timeout())
+	var one: bool = listed and (lists[-1]["characters"] as Array).size() == 1 and str(lists[-1]["characters"][0]["id"]) == first
+	await h._await_settle(0.5)
+	net._m3.send_roster_intent("create")
+	var made: bool = await h._await_until(func():
+		return not lists.is_empty() and str(lists[-1]["result"]["op"]) == "create", h._step_timeout())
+	var second: String = str(lists[-1]["result"]["id"]) if made and str(lists[-1]["result"]["reason"]) == "" else ""
+	# Enter with the new one.
+	h._root._snapshot_pending = true
+	h._root._handshake_elapsed = 0.0
+	h._root._handshake_retries = 0
+	net._m3.choose_character(second)
+	var in_second: bool = second != "" and await h._await_until(func():
+		return net.own_character_id == second and not h._root._snapshot_pending, h._step_timeout() * 2.0)
+	await h._await_settle(1.0 * h._time_scale)
+	# Leave again, and enter with the first.
+	net.disconnect_all()
+	await h._await_settle(h.RECONNECT_WAIT_SECS * h._time_scale)
+	net.chosen_character = first
+	net.awaiting_character = false
+	h._root._snapshot_pending = true
+	h._root._handshake_elapsed = 0.0
+	h._root._handshake_retries = 0
+	var in_first := false
+	if net.join(h._root._host_address, net.DEFAULT_PORT) == OK:
+		in_first = await h._await_until(func():
+			return net.own_character_id == first and not h._root._snapshot_pending, h._step_timeout() * 2.0)
+	GameBus.character_roster_synced.disconnect(on_list)
+	net.chosen_character = ""
+	var good: bool = one and second != "" and in_second and in_first
+	h._report("character_roster", h.verdict(good, true), TOKEN if good else "listed%d-one%d-made%d-second%d-first%d" % [
+		int(listed), int(one), int(second != ""), int(in_second), int(in_first)])

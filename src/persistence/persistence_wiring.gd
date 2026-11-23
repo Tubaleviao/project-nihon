@@ -119,7 +119,9 @@ func collect_save_job(incremental: bool) -> Dictionary:
 	var world := {
 		"version":         PersistenceSlice.WORLD_FORMAT_VERSION,
 		"timestamp":       Time.get_unix_time_from_system(),
-		"local_player_id": root._registry.local_player_id,
+		# Phase 226 — the local player's ACCOUNT (the first character's id, as before) and the character it plays.
+		"local_player_id": root._registry.local_account if root._registry.local_account != "" else root._registry.local_player_id,
+		"local_character": root._registry.local_player_id,
 		# Phase 41 — the world's seed rides the WORLD record, not a player record:
 		# two players in one world must regenerate the same ground, and a reload
 		# that picked a fresh seed would land every saved edit on a different hill.
@@ -151,6 +153,9 @@ func collect_save_job(incremental: bool) -> Dictionary:
 		"treeSpots":       root._tree.pending_spots_to_data() if root._tree != null else {},
 		# Phase 181 — every created name on the server, so uniqueness covers offline players.
 		"names":           root._registry.names_to_data(),
+		# Phase 226 — which characters each account keeps (world format 6). A record without it is from before
+		# characters: each player id is adopted as an account whose first character is itself, on first use.
+		"roster":          root._registry.roster.to_data(),
 	}
 	# NOTE: no `dirty_chunks` key. It used to ride the record, but nothing ever read
 	# it back — dirty tracking lives in memory (VoxelSlice) and is reset by the save
@@ -255,10 +260,37 @@ func _finish_save(result: int) -> void:
 ## playtest bot sets it: the spawn search is seeded by the player id, so a pin keeps every run on one ground.
 var fixed_local_id := ""
 
+## Phase 226 — the world record's `local_player_id` is the local ACCOUNT. A world from before characters has
+## that id as the account's first character (`adopt_legacy`), as a fresh world's does. Which character is bound
+## is the one the menu's character list chose (`chosen_character`), else the record's `local_character`, else
+## the account's last; `RosterWiring.local_pending` says the menu will choose one, and the bind waits for it.
+var chosen_character := ""
+
+func bind_local_account() -> void:
+	var account := str(root._loaded_world.get("local_player_id", ""))
+	if account.is_empty():
+		account = fixed_local_id if fixed_local_id != "" else root._registry.mint_player_id()
+	root._registry.local_account = account
+	if not root._registry.roster.has_account(account):
+		root._registry.roster.adopt_legacy(account)
+
+## The character the local player enters as (see bind_local_account): an id of the local account's.
+func local_character() -> String:
+	var account: String = root._registry.local_account
+	var roster = root._registry.roster
+	for want: String in [chosen_character, str(root._loaded_world.get("local_character", ""))]:
+		if want != "" and roster.account_of(want) == account:
+			return want
+	var last: String = roster.last_of(account)
+	if last == "":
+		# Every character was deleted: a fresh one.
+		last = root._registry.mint_player_id()
+		roster.add_character(account, last)
+	return last
+
 func _bind_local_identity() -> void:
-	var pid := str(root._loaded_world.get("local_player_id", ""))
-	if pid.is_empty():
-		pid = fixed_local_id if fixed_local_id != "" else root._registry.mint_player_id()
+	var pid := local_character()
+	root._registry.roster.note_played(pid, int(Time.get_unix_time_from_system()))
 	root._registry.set_local_player(pid, root._inventory)
 
 ## Rebuild the local avatar from the appearance recipe in the saved player
@@ -466,9 +498,15 @@ func load_world_records() -> void:
 	root._loaded_world = root._persistence.load_world_record()
 	forget_world_records()
 	note_worldgen_version()
-	_bind_local_identity()
-	# Lazy reader for every other player's record (see the docstring above).
+	# Lazy reader for every player's record (see the docstring above); set before the roster needs it.
 	root._registry.set_record_loader(root._persistence.load_player)
+	root._registry.roster.from_data(root._loaded_world.get("roster", {}), root._registry.looks_like_player_id)
+	bind_local_account()
+	# Phase 226 — a world opened from the menu that already has a player waits for its character list; a fresh
+	# world (no record yet) has nothing to choose from and enters as its first character.
+	root._roster_wiring.local_pending = root._roster_wiring.pick and not root._loaded_world.is_empty()
+	if not root._roster_wiring.local_pending:
+		_bind_local_identity()
 	root._registry.set_spawn_placer(root._peer_wiring.place_new_player)
 	root._registry.set_friend_locator(root._peer_wiring.locate_friend_on_disk)
 	root._registry.set_ground_dropper(_drop_at_feet)
@@ -531,6 +569,14 @@ func load_world_records() -> void:
 	# The local player's record: position, HP, inventory (with per-instance
 	# durability), and technology. It lands in the game's own slices because
 	# _bind_local_identity() ran first.
+	if not root._roster_wiring.local_pending:
+		_load_local_player_record()
+
+## Phase 226 — the menu's character list chose who the local player is: bind it and load its record, as the
+## world load would have (`load_world_records`), then the host boot goes on.
+func bind_chosen_local_character(character_id: String) -> void:
+	chosen_character = character_id
+	_bind_local_identity()
 	_load_local_player_record()
 
 func _load_local_player_record() -> void:

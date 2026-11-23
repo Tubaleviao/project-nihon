@@ -582,7 +582,10 @@ func _route_h2c(payload: Dictionary) -> void:
 			# public HANDLE, which is what this client is called by in everything
 			# that is broadcast (a handle is not a claim: it is one-way and no record
 			# is keyed by it, so caching it is safe where caching an id would not be).
-			sl.claimed_player_id = str(payload.get("player_id", ""))
+			# Phase 226 — what is cached is the ACCOUNT (the player id is the character it entered as).
+			var account := str(payload.get("account", ""))
+			sl.claimed_player_id = account if account != "" else str(payload.get("player_id", ""))
+			sl.own_character_id = str(payload.get("player_id", ""))
 			sl.claimed_handle = str(payload.get("handle", ""))
 			GameBus.player_identity_assigned.emit(sl.claimed_player_id)
 			var admin: Variant = payload.get("admin", false)
@@ -593,6 +596,9 @@ func _route_h2c(payload: Dictionary) -> void:
 			GameBus.spawn_notice.emit(sl.I18n.render(note))
 		"snapshot_chunk":
 			sl._accumulate_snapshot_chunk(payload)
+		"roster":
+			# Phase 226 — the host's character list for this account (`RosterRules.sanitize_view` caps it).
+			GameBus.character_roster_synced.emit(0, sl.RosterView.sanitize(payload.get("data", {})))
 		_:
 			# Legacy low-level packets fall through to packet_received.
 			GameBus.packet_received.emit(1, payload)
@@ -633,3 +639,22 @@ func relay_creature_state(instance_id: String, creature_id: String, state: Strin
 		"pk":          sl.WorldPos.pos_to_packet_text(position),
 	}
 	sl._broadcast_aoi(packet, sl.WorldPos.to_scene(position, Vector2i.ZERO))
+
+## Phase 226 — client: one action on this account's character list (`list`, `create`, or `delete` with the
+## character's id and the name as typed). The host answers with a `roster` message.
+func send_roster_intent(op: String, id: String = "", confirm: String = "") -> void:
+	if sl._role != sl.Role.CLIENT:
+		return
+	_deliver(1, { "type": "roster_intent", "op": op, "claimed_id": sl.claimed_player_id, "id": id, "confirm": confirm })
+
+## Phase 226 — client: the list chose a character; the join goes on with it.
+func choose_character(character_id: String) -> void:
+	sl.chosen_character = character_id
+	sl.awaiting_character = false
+	sl.request_handshake()
+
+## Phase 226 — host: a character list for a remote peer goes out on the wire (peer 0 is this machine's own).
+func on_character_roster_synced(peer_id: int, roster: Dictionary) -> void:
+	if sl._role != sl.Role.HOST or peer_id <= 0 or sl._is_local_peer(peer_id):
+		return
+	_deliver(peer_id, { "type": "roster", "data": roster })
