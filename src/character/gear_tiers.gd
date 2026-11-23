@@ -94,13 +94,26 @@ static func wielded(character_slice: Node) -> String:
 	return held if held != "" else str(character_slice.get_equipment_set(char_id).get("MainHand", ""))
 
 ## Everything this machine's player holds in its hands: the wielded item (as `wielded`) and the worn off hand.
-static func wielded_items(character_slice: Node) -> Array:
+## With `inv`, an item worn out in it counts as an empty hand ("") — the host judges abilities that way.
+static func wielded_items(character_slice: Node, inv: Object = null) -> Array:
 	var out: Array = [wielded(character_slice)]
 	if character_slice != null:
 		var char_id := str(character_slice.get_player_character())
 		if char_id != "":
 			out.append(str(character_slice.get_equipment_set(char_id).get("OffHand", "")))
+	if inv != null:
+		for i in out.size():
+			if not has_wear_left(inv, str(out[i])):
+				out[i] = ""
 	return out
+
+## Whether a gear signal for `player_id` is this machine's player's, by `local_player` (`Callable() -> String`).
+## An unset provider, an empty id or an unknown local id counts as local (a lone player, a test bar).
+static func is_local_change(player_id: String, local_player: Callable) -> bool:
+	if player_id == "" or player_id == "player" or not local_player.is_valid():
+		return true
+	var local := str(local_player.call())
+	return local == "" or local == player_id
 
 ## The best tier among `items` whose equipment category is `category` (the floor when none is).
 static func best_tier_of(category: String, items: Array) -> String:

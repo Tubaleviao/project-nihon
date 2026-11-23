@@ -80,6 +80,8 @@ var held_provider: Callable = Callable()
 var tier_provider: Callable = Callable()
 ## Phase 229 — `Callable() -> String`: the item the local player wields (held, else worn main hand; "" bare).
 var weapon_provider: Callable = Callable()
+## `Callable() -> String`: this machine's player id; gear changes of other players are ignored when set.
+var local_player_provider: Callable = Callable()
 
 ## Items the player took off the bar by hand: auto-fill leaves them out until they are used up.
 var _declined: Dictionary = {}
@@ -562,7 +564,9 @@ func _key_text(index: int) -> String:
 	return OS.get_keycode_string(k) if k != 0 else ""
 
 ## The held item or the worn set changed: redraw the skill boxes (they dim by the wielded weapon).
-func _on_gear_changed(_player_id: String, _what: Variant) -> void:
+func _on_gear_changed(player_id: String, _what: Variant) -> void:
+	if not GearTiers.is_local_change(player_id, local_player_provider):
+		return
 	if not _buttons.is_empty():
 		_render()
 

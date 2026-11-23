@@ -24,6 +24,9 @@ func register() -> void:
 	_run_test("gear tiers: a craft intent cannot claim a station tier; the host judges the station it finds", _test_craft_intent_station_from_record)
 	_run_test("gear tiers: hotbar, skill page and crafting window mark what the gear cannot reach, with the tier", _test_projections)
 	_run_test("gear tiers: refusal and tier labels are keys in en and pt_BR", _test_keys_in_both_locales)
+	_run_test("gear tiers: the client's wielded items drop a worn-out weapon, as the host does", _test_wielded_wear)
+	_run_test("gear tiers: hotbar and skill page redraw only on the local player's gear change", _test_gear_change_local_only)
+	_run_test("gear tiers: a reason code travels as a key with refs that render as reason_text", _test_reason_msg)
 
 func _test_table_loads() -> void:
 	var t := GearTiers.table()
@@ -98,12 +101,12 @@ func _test_sword_tiers() -> void:
 
 func _test_craft_tiers() -> void:
 	var rig := _craft_rig()
-	var craft: CraftingSlice = rig["craft"]
+	var craft: StubCrafting = rig["craft"]
 	var inv: InventorySlice = rig["inv"]
 	var station: StationSlice = rig["station"]
 	craft.set_skill("Smithing", "master")
-	craft.recipe_overrides["TestMasterRecipe"] = _master_recipe("master forge")
-	craft.recipe_overrides["TestMasterAtForge"] = _master_recipe("forge")
+	craft.extra_recipes["TestMasterRecipe"] = _master_recipe("master forge")
+	craft.extra_recipes["TestMasterAtForge"] = _master_recipe("forge")
 	inv.add_item("FerriteIngot", 4)
 	inv.add_item("StoneHammer", 1)
 	var master_forge := station.place_station("master forge", Vector3.ZERO)
@@ -162,6 +165,11 @@ func _test_host_refuses_peer_ability() -> void:
 		assert_eq(msgs[0][2], "p5", "to the peer that sent it, not the payload's name")
 		assert_eq(I18n.render(I18n.msg(msgs[0][0], msgs[0][1])), I18n.t("combat.refuse.weapon_tier", [I18n.t("ui.tier_expert")]), "naming the tier in the reader's locale")
 	r["reg"].record_equipment("p5", { "MainHand": "VeilsteelLongsword" })
+	w._last_ability_ms["p5"] = Time.get_ticks_msec()   # pinned: the next intent lands inside the gap however slow the run
+	n._route_c2h(5, { "type": "ability_intent", "ability": "executeWhirlwindBlade", "instance_id": iid })
+	assert_true(rounds.is_empty(), "an intent right after the last is dropped: a flooding peer is rate limited")
+	assert_eq(msgs.size(), 1, "and gets no reply for it")
+	w._last_ability_ms["p5"] = Time.get_ticks_msec() - CombatWiring.ATTACK_MIN_INTERVAL_MS
 	n._route_c2h(5, { "type": "ability_intent", "ability": "executeWhirlwindBlade", "instance_id": iid })
 	assert_eq(rounds, [["p5", iid]], "the same ability with a master sword is a round for the peer")
 	GameBus.ability_intent.disconnect(w.on_ability_intent)
@@ -171,14 +179,14 @@ func _test_host_refuses_peer_ability() -> void:
 
 func _test_craft_intent_station_from_record() -> void:
 	var rig := _craft_rig()
-	var craft: CraftingSlice = rig["craft"]
+	var craft: StubCrafting = rig["craft"]
 	var inv: InventorySlice = rig["inv"]
 	var station: StationSlice = rig["station"]
 	# A remote crafter: with no registry wired its skills are the floor, so this recipe carries no skill guard
 	# (the gear gate is what is under test).
 	var rec := _master_recipe("forge")
 	rec["skillGuards"] = []
-	craft.recipe_overrides["TestMasterAtForge"] = rec
+	craft.extra_recipes["TestMasterAtForge"] = rec
 	inv.add_item("FerriteIngot", 4)
 	inv.add_item("VeilsteelHammer", 1)
 	station.place_station("forge", Vector3.ZERO)
@@ -285,7 +293,71 @@ func _test_keys_in_both_locales() -> void:
 			"combat.refuse.skill_tier:Swordsmanship:apprentice", "unknown_ability"]:
 		assert_false(I18n.reason_text(code).contains(code), "%s renders as text, not the code" % code)
 
+func _test_wielded_wear() -> void:
+	var ch := FakeCharacter.new()
+	ch.equipment = { "MainHand": "VeilsteelLongsword", "OffHand": "FerriteShield" }
+	assert_eq(GearTiers.wielded_items(ch), ["VeilsteelLongsword", "FerriteShield"], "with no pack, the worn set as recorded")
+	var inv := InventorySlice.new()
+	add_child(inv)
+	inv.add_item("VeilsteelLongsword", 1, [0.0])
+	inv.add_item("FerriteShield", 1)
+	assert_eq(GearTiers.wielded_items(ch, inv), ["", "FerriteShield"], "a worn-out sword is an empty hand")
+	ch.held = "VeilsteelLongsword"
+	assert_eq(GearTiers.wielded_items(ch, inv)[0], "", "held or worn, a worn-out sword is an empty hand")
+	inv.add_item("VeilsteelLongsword", 1)
+	assert_eq(GearTiers.wielded_items(ch, inv)[0], "VeilsteelLongsword", "one sword with wear left serves")
+	inv.free()
+	ch.free()
+
+func _test_gear_change_local_only() -> void:
+	var local_fn := func() -> String: return "host"
+	assert_true(GearTiers.is_local_change("host", local_fn), "the local player's change")
+	assert_false(GearTiers.is_local_change("p9", local_fn), "another player's change")
+	assert_true(GearTiers.is_local_change("p9", Callable()), "with no provider every change counts")
+	var bar := Hotbar.new()
+	var wield := { "item": "StoneKnife" }
+	bar.tier_provider = func() -> Dictionary: return { "Swordsmanship": "master" }
+	bar.weapon_provider = func() -> String: return str(wield["item"])
+	bar.local_player_provider = local_fn
+	bar.build()
+	bar.slots[0] = "skill:Swordsmanship"
+	bar._render()
+	var box: Button = bar._buttons[0]
+	assert_eq(box.modulate, Hotbar.DIMMED, "a novice sword dims the box")
+	wield["item"] = "VeilsteelLongsword"
+	GameBus.held_item_synced.emit("p9", "VeilsteelLongsword")
+	GameBus.equipment_changed.emit("p9", { "MainHand": "VeilsteelLongsword" })
+	assert_eq(box.modulate, Hotbar.DIMMED, "another player's gear change does not redraw the bar")
+	GameBus.held_item_synced.emit("host", "VeilsteelLongsword")
+	assert_eq(box.modulate, Color.WHITE, "the local player's does")
+	bar.free()
+
+func _test_reason_msg() -> void:
+	for code in ["craft.refuse.tool_tier:hammer:master", "craft.refuse.station_tier:forge:master", "combat.refuse.weapon_tier:expert",
+			"combat.refuse.skill_tier:Swordsmanship:apprentice", "unknown_ability", "station_required:forge"]:
+		var m := I18n.reason_msg(code)
+		assert_eq(I18n.render(m), I18n.reason_text(code), "%s: the wire form renders as reason_text" % code)
+	assert_eq(str(I18n.reason_msg("unknown_ability")["key"]), "reason.unknown_ability", "a plain head is a reason.<code> key")
+	assert_eq(str(I18n.reason_msg("combat.refuse.weapon_tier:expert")["key"]), "combat.refuse.weapon_tier", "a dotted head is its own key")
+	for code in ["craft.refuse.tool_tier:hammer:master", "combat.refuse.weapon_tier:expert"]:
+		assert_false(I18n.reason_text(code).contains("a " + I18n.t("ui.tier_expert")) or I18n.reason_text(code).contains("a " + I18n.t("ui.tier_master")),
+			"%s puts no article before the tier" % code)
+
 # ── rigs ─────────────────────────────────────────────────────────────────
+
+## The few CharacterSlice reads `GearTiers.wielded_items` makes, for one local character.
+class FakeCharacter extends Node:
+	var held := ""
+	var equipment: Dictionary = {}
+
+	func get_player_character() -> String:
+		return "c1"
+
+	func held_item_of(_char_id: String) -> String:
+		return held
+
+	func get_equipment_set(_char_id: String) -> Dictionary:
+		return equipment
 
 func _master_recipe(station: String) -> Dictionary:
 	return { "domain": "smithing", "station": station, "requiredTier": "master",
@@ -298,12 +370,22 @@ func _row(rows: Array, id: String) -> Dictionary:
 			return r
 	return {}
 
+## A crafting slice that also knows the suite's own recipes: the fabric has no recipe above its station's
+## tier, so the station-tier gate is proven with recipes named here, read before GameData.RECIPES.
+class StubCrafting extends CraftingSlice:
+	var extra_recipes: Dictionary = {}
+
+	func get_recipe(recipe_id: String) -> Dictionary:
+		if extra_recipes.has(recipe_id):
+			return extra_recipes[recipe_id]
+		return super.get_recipe(recipe_id)
+
 func _craft_rig() -> Dictionary:
 	var inv := InventorySlice.new()
 	add_child(inv)
 	inv._max_slots = 1000
 	inv._max_weight = 1000000.0
-	var craft := CraftingSlice.new()
+	var craft := StubCrafting.new()
 	add_child(craft)
 	var station := StationSlice.new()
 	add_child(station)

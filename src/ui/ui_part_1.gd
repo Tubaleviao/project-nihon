@@ -55,7 +55,8 @@ func _build_hud() -> void:
 		return sl.inventory_slice.get_contents() if sl.inventory_slice != null else {}
 	sl.hotbar.tier_provider = func() -> Dictionary:
 		return sl.crafting_slice.get_skills() if sl.crafting_slice != null else {}
-	sl.hotbar.weapon_provider = func() -> Array: return GearTiers.wielded_items(sl.character_slice)
+	sl.hotbar.weapon_provider = func() -> Array: return GearTiers.wielded_items(sl.character_slice, sl.inventory_slice)
+	sl.hotbar.local_player_provider = local_player_id
 	sl.hotbar.build()
 	sl.hotbar.slot_selected.connect(sl._on_hotbar_selected)
 	sl.hotbar.drag_began.connect(sl._on_drag_began)
@@ -587,3 +588,15 @@ func on_title_picked(index: int) -> void:
 	if index < 0 or index > _sheet_title_ids.size():
 		return
 	GameBus.title_choose_intent.emit("" if index == 0 else str(_sheet_title_ids[index - 1]), "")
+
+## This machine's player id ("" when no technology slice knows it), for widgets that filter per-player signals.
+func local_player_id() -> String:
+	if sl.technology_slice != null and sl.technology_slice.has_method("local_player_id"):
+		return str(sl.technology_slice.local_player_id())
+	return ""
+
+## Phase 229 — the skill page's gear providers: the local player's wielded items (worn-out ones as empty hands)
+## and its id, so another player's gear change does not rebuild the page.
+func wire_skill_page(page: Node) -> void:
+	page.weapon_provider = func() -> Array: return GearTiers.wielded_items(sl.character_slice, sl.inventory_slice)
+	page.local_player_provider = local_player_id
