@@ -231,6 +231,15 @@ func mark_tamed(instance_id: String, player_id: String) -> bool:
 func is_tamed(instance_id: String) -> bool:
 	return get_tamed_by(instance_id) != ""
 
+## Phase 226 — a deleted character's companions go wild. Returns how many.
+func release_tamed_by(player_id: String) -> int:
+	var n := 0
+	for iid in _instances:
+		if player_id != "" and str(_instances[iid].get("tamed_by", "")) == player_id:
+			_instances[iid]["tamed_by"] = ""
+			n += 1
+	return n
+
 ## The owner of a tamed instance, or "" when it is wild (or unknown).
 func get_tamed_by(instance_id: String) -> String:
 	if not _instances.has(instance_id):

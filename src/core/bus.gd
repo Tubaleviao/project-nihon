@@ -1061,6 +1061,22 @@ signal character_creation_resolved(player_id: String, action: String, reason: St
 ## the relay pair expired). The subject's look has just been sent; per-pair state such as the hand item follows.
 signal aoi_pair_entered(viewer: int, subject: int)
 
+## Phase 226 — one character-list action from a player (the account), before it enters the world: `op` is
+## "list", "create" (a fresh character, filled in on the creation screen once entered) or "delete" (with
+## `args` = { id, confirm }: the character and its name as typed). `peer_id` is 0 for this machine's own player
+## (a listen host or offline game); a client's intent is forwarded and re-emitted by the host under the
+## connection it arrived on, with `args.claimed_id` the account the connection presented.
+signal character_roster_intent(op: String, args: Dictionary, peer_id: int)
+
+## Phase 226 — the host's answer to a character-list action: `roster` = { account, characters: [{ id, name,
+## look, last_played, created }], last, limit, result: { op, reason, id } }. `peer_id` 0 is this machine's own
+## list (a host's local player, or a client's list as the host sent it); a host sends any other peer's on the wire.
+signal character_roster_synced(peer_id: int, roster: Dictionary)
+
+## Phase 226 — this machine's player chose a character on the list (a new one is chosen by the id the host's
+## "create" answer carried). The boot (local host) or the join (client) goes on with it.
+signal character_chosen(character_id: String)
+
 ## Host: a player's name or creation look changed. Networking scopes it to the peers whose AOI holds the player.
 signal player_look_changed(player_id: String, look: Dictionary)
 

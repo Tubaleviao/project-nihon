@@ -95,6 +95,10 @@ func _menu_join(addr: String) -> void:
 		if not _menu_join_done:
 			print("[Menu] menu join timed out")
 			tree.quit(1))
+	# Phase 226 — the headless menu join enters as the account's last character (a first join: a new one).
+	GameBus.character_roster_synced.connect(func(peer_id: int, roster: Dictionary) -> void:
+		if peer_id == 0:
+			GameBus.character_chosen.emit(str(roster.get("last", ""))), CONNECT_ONE_SHOT)
 	GameBus.world_snapshot_received.connect(func(_d: Dictionary) -> void:
 		if _menu_join_done:
 			return
@@ -132,6 +136,7 @@ func start(choice: Dictionary) -> void:
 	if menu == null or not apply_choice(choice):
 		return
 	from_menu = true
+	root._roster_wiring.pick = true   # Phase 226 — the character list comes before the world
 	root.remove_child(menu)
 	menu.queue_free()
 	menu = null

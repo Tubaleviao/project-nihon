@@ -67,7 +67,7 @@ const WritingWiring := preload("res://src/technology/writing_wiring.gd")
 const CraftingWiring := preload("res://src/crafting/crafting_wiring.gd")
 const CharacterWiring := preload("res://src/character/character_wiring.gd")
 const GestureWiring   := preload("res://src/character/gesture_wiring.gd"); const HeldItemWiring := preload("res://src/character/held_item_wiring.gd")
-const CreationWiring  := preload("res://src/character/creation_wiring.gd"); const TitleWiring := preload("res://src/character/title_wiring.gd")
+const CreationWiring  := preload("res://src/character/creation_wiring.gd"); const TitleWiring := preload("res://src/character/title_wiring.gd"); const RosterWiring := preload("res://src/character/roster_wiring.gd")
 const GestureSlice    := preload("res://src/character/gesture_slice.gd")
 const PeerWiring := preload("res://src/networking/peer_wiring.gd")
 const SnapshotWiring := preload("res://src/persistence/snapshot_wiring.gd")
@@ -94,7 +94,7 @@ var _writing_wiring := WritingWiring.new()
 var _crafting_wiring := CraftingWiring.new()
 var _character_wiring := CharacterWiring.new()
 var _gesture_wiring := GestureWiring.new(); var _held_item_wiring := HeldItemWiring.new()   # Phase 280 held item
-var _creation_wiring := CreationWiring.new(); var _title_wiring := TitleWiring.new()
+var _creation_wiring := CreationWiring.new(); var _title_wiring := TitleWiring.new(); var _roster_wiring := RosterWiring.new()   # Phase 226
 var _carcass_wiring := CarcassWiring.new(); var _loot_wiring := LootWiring.new()
 var _mount_wiring := MountWiring.new()
 var _peer_wiring := PeerWiring.new()
@@ -269,7 +269,7 @@ var _handshake_retries: int = 0
 
 ## Phase 132 — wiring modules know their root from construction (the suite builds roots without `_ready`).
 func _init() -> void:
-	_wirings = [_boot_wiring, _combat_wiring, _weather_wiring, _waystone_wiring, _bed_wiring, _work_wiring, _work_anim_wiring, _tutorial_wiring, _settlement_wiring, _clan_wiring, _structure_wiring, _chest_wiring, _station_wiring, _writing_wiring, _crafting_wiring, _character_wiring, _gesture_wiring, _held_item_wiring, _creation_wiring, _title_wiring, _carcass_wiring, _loot_wiring, _mount_wiring, _peer_wiring, _snapshot_wiring, _persistence_wiring, _admin_wiring, _menu_wiring, _audio_wiring]
+	_wirings = [_boot_wiring, _combat_wiring, _weather_wiring, _waystone_wiring, _bed_wiring, _work_wiring, _work_anim_wiring, _tutorial_wiring, _settlement_wiring, _clan_wiring, _structure_wiring, _chest_wiring, _station_wiring, _writing_wiring, _crafting_wiring, _character_wiring, _gesture_wiring, _held_item_wiring, _creation_wiring, _title_wiring, _roster_wiring, _carcass_wiring, _loot_wiring, _mount_wiring, _peer_wiring, _snapshot_wiring, _persistence_wiring, _admin_wiring, _menu_wiring, _audio_wiring]
 	for w in _wirings:
 		w.root = self
 
@@ -729,10 +729,7 @@ func _boot_world() -> void:
 ## slot 0 written and reloaded) — so what the two boots share is the same
 ## authoritative calls, not the same world state.
 ##
-## Lighting, the minimap and the UI are built in `_ready()` behind a
-## `not _is_server` guard, so they are host-only and need no second path here.
-## `render_visuals` on the creature/player/tree slices is likewise
-## decided in `_ready()` — a host calling `_boot_server()` still renders.
+## Lighting, the minimap, the UI and `render_visuals` are set up in `_ready()` behind `not _is_server`, so host-only.
 ##
 ## Phase 42 — the tail is no longer run in this frame. The terrain build is on a
 ## worker now, so the first ring is NOT ready when `_boot_server()` returns and the
@@ -742,7 +739,10 @@ func _boot_world() -> void:
 ## first exists. A ring that is somehow already built completes immediately.
 func _boot_host() -> void:
 	_boot_server()
+	if not _roster_wiring.open_local():   # Phase 226 — or once the menu's character list chose who plays
+		_boot_host_as_character()
 
+func _boot_host_as_character() -> void:
 	_loading_screen.begin()
 	# Phase 42 review pass 11 — `_boot_server` armed the ring around the PRE-SPAWN body,
 	# which is the origin chunk. A host who logged off elsewhere is moved there by
@@ -999,12 +999,12 @@ func _finish_host_boot() -> void:
 ## Client boot path (Phase 18): do NOT run the authoritative simulation. Join
 ## the host and wait for the world snapshot before showing anything.
 ##
-## Phase 33 — the client presents the id it cached from a previous session, so
-## the host can re-bind it to the same record. The record itself never leaves the
-## host; the client only ever holds the id.
+## Phase 33 — the client presents the id it cached (its account since Phase 226), so the host re-binds it to the
+## same record; the record never leaves the host.
 func _boot_client() -> void:
 	_networking.claimed_player_id = _persistence.load_client_identity()
 	_networking.friend_code = _friend_code_arg
+	_roster_wiring.open_client()   # Phase 226 — a menu join picks a character before it enters
 	var err: Error = _networking.join(_host_address, _networking.DEFAULT_PORT)
 	if err != OK:
 		Diag.error("[Networking] client failed to connect to %s — %s" % [_host_address, error_string(err)])

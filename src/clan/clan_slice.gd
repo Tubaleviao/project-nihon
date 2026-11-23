@@ -483,6 +483,34 @@ func leave(player_id: String) -> String:
 	_remove_member(id, pid)
 	return ""
 
+## Phase 226 — a deleted character leaves its clan and every invite. A founder hands the clan to its
+## highest-ranked member (the lowest id among equals); a founder alone disbands it with no heir, so its clan
+## chests and structures stay the clan's, which has no members: abandoned, as an emptied clan's are.
+func drop_character(player_id: String) -> void:
+	if player_id == "":
+		return
+	_drop_invites_of(player_id)
+	var id := clan_of(player_id)
+	if id == "":
+		return
+	var c: Dictionary = _clans[id]
+	_remove_member(id, player_id)
+	if player_id != str(c["founder"]):
+		return
+	var members: Dictionary = c["members"]
+	if members.is_empty():
+		_disband(id)
+		return
+	var ids: Array = members.keys()
+	ids.sort()
+	var heir: String = str(ids[0])
+	for m: String in ids:
+		if _rank(str(members[m])) < _rank(str(members[heir])):
+			heir = m
+	c["founder"] = heir
+	members[heir] = founder_role()
+	_changed(id)
+
 func _remove_member(id: String, pid: String) -> void:
 	(_clans[id]["members"] as Dictionary).erase(pid)
 	_member_of.erase(pid)

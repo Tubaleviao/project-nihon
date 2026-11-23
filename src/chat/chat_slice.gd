@@ -206,6 +206,9 @@ func is_admin(player_id: String) -> bool:
 		return false
 	if player_registry != null and player_id == player_registry.local_player_id and not _is_client():
 		return true
+	# Phase 226 — admin is the player's (the account), not one character's: admins.json lists account ids.
+	if player_registry != null and "accounts" in player_registry and _admins.has(str(player_registry.accounts.account_of(player_id))):
+		return true
 	return _admins.has(player_id)
 
 ## Host: act on one speaker's line. `player_id` "" is the local player.
