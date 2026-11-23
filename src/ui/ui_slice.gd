@@ -82,7 +82,7 @@ const LAYOUT_PATH := "user://ui_layout.json"
 const UiIcons := preload("res://src/ui/ui_icons.gd")
 const SkillWheelLayout := preload("res://src/ui/skill_wheel_layout.gd")
 const SkillWheelView := preload("res://src/ui/skill_wheel_view.gd")
-const SkillsWindow := preload("res://src/ui/skills_window.gd"); const PartyLabel := preload("res://src/ui/party_label.gd")
+const SkillsWindow := preload("res://src/ui/skills_window.gd"); const GearTiers := preload("res://src/character/gear_tiers.gd"); const PartyLabel := preload("res://src/ui/party_label.gd")
 const SkillPagePanel := preload("res://src/ui/skill_page_panel.gd")
 const SkillFocus := preload("res://src/character/skill_focus.gd")
 const ICON_KEY_FORMAT := "icons/items/%s.png.raw"
@@ -1431,7 +1431,7 @@ func _build_skills_content() -> Control:
 	var fit := Button.new()
 	_set_tr(fit, "text", "ui.skills_fit")
 	_skills_window = SkillsWindow.new()
-	_skills_window.build(title, fit)
+	_skills_window.build(title, fit); _skills_window.page.weapon_provider = func() -> Array: return GearTiers.wielded_items(character_slice)
 	_skill_wheel = _skills_window.wheel
 	return _skills_window
 

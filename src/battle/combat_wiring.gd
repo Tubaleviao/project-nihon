@@ -15,6 +15,8 @@ const RigTree          := preload("res://src/character/rig_tree.gd")
 const PendingHit       := preload("res://src/battle/pending_hit.gd")
 const HitFeel          := preload("res://src/battle/hit_feel.gd")
 const ComboChain       := preload("res://src/battle/combo_chain.gd")
+const GearTiers        := preload("res://src/character/gear_tiers.gd")
+const I18n             := preload("res://src/core/i18n.gd")
 
 func tick(_delta: float) -> void:
 	if root._battle != null:
@@ -38,6 +40,8 @@ func _connect_all() -> void:
 	connect_bus(GameBus.player_died, _on_player_died)
 	connect_bus(GameBus.player_respawned, _on_player_respawned)
 	connect_bus(GameBus.attack_intent, on_attack_intent)
+	connect_bus(GameBus.ability_intent, on_ability_intent)   # Phase 229
+	connect_bus(GameBus.skill_slot_triggered, on_skill_slot_triggered)
 	connect_bus(GameBus.creature_died, on_creature_died)
 	connect_bus(GameBus.gesture_intent, _on_gesture_intent)
 	connect_bus(GameBus.creature_respawned, _on_creature_gone_pending)
@@ -86,6 +90,93 @@ func on_attack_intent(instance_id: String, player_id: String) -> bool:
 	_last_swing_ms[player_id] = now
 	GameBus.combat_round_requested.emit(player_id, instance_id)
 	return true
+
+## Phase 229 — host: a combat ability (`ability_intent`; player_id "" or the local id is this machine's own
+## player, anything else a peer bound by NetworkingSlice). The host decides from its own records: the user's
+## skill tier for the ability's skill and the tier of the weapon it wields (`_registry_main_hand`: the held
+## hotbar item, else the worn main hand; bare hands and another skill's weapon are novice). A refused ability
+## requests no round, so no damage is dealt, and the user is told why in their own locale. An accepted one is a
+## swing at the target through the same checks as a plain attack (a peer's through `on_attack_intent`).
+## Returns the `ability_resolved` result (empty on a client, which forwards the intent instead).
+func on_ability_intent(ability: String, instance_id: String, player_id: String) -> Dictionary:
+	if root._is_client:
+		return {}
+	var local := player_id == "" or player_id == "player" or player_id == root._registry.local_player_id
+	var pid: String = root._registry.local_player_id if local else player_id
+	var spec := GearTiers.ability_spec(ability)
+	var reason := "unknown_ability"
+	if not spec.is_empty():
+		reason = GearTiers.check_ability(ability, _skill_tier_of(pid, str(spec["skill"])), _wielded_weapon(pid, local))
+	if reason == "":
+		var ok := _local_ability_round(instance_id) if local else on_attack_intent(instance_id, pid)
+		if not ok:
+			reason = "rejected"
+	var result := { "ability": ability, "instance_id": instance_id, "success": reason == "", "reason": reason,
+		"player_id": pid }
+	GameBus.ability_resolved.emit(result)
+	if reason != "" and reason != "rejected" and pid != "":
+		var m := refusal_message(reason)
+		GameBus.system_message.emit(str(m["key"]), m["args"], pid)
+	return result
+
+## A gear-tier refusal code as a `{key, args}` message: content and tiers travel as `I18n.ref`s, so each client
+## names them in its own locale.
+static func refusal_message(reason: String) -> Dictionary:
+	var parts := reason.split(":")
+	var key: String = parts[0] if parts[0].contains(".") else "reason." + parts[0]
+	var kinds: Array = I18n.REASON_PARAM_KINDS.get(parts[0], [])
+	var args: Array = []
+	for i in range(1, parts.size()):
+		var kind: String = str(kinds[i - 1]) if i - 1 < kinds.size() else ""
+		args.append(I18n.ref(kind, parts[i]) if kind != "" else parts[i])
+	return I18n.msg(key, args)
+
+## The weapon a player's ability is judged with, from the host's records: the held item, else the worn main hand
+## (`_registry_main_hand`); a worn-out one counts as bare hands, as a worn-out tool does for crafting.
+func _wielded_weapon(pid: String, local: bool) -> Array:
+	var inv: Object = root._inventory if local else root._registry.get_inventory(pid)
+	var out: Array = []
+	# The held/main-hand weapon, and the worn off hand (a shield) — each only while it has wear left.
+	for item: String in [_registry_main_hand(pid), str(root._registry.get_equipment(pid).get("OffHand", ""))]:
+		out.append(item if GearTiers.has_wear_left(inv, item) else "")
+	return out
+
+## The tier a player holds in a skill, as crafting and the hotbar read it.
+func _skill_tier_of(pid: String, skill: String) -> String:
+	if root._crafting != null:
+		return str(root._crafting.get_skill_for(pid, skill))
+	var t: String = root._registry.get_skill_tier(pid, skill)
+	return t if t != "" else "novice"
+
+## Host: the local player's ability round at `instance_id`: alive, free to act, target a living untamed creature
+## within reach. Returns whether the round was requested.
+func _local_ability_round(instance_id: String) -> bool:
+	if root._player == null or root._creature == null or not root._player.is_alive() or root._player.carrying:
+		return false
+	if root._player.is_immobilized():
+		return false
+	var state := root._creature.get_instance_state(instance_id)
+	if state == "" or state == "dead" or root._creature.is_tamed(instance_id):
+		return false
+	var gap: float = WorldPos.offset_between(root._player.get_world_pos(), root._creature.get_instance_pos(instance_id)).length()
+	if gap > PlayerSlice.ATTACK_RANGE:
+		return false
+	GameBus.combat_round_requested.emit("player", instance_id)
+	return true
+
+## Phase 229 — a hotbar skill box (this machine's player): a combat skill fires its highest ability the skill
+## tier and the wielded weapon both reach (else the highest the skill reaches, else its first, so the host says
+## which tier is missing) at the nearest creature in reach. The host decides; a client's intent is forwarded by
+## NetworkingSlice.
+func on_skill_slot_triggered(_slot: int, skill: String) -> void:
+	if not GearTiers.is_combat_skill(skill) or root._player == null or root._creature == null:
+		return
+	var ability := GearTiers.best_usable(skill, _skill_tier_of("", skill), GearTiers.wielded_items(root._character))
+	if ability == "":
+		ability = str((GearTiers.abilities_of(skill)[0] as Dictionary)["ability"])
+	var target: String = root._creature.nearest_creature(root._player.get_world_pos(), PlayerSlice.ATTACK_RANGE)
+	if target != "":
+		GameBus.ability_intent.emit(ability, target, "")
 
 ## Host: a creature a peer killed. The peer's client resolves no rounds of its own, so it never sees the
 ## `creature_died` its tutorial counts; the host tells only that peer, by species. Returns the peer told (0 none).

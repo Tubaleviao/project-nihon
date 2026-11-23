@@ -6,6 +6,7 @@ extends RefCounted
 const I18n := preload("res://src/core/i18n.gd")
 const CraftCatalog := preload("res://src/crafting/craft_catalog.gd")
 const CraftingSliceScript := preload("res://src/crafting/crafting_slice.gd")
+const GearTiers := preload("res://src/character/gear_tiers.gd")
 
 var sl: Node
 
@@ -29,6 +30,9 @@ func crafting_rows() -> Array:
 			"can_craft": bool(check.get("success", false)),
 			"reason": str(check.get("reason", "")),
 			"station": str(recipe.get("station", "")),
+			# Phase 229 — the tool and station tier the recipe needs, and the tier a gear refusal is missing.
+			"required_tier": GearTiers.recipe_tier(recipe),
+			"tier_needed": GearTiers.tier_needed(str(check.get("reason", ""))),
 			"icon_key": sl._first_output_icon_key(recipe.get("outputs", [])),
 			"inputs": sl._fmt_entries(recipe.get("inputs", [])),
 			"outputs": sl._fmt_entries(recipe.get("outputs", [])),
@@ -37,6 +41,7 @@ func crafting_rows() -> Array:
 
 ## Phase 269 — one card per recipe a crafting window lists: the known recipes needing exactly `type` ("" = the
 ## hand window), sorted by shown name: { id, name, icon_key, output, count, category, can_craft, reason,
+## required_tier, tier_needed (Phase 229: "" unless a tool or station tier refused it),
 ## inputs: [{ item, name, icon_key, have, need, short }], skill, skill_name, work_seconds, max_quantity }.
 ## `have` follows the bag the host crafts from; a card the player cannot afford has `can_craft` false (dimmed).
 func craft_cards(type: String) -> Array:
@@ -66,6 +71,8 @@ func craft_cards(type: String) -> Array:
 			"category": CraftCatalog.category(rid),
 			"can_craft": bool(check.get("success", false)),
 			"reason": str(check.get("reason", "")),
+			"required_tier": GearTiers.recipe_tier(sl.crafting_slice.get_recipe(rid)),
+			"tier_needed": GearTiers.tier_needed(str(check.get("reason", ""))),
 			"inputs": ins,
 			"skill": skill,
 			"skill_name": I18n.content("skill", skill) if skill != "" else "",

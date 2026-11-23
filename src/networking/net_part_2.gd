@@ -575,6 +575,17 @@ func _route_c2h(sender: int, payload: Dictionary) -> void:
 			var a_iid: Variant = payload.get("instance_id", "")
 			if a_iid is String:
 				GameBus.attack_intent.emit((a_iid as String).left(64), striker)
+		"ability_intent":
+			# Phase 229 — the user is the connection's player; CombatWiring checks the ability's tiers against the
+			# host's own record of that player's skill and weapon, then the target, reach and swing rate.
+			var user = sl._actor_id(sender)
+			if user == "":
+				sl._refuse_unhandshaked(sender, "ability_intent")
+				return
+			var ab: Variant = payload.get("ability", "")
+			var ab_iid: Variant = payload.get("instance_id", "")
+			if ab is String and ab_iid is String:
+				GameBus.ability_intent.emit((ab as String).left(64), (ab_iid as String).left(64), user)
 		"mount_intent":
 			# Phase 216 — the rider is the connection's player; the creature must be that player's own companion.
 			var rider = sl._actor_id(sender)
@@ -948,6 +959,13 @@ func forward_attack_intent(instance_id: String, _player_id: String) -> void:
 	if sl._role != sl.Role.CLIENT:
 		return
 	sl._broadcast({ "type": "attack_intent", "instance_id": instance_id })
+
+## Phase 229 — client → host: a combat ability at a creature. It names the ability and the target only; the host
+## binds the user to the connection and reads the skill and weapon tiers from its own records.
+func forward_ability_intent(ability: String, instance_id: String, player_id: String) -> void:
+	if sl._role != sl.Role.CLIENT or player_id != "":
+		return
+	sl._broadcast({ "type": "ability_intent", "ability": ability, "instance_id": instance_id })
 
 func forward_chest_intent(action: String, args: Dictionary, _player_id: String) -> void:
 	forward_intent("chest_intent", action, args)

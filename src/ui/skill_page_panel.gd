@@ -7,6 +7,7 @@ extends VBoxContainer
 const I18n := preload("res://src/core/i18n.gd")
 const SkillPage := preload("res://src/character/skill_page.gd")
 const SkillFocus := preload("res://src/character/skill_focus.gd")
+const GearTiers := preload("res://src/character/gear_tiers.gd")
 
 const PAGE_WIDTH := 250.0
 ## Catalog key stems; the id is appended (a key built at run time, so the literal audit does not read it).
@@ -14,15 +15,21 @@ const TIER_KEY := "ui.tier_%s"
 const UNLOCK_KEY := "ui.skill_page_unlock_%s"
 const CATEGORY_KEY := "ui.category_%s"
 const WORK_KEY := "ui.work.%s"
+const ABILITY_KEY := "ui.ability.%s"
 const CATEGORY_ORDER := ["combat", "crafting", "magic", "exploration", "social", "gathering", "other"]
 
 var skill := ""
+## Phase 229 — `Callable() -> Array`: the items the local player holds (main hand, off hand; "" bare), for the ability rows.
+var weapon_provider: Callable = Callable()
 var bar: ProgressBar = null
 ## Every label text on the page, for tests.
 var lines: Array[String] = []
 
 func _init() -> void:
 	name = "SkillPage"
+	# A combat skill's rows follow the wielded weapon: rebuild an open page when the gear changes.
+	GameBus.held_item_synced.connect(_on_gear_changed)
+	GameBus.equipment_changed.connect(_on_gear_changed)
 	custom_minimum_size = Vector2(PAGE_WIDTH, 0)
 	add_theme_constant_override("separation", 4)
 
@@ -42,6 +49,10 @@ func clear_page() -> void:
 		c.free()
 	lines.clear()
 	bar = null
+
+func _on_gear_changed(_player_id: String, _what: Variant) -> void:
+	if skill != "" and GearTiers.is_combat_skill(skill) and is_inside_tree():
+		show_skill(skill)
 
 ## Show `skill_id`'s page from the local player's synced XP and focus.
 func show_skill(skill_id: String) -> void:
@@ -72,6 +83,17 @@ func show_skill(skill_id: String) -> void:
 		_label(I18n.t("ui.skill_page_next"), 15)
 		for u: Dictionary in p["next_unlocks"]:
 			_label(I18n.t(UNLOCK_KEY % str(u["kind"]), [I18n.t(TIER_KEY % str(u["tier"]))]))
+	if GearTiers.is_combat_skill(skill_id):
+		# Phase 229 — each ability with its tier; one the skill or the wielded weapon cannot reach says what it needs.
+		_label(I18n.t("ui.skill_page_abilities"), 15)
+		var weapon: Variant = weapon_provider.call() if weapon_provider.is_valid() else ""
+		for r: Dictionary in GearTiers.ability_rows(skill_id, str(p["tier"]), weapon):
+			var line := I18n.t("ui.skill_page_ability", [I18n.t(ABILITY_KEY % str(r["ability"])), I18n.t(TIER_KEY % str(r["tier"]))])
+			if not bool(r["available"]):
+				line = I18n.t("ui.skill_page_ability_refused", [line, I18n.reason_text(str(r["reason"]))])
+			var l := _label(line)
+			if not bool(r["available"]):
+				l.modulate = Color(0.6, 0.6, 0.6)
 	if not (p["trainers"] as Array).is_empty():
 		_label(I18n.t("ui.skill_page_trains"), 15)
 		_label(", ".join((p["trainers"] as Array).map(func(k): return I18n.t(WORK_KEY % str(k)))))

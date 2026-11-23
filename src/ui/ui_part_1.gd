@@ -3,6 +3,7 @@ extends RefCounted
 
 const UiIcons := preload("res://src/ui/ui_icons.gd")
 const TitleRules := preload("res://src/character/title_rules.gd")
+const GearTiers := preload("res://src/character/gear_tiers.gd")
 
 var sl: Node
 var _sheet_title: OptionButton = null
@@ -54,6 +55,7 @@ func _build_hud() -> void:
 		return sl.inventory_slice.get_contents() if sl.inventory_slice != null else {}
 	sl.hotbar.tier_provider = func() -> Dictionary:
 		return sl.crafting_slice.get_skills() if sl.crafting_slice != null else {}
+	sl.hotbar.weapon_provider = func() -> Array: return GearTiers.wielded_items(sl.character_slice)
 	sl.hotbar.build()
 	sl.hotbar.slot_selected.connect(sl._on_hotbar_selected)
 	sl.hotbar.drag_began.connect(sl._on_drag_began)

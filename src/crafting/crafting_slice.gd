@@ -64,6 +64,7 @@ const PlayerRules := preload("res://src/core/player_rules.gd")
 ## Shared skill-tier ordering (novice → master) — see src/core/skill_tiers.gd.
 const SkillTiers := preload("res://src/core/skill_tiers.gd")
 const WorkSkills := preload("res://src/character/work_skills.gd")
+const GearTiers := preload("res://src/character/gear_tiers.gd")
 
 ## Set by game_root so recipes can consume/produce inventory items. The fallback
 ## inventory when no per-player registry is wired (isolated unit tests) or when no
@@ -117,6 +118,9 @@ const STATION_RADIUS: float = 8.0
 ## DEBUG demo, and every isolated test), and `get_skill_for()` is the single
 ## resolution point every guard goes through.
 var _skill_tiers: Dictionary = {}
+## Test seam (Phase 229): recipe id -> structured recipe, read before GameData.RECIPES. The fabric has no
+## recipe above its station's tier, so the suite names one here to prove the station-tier gate.
+var recipe_overrides: Dictionary = {}
 
 func _ready() -> void:
 	for skill_key in GameData.SKILLS:
@@ -156,6 +160,10 @@ func craft(recipe_id: String, player_id: String = "") -> Dictionary:
 	var profession_reason := _check_profession_gate(recipe, pid)
 	if profession_reason != "":
 		return _fail(recipe_id, profession_reason, pid)
+	# Phase 229 — the tool and station tiers, once every other rule allows the recipe.
+	var gear_reason := _check_gear_gate(recipe, pid)
+	if gear_reason != "":
+		return _fail(recipe_id, gear_reason, pid)
 
 	var inputs: Array = recipe.get("inputs", [])
 	var outputs: Array = recipe.get("outputs", [])
@@ -233,6 +241,9 @@ func can_craft(recipe_id: String, player_id: String = "") -> Dictionary:
 	var profession_reason := _check_profession_gate(recipe, pid)
 	if profession_reason != "":
 		return _result(recipe_id, false, [], profession_reason, pid)
+	var gear_reason := _check_gear_gate(recipe, pid)
+	if gear_reason != "":
+		return _result(recipe_id, false, [], gear_reason, pid)
 	var inventory := inventory_for(pid)
 	if inventory == null:
 		return _result(recipe_id, false, [], "no_inventory", pid)
@@ -252,6 +263,8 @@ func is_recipe_known(recipe_id: String, player_id: String = "") -> bool:
 
 ## Return the structured recipe data for a recipe key, or {} if unknown/malformed.
 func get_recipe(recipe_id: String) -> Dictionary:
+	if recipe_overrides.has(recipe_id):
+		return recipe_overrides[recipe_id]
 	return _structured_field(GameData.RECIPES, recipe_id, "recipe")
 
 ## Set a skill's tier for a player. Returns true when applied, false when `tier`
@@ -649,6 +662,56 @@ func _check_station_gate(recipe: Dictionary, pid: String = "") -> String:
 	if station_slice.station_near_player(station, STATION_RADIUS):
 		return ""
 	return "station_required:%s" % station
+
+## Phase 229 — "" when the crafter's gear reaches the recipe's `requiredTier`, else a
+## `craft.refuse.tool_tier:<category>:<tier>` or `craft.refuse.station_tier:<type>:<tier>` reason. The tool is
+## the crafter's best item of the station's tool category, worn in the main hand or carried (a worn-out one
+## does not count); the station's tier comes from the host's own record of the station found near the crafter,
+## never from the client. Runs after the station and profession gates, so a needed station is already present.
+func _check_gear_gate(recipe: Dictionary, pid: String = "") -> String:
+	var station := str(recipe.get("station", ""))
+	if station == "" or GearTiers.recipe_tier(recipe) == GearTiers.floor_tier():
+		return ""   # a novice recipe needs nothing: skip the pack scan (the crafting window asks for every recipe)
+	var tool := GearTiers.station_tool(station)
+	var tool_tier := GearTiers.best_tier_of(tool, tool_items_of(pid)) if tool != "" else GearTiers.floor_tier()
+	return GearTiers.check_recipe(recipe, tool_tier, _station_type_near(station, pid))
+
+## The items a player could work with: the worn main hand and every usable item in the pack.
+func tool_items_of(pid: String) -> Array:
+	var out: Array = []
+	var inv := inventory_for(pid)
+	if pid != "" and player_registry != null and player_registry.has_method("get_equipment"):
+		var worn := str((player_registry.get_equipment(pid) as Dictionary).get("MainHand", ""))
+		if worn != "" and GearTiers.has_wear_left(inv, worn):
+			out.append(worn)
+	if inv == null:
+		return out
+	if not inv.has_method("get_contents"):
+		return out
+	for k in (inv.get_contents() as Dictionary).keys():
+		var item := str(k)
+		if out.has(item) or (inv.has_method("get_item_count") and int(inv.get_item_count(item)) <= 0):
+			continue
+		if not GearTiers.has_wear_left(inv, item):
+			continue
+		out.append(item)
+	return out
+
+## The type of the host's own record of the `station` near the crafter ("" when none is found or no station
+## slice is wired: the recipe's own station type then stands in, as the station gate already passed). Station
+## matching is by exact type, so today this is the recipe's own type and the station-tier refusal is defensive:
+## the fabric validator keeps every `requiredTier` at or below its station's tier.
+func _station_type_near(station: String, pid: String) -> String:
+	if station_slice == null or not station_slice.has_method("nearest_station"):
+		return ""
+	# The same position the station gate judged: the crafter's own (Phase 202), else this machine's player.
+	var at: Variant = position_of.call(pid) if pid != "" and position_of.is_valid() else null
+	if not (at is Vector3) and station_slice.has_method("_player_position"):
+		at = station_slice._player_position()
+	if not (at is Vector3):
+		return ""
+	var id := str(station_slice.nearest_station(at, station, STATION_RADIUS))
+	return str(station_slice.get_station(id).get("type", "")) if id != "" else ""
 
 ## Collapse a [{ item, quantity }] list into a { item: quantity } map, summing
 ## any duplicate item keys.

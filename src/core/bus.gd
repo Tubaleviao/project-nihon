@@ -64,6 +64,20 @@ signal combat_round_requested(attacker_id: String, defender_id: String)
 ## player_id   : String — the attacker; "" on the client's outbound emit
 signal attack_intent(instance_id: String, player_id: String)
 
+## Phase 229 — a combat ability at a creature, client → host, the same route as `attack_intent`: a client emits it
+## with player_id "" and NetworkingSlice forwards it; the host re-emits it with the connection's player id and
+## CombatWiring checks the ability's skill tier and the equipped weapon's tier (`GearTiers.check_ability`) before
+## it runs the swing checks. A refused ability deals no damage and the actor is told why (`system_message`).
+## ability     : String — a GearTiers ability key (`executePowerStrike`)
+## instance_id : String — CreatureSlice instance id
+## player_id   : String — the user; "" on the client's outbound emit
+signal ability_intent(ability: String, instance_id: String, player_id: String)
+
+## Phase 229 — host: how an ability intent went. result: { ability, instance_id, success, reason, player_id };
+## `reason` is a refusal code (`combat.refuse.weapon_tier:<tier>`, `combat.refuse.skill_tier:<skill>:<tier>`,
+## `unknown_ability`, or `rejected` when the swing checks refused it).
+signal ability_resolved(result: Dictionary)
+
 # ---------------------------------------------------------------------------
 # Networking
 # ---------------------------------------------------------------------------

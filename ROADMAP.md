@@ -39,28 +39,26 @@ work in order.
 
 | Priority | Phase | Title |
 |---|---|---|
-| 1 | 229 | Skills capped by the gear |
-| 2 | 226 | Several characters per player |
-| 3 | 297 | Finding servers nearby: dual-stack IPv6, a status port and LAN discovery |
-| 4 | 298 | The server list: a registry and the Join screen's public list |
-| 5 | 257 | Split files named by what they do |
-| 6 | 245 | The planet bake: continents, rivers with flow, erosion and biomes at 2 km |
-| 7 | 232 | Water that holds up: lake shores, the river seam and mounts at fords |
-| 8 | 247 | Ground cover: grass and bushes by biome |
-| 9 | 235 | Roads |
-| 10 | 234 | Boats |
-| 11 | 258 | The public wiki and the community channels |
-| 12 | 299 | Many registries: signed entries, gossip and no single owner |
-| 13 | 236 | Changing hair style and colour (parked: picked up only when un-parked) |
-| 14 | 251 | A human playtest: what would make the game fun (a standing checkpoint, when the owner has time) |
+| 1 | 226 | Several characters per player |
+| 2 | 297 | Finding servers nearby: dual-stack IPv6, a status port and LAN discovery |
+| 3 | 298 | The server list: a registry and the Join screen's public list |
+| 4 | 257 | Split files named by what they do |
+| 5 | 245 | The planet bake: continents, rivers with flow, erosion and biomes at 2 km |
+| 6 | 232 | Water that holds up: lake shores, the river seam and mounts at fords |
+| 7 | 247 | Ground cover: grass and bushes by biome |
+| 8 | 235 | Roads |
+| 9 | 234 | Boats |
+| 10 | 258 | The public wiki and the community channels |
+| 11 | 299 | Many registries: signed entries, gossip and no single owner |
+| 12 | 236 | Changing hair style and colour (parked: picked up only when un-parked) |
+| 13 | 251 | A human playtest: what would make the game fun (a standing checkpoint, when the owner has time) |
 
 Why this order:
 
 - **295–296 done.** The last findings of the owner's fourth playtest (2026-11-20): 295 was the fabric PR,
   296 the runtime. They change what equipment is, so everything that reads gear waits for them.
-- **229 right after.** Skill tiers gated by gear build on the equipment categories 295–296 introduce;
-  its spec's "tool" tiers become trait/equipment tiers when it is picked up. It used to take its tiers
-  from parked Phase 227 and carries its own fabric PR instead.
+- **229 done.** Skill tiers gated by gear, built on the equipment categories 295–296 introduced: the fabric
+  PR (#737) and the runtime PR.
 - **226, 297, 298: playing with others.** The 2026-11-20 session was the first with a second player.
   Several characters per player, then finding a server on the LAN and from a public list, make that the
   normal way to play instead of typing an address.
@@ -125,7 +123,7 @@ The arc starts after Phase 226, because the keypair identifies the player (the a
 |---|---|---|
 | 227 | Identity and portability in the fabric: keypair identity, what travels, gear-gated skills, bound cosmetics | Parked |
 | 228 | Keypair identity at runtime: a challenge-response join replaces the cached player id | Parked |
-| 229 | Skills capped by the gear: advanced abilities need a weapon of their tier, advanced recipes a tool and station of theirs | Open |
+| 229 | Skills capped by the gear: advanced abilities need a weapon of their tier, advanced recipes a tool and station of theirs | Done |
 | 230 | Characters across worlds: signed progress, an import policy per world | Parked |
 | 231 | Cosmetics bound to the key: they travel and cannot be shared | Parked |
 
@@ -453,6 +451,24 @@ research, clan membership and owned structures all key on the player id.
   client.
 - Skill XP still grows with any weapon, tool or station. Only use is capped, so carrying weaker gear
   never loses progress.
+- **Done** (the runtime PR): `src/character/gear_tiers.gd` reads the `GearTiers` table from `GameData` (item,
+  station, recipe and ability tiers; an item's tier is its own `tier`, else `itemTiers`, else its working
+  material's). The runtime had no combat abilities before this phase, so it adds the route they travel:
+  `GameBus.ability_intent(ability, instance_id, player_id)` (client → host as the `ability_intent` packet, the
+  user bound to the connection) and `ability_resolved`. `CombatWiring.on_ability_intent` checks the skill tier
+  (`combat.refuse.skill_tier`) and the wielded weapon's tier (`combat.refuse.weapon_tier`; bare hands and another
+  skill's weapon are novice) from the host's own records, tells the user why in their locale, and runs an
+  accepted ability as a swing through the plain attack checks (the abilities' own effects are later content).
+  A worn-out weapon counts as bare hands, as a worn-out tool does for crafting. A hotbar skill box fires the
+  highest ability its skill tier and the wielded weapon both reach at the nearest creature, and is dimmed with the
+  refusal in its tooltip when the weapon reaches none (redrawn on `held_item_synced` / `equipment_changed`); the
+  skill page lists every ability with its tier and what it needs. `CraftingSlice._check_gear_gate` (after the station gate, in `craft` and `can_craft`) refuses with
+  `craft.refuse.tool_tier:<category>:<tier>` (best usable item of the station's tool category, worn or carried)
+  or `craft.refuse.station_tier:<type>:<tier>` (the host's own record of the nearby station; stations match by
+  exact type and the validator keeps `requiredTier` at or below the station's tier, so this refusal is defensive
+  until a station can be made at more than one tier); a novice recipe skips both checks; crafting rows and
+  cards carry `required_tier` and `tier_needed`. `I18n.reason_text` renders a dotted reason head as its own key
+  and tiers through `ui.tier_*`. Suite `gear_tier_tests.gd` covers the criteria.
 
 **Acceptance criteria**
 - A suite test gives a character master Swordsmanship and a novice sword. Novice abilities resolve

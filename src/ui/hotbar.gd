@@ -23,6 +23,9 @@ extends VBoxContainer
 const EquipmentRules := preload("res://src/character/equipment_rules.gd")
 const I18n := preload("res://src/core/i18n.gd")
 const SkillTiers := preload("res://src/core/skill_tiers.gd")
+const GearTiers := preload("res://src/character/gear_tiers.gd")
+## Phase 229 — a skill box whose ability the equipped weapon (or the skill) cannot reach is drawn dimmed.
+const DIMMED := Color(0.5, 0.5, 0.5, 0.8)
 const StationRules := preload("res://src/world/station_rules.gd")
 
 signal slot_selected(index: int, item_id: String)
@@ -75,6 +78,8 @@ var icon_loader: Callable = Callable()
 var held_provider: Callable = Callable()
 ## `Callable() -> Dictionary` of skill key -> tier name; set by the UI slice.
 var tier_provider: Callable = Callable()
+## Phase 229 — `Callable() -> String`: the item the local player wields (held, else worn main hand; "" bare).
+var weapon_provider: Callable = Callable()
 
 ## Items the player took off the bar by hand: auto-fill leaves them out until they are used up.
 var _declined: Dictionary = {}
@@ -97,6 +102,9 @@ func _init() -> void:
 		binds.append(0)
 
 func build() -> void:
+	# Phase 229 — the skill boxes dim by the wielded weapon: redraw when the held item or the worn set changes.
+	GameBus.held_item_synced.connect(_on_gear_changed)
+	GameBus.equipment_changed.connect(_on_gear_changed)
 	# Row 1 (keys 1-9) is created first so `_buttons[i]` is box i; it is always visible and the
 	# optional second row sits below it. The arrow's column is mirrored by a spacer so the rows align.
 	_row1 = _make_row(0, COLUMNS)
@@ -265,6 +273,23 @@ static func hint_for(entry: String, kind: String, tier: String = "") -> String:
 		KIND_SKILL:
 			return I18n.t("hotbar.hint_skill", [I18n.content("skill", skill_key(entry)), (" (%s)" % tier) if tier != "" else ""])
 	return entry
+
+## Phase 229 — a skill box's state: { available, ability, tier_needed, reason }. A combat skill fires its highest
+## ability the skill tier and the weapon both reach (`GearTiers.best_usable`); the box is unavailable when the
+## skill reaches none, or the weapon reaches none of those it does (`tier_needed` is then the tier the box would
+## need). Any other skill is always available.
+static func skill_box_state(skill: String, tier: String, weapon: Variant) -> Dictionary:
+	if not GearTiers.is_combat_skill(skill):
+		return { "available": true, "ability": "", "tier_needed": "", "reason": "" }
+	var ability := GearTiers.best_usable(skill, tier, weapon)
+	if ability == "":
+		var rows: Array = GearTiers.abilities_of(skill)
+		var first: String = str((rows[0] as Dictionary)["tier"]) if not rows.is_empty() else ""
+		return { "available": false, "ability": "", "tier_needed": first,
+			"reason": "%s:%s:%s" % [GearTiers.SKILL_REFUSAL, skill, first] }
+	var reason := GearTiers.check_ability(ability, tier, weapon)
+	return { "available": reason == "", "ability": ability,
+		"tier_needed": "" if reason == "" else str(GearTiers.ability_spec(ability).get("tier", "")), "reason": reason }
 
 ## Parse the saved state. Anything malformed falls back to an empty bar rather than injecting junk.
 static func parse_state(text: String) -> Dictionary:
@@ -536,6 +561,11 @@ func _key_text(index: int) -> String:
 	var k := int(binds[index])
 	return OS.get_keycode_string(k) if k != 0 else ""
 
+## The held item or the worn set changed: redraw the skill boxes (they dim by the wielded weapon).
+func _on_gear_changed(_player_id: String, _what: Variant) -> void:
+	if not _buttons.is_empty():
+		_render()
+
 ## The language changed: re-render the tooltips.
 func relocalize() -> void:
 	if _menu != null:
@@ -548,6 +578,7 @@ func _render(held: Dictionary = {}) -> void:
 	if held.is_empty() and held_provider.is_valid():
 		held = held_provider.call()
 	var tiers: Dictionary = tier_provider.call() if tier_provider.is_valid() else {}
+	var weapon: Variant = weapon_provider.call() if weapon_provider.is_valid() else ""
 	if _row2 != null:
 		_row2.visible = expanded
 	if _more != null:
@@ -565,13 +596,19 @@ func _render(held: Dictionary = {}) -> void:
 		if entry == "":
 			b.text = ""
 			b.tooltip_text = ""
+			b.modulate = Color.WHITE
 			continue
 		var kind := kind_at(i)
 		if kind == KIND_SKILL:
 			var skill := skill_key(entry)
 			b.text = I18n.content("skill", skill).substr(0, 4)
 			b.tooltip_text = hint_for(entry, kind, str(tiers.get(skill, "")))
+			var state := skill_box_state(skill, str(tiers.get(skill, "novice")), weapon)
+			b.modulate = Color.WHITE if bool(state["available"]) else DIMMED
+			if not bool(state["available"]):
+				b.tooltip_text += "\n" + I18n.reason_text(str(state["reason"]))
 			continue
+		b.modulate = Color.WHITE
 		var tex: Texture2D = icon_loader.call(entry) if icon_loader.is_valid() else null
 		var count := ("×%d" % int(held.get(entry, 0))) if kind == KIND_BLOCK else ""
 		if tex != null:

@@ -528,6 +528,7 @@ func _test_station_master_forge() -> void:
 	craft.station_slice = station
 	inv.add_item("FerriteIngot", 3)
 	inv.add_item("AethermiteShard", 1)
+	inv.add_item("VeilsteelHammer", 1)   # Phase 229: a master forge recipe also needs a hammer of its tier
 	craft.set_skill("Smithing", "journeyman")
 	station.set_player_position(Vector3.ZERO)
 	# A plain forge must NOT satisfy the master forge requirement.
@@ -1359,6 +1360,7 @@ func _test_void_flag_gate_and_profession_unlock() -> void:
 	crafting.set_skill_for(pid, "VoidMagic", "master")
 	assert_eq(unlocked.size(), 1, "and not again")
 	assert_true(bool(registry.get_record(pid)["professions"].get("VoidTouched", false)), "the unlock is on the record")
+	registry.get_inventory(pid).add_item("VeilsteelHammer", 1)   # Phase 229: the workshop's expert recipe needs a hammer of its tier
 	assert_eq(str(crafting.can_craft(tablet, pid)["reason"]), "missing_inputs", "the recipe now reaches its inputs")
 
 	# Without the flag the tiers alone never unlock.
