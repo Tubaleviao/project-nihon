@@ -20,6 +20,7 @@ const settlement   = require('./gameplay/settlement')
 const combat       = require('./gameplay/combat')
 const economy      = require('./gameplay/economy')
 const player       = require('./gameplay/player')
+const roster       = require('./gameplay/character_roster')
 const loot         = require('./gameplay/loot')
 const gestures     = require('./gameplay/gestures')
 const harvest      = require('./gameplay/harvest')
@@ -82,6 +83,7 @@ newcomer.validateNewcomerGrounds(newcomer.newcomerGroundsData(), newcomer.newcom
 stations.validateStations(stations.stationsData(), stations.stationsRefs()) // Phase 268
 gearTiers.validateGearTiers(gearTiers.gearTiersData(), gearTiers.gearTiersRefs()) // Phase 229
 sounds.validateSounds(sounds.soundsData(), sounds.soundsRefs()) // Phase 275
+roster.validateCharacterRoster(roster.characterRosterData()) // Phase 226
 
 // Phase 129 — the status-effect table must be well formed and every creature's `onHitEffects` must name a defined effect.
 combat.validateCombat(combat.STATUS_EFFECTS, combat.creatureOnHit(creatures), Object.keys(weather.RULES.states))
@@ -436,6 +438,8 @@ module.exports = defineFabric({
     {
       AttributeSystem: attributes.AttributeSystem,
       PlayerCharacter: player.PlayerCharacter,
+      Player:          roster.Player,
+      CharacterRoster: roster.CharacterRoster,
       Inventory:       player.Inventory,
     },
     // Gameplay — Loot + Death signals

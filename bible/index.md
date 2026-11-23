@@ -196,6 +196,7 @@ Open-source sandbox MMORPG where players build a civilization. The world is pers
 ## Player
 
 - [Inventory](entities/inventory.md) — The container of items carried by a single player
+- [Player](entities/player.md) — The account that connects to a server
 - [PlayerCharacter](entities/playercharacter.md) — The player-controlled character in the world
 
 ## Profession
@@ -341,6 +342,7 @@ Open-source sandbox MMORPG where players build a civilization. The world is pers
 ## World-system
 
 - [BedSpawn](entities/bedspawn.md) — A bed a player places becomes where they come back after death
+- [CharacterRoster](entities/characterroster.md) — Several characters per player (Phase 226)
 - [ChestsAndDoors](entities/chestsanddoors.md) — Chests and doors open for their owner only, their clan or everyone, as the owner sets
 - [Clan](entities/clan.md) — A group of players under a name one of them chose
 - [ClanTiers](entities/clantiers.md) — A clan's tier, from every building it owns wherever it stands, weighed by how durable and how rare each block's material is

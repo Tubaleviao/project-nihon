@@ -1,5 +1,5 @@
 {
-  "schemaHash": "sha256:f4e20ffca8be9e8c27eb413dcf42f97fe6a8bdedbde6f0a3883c91ff693a5a44",
+  "schemaHash": "sha256:0961504f7697616ceedd55a903aa74d9c75b3e010021e097d1ac13241cf78278",
   "schema": {
     "version": "3.0.0",
     "meta": {
@@ -54564,7 +54564,7 @@
         "tags": [
           "player"
         ],
-        "description": "The player-controlled character in the world. Stats are derived from attributes (AttributeSystem), equipped items, active skills, and status effects. A player's character persists across sessions; death resets only transient state.",
+        "description": "The player-controlled character in the world. Stats are derived from attributes (AttributeSystem), equipped items, active skills, and status effects. A player's character persists across sessions; death resets only transient state. Phase 226: a player (the account, Player) keeps several characters; every piece of progress is the character's (CharacterRoster.ownership).",
         "goal": "Model the minimum runtime data the server needs to authorise actions and the client needs to render the character",
         "fields": {
           "id": {
@@ -54572,6 +54572,22 @@
             "type": "uuid",
             "nullable": false,
             "primaryKey": true,
+            "pii": false
+          },
+          "playerId": {
+            "name": "playerId",
+            "type": "uuid",
+            "description": "The player (account) this character belongs to (Phase 226)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false
+          },
+          "lastPlayedAt": {
+            "name": "lastPlayedAt",
+            "type": "datetime",
+            "description": "When the player last entered the world as this character, for the character list (Phase 226)",
+            "nullable": false,
+            "primaryKey": false,
             "pii": false
           },
           "state": {
@@ -54787,6 +54803,317 @@
               "effects": []
             }
           ]
+        },
+        "pii": [],
+        "gdpr": {}
+      },
+      "Player": {
+        "name": "Player",
+        "tags": [
+          "player"
+        ],
+        "description": "The account that connects to a server. It owns who the person is (friend code, settings, the admin flag, the character played last) and a list of characters (CharacterRoster); all progress in the world is the character's (PlayerCharacter).",
+        "goal": "Separate who connects from who walks the world, so one person can keep several characters",
+        "fields": {
+          "id": {
+            "name": "id",
+            "type": "uuid",
+            "nullable": false,
+            "primaryKey": true,
+            "pii": false
+          },
+          "friendCode": {
+            "name": "friendCode",
+            "type": "string",
+            "description": "The code a friend types to join this player's world",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false
+          },
+          "settings": {
+            "name": "settings",
+            "type": "json",
+            "description": "Client settings (sound, graphics, language, tutorial); kept on this player's machine",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false
+          },
+          "admin": {
+            "name": "admin",
+            "type": "boolean",
+            "description": "Whether the host lets this player use admin commands",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": false
+          },
+          "lastCharacter": {
+            "name": "lastCharacter",
+            "type": "string",
+            "description": "Id of the character this player entered last, offered first in the list",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false
+          }
+        },
+        "relations": {},
+        "behaviors": {},
+        "pii": [],
+        "gdpr": {}
+      },
+      "CharacterRoster": {
+        "name": "CharacterRoster",
+        "tags": [
+          "world-system"
+        ],
+        "description": "Several characters per player (Phase 226). The player is the account that connects; a character is who walks the world. A player keeps up to 4 characters on a server, picked from a list after choosing a world or joining a server. A new character starts from scratch: no items, base attributes, no skills, research, books or clan, and nothing from the player's other characters. Names are unique on the server across every character. Deleting a character asks for its name typed out; its structures go to its clan, or become ownerless when it had none. The character owns: body, name, hp, position, statusEffects, attributes, attributeGrowth, inventory, equipment, skills, skillXp, skillFocus, professions, titles, cooldowns, craftCounter, research, booksLearned, tamingFlags, companions, waystones, clanMembership, ownedStructures, spawnBed. The player owns: friendCode, settings, admin, lastCharacter.",
+        "goal": "A player can start over as someone new without losing the character they already have",
+        "fields": {
+          "id": {
+            "name": "id",
+            "type": "uuid",
+            "nullable": false,
+            "primaryKey": true,
+            "pii": false
+          },
+          "ownership": {
+            "name": "ownership",
+            "type": "json",
+            "description": "{ <field>: \"character\" | \"player\" }: who owns each piece of per-player state",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "body": "character",
+              "name": "character",
+              "hp": "character",
+              "position": "character",
+              "statusEffects": "character",
+              "attributes": "character",
+              "attributeGrowth": "character",
+              "inventory": "character",
+              "equipment": "character",
+              "skills": "character",
+              "skillXp": "character",
+              "skillFocus": "character",
+              "professions": "character",
+              "titles": "character",
+              "cooldowns": "character",
+              "craftCounter": "character",
+              "research": "character",
+              "booksLearned": "character",
+              "tamingFlags": "character",
+              "companions": "character",
+              "waystones": "character",
+              "clanMembership": "character",
+              "ownedStructures": "character",
+              "spawnBed": "character",
+              "friendCode": "player",
+              "settings": "player",
+              "admin": "player",
+              "lastCharacter": "player"
+            }
+          },
+          "characterFields": {
+            "name": "characterFields",
+            "type": "json",
+            "description": "Fields that must be the character's (a new character would otherwise inherit them)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": [
+              "body",
+              "name",
+              "inventory",
+              "equipment",
+              "skills",
+              "skillXp",
+              "attributes",
+              "research",
+              "booksLearned",
+              "clanMembership",
+              "ownedStructures",
+              "spawnBed"
+            ]
+          },
+          "playerFields": {
+            "name": "playerFields",
+            "type": "json",
+            "description": "Fields that must be the player's",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": [
+              "friendCode",
+              "settings",
+              "admin"
+            ]
+          },
+          "recordKeys": {
+            "name": "recordKeys",
+            "type": "json",
+            "description": "{ <key of the pre-Phase-226 player save record>: <ownership field> }: where each key moves",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "position": "position",
+              "hp": "hp",
+              "respawn_deadline": "hp",
+              "status_effects": "statusEffects",
+              "appearance": "body",
+              "creation": "body",
+              "technology": "research",
+              "flags": "tamingFlags",
+              "waystones": "waystones",
+              "companions": "companions",
+              "professions": "professions",
+              "titles": "titles",
+              "craft_counter": "craftCounter",
+              "skills": "skills",
+              "skill_xp": "skillXp",
+              "skill_focus": "skillFocus",
+              "attributes": "attributes",
+              "attribute_growth": "attributeGrowth",
+              "cooldowns": "cooldowns",
+              "equipment": "equipment",
+              "spawn": "spawnBed",
+              "bed": "spawnBed",
+              "inventory": "inventory",
+              "inventory_durability": "inventory"
+            }
+          },
+          "limit": {
+            "name": "limit",
+            "type": "integer",
+            "description": "Characters one player may keep on one server; the host refuses one over it",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 4
+          },
+          "onDelete": {
+            "name": "onDelete",
+            "type": "string",
+            "description": "A deleted character's structures: \"clan\" (to its clan, ownerless without one) or \"ownerless\"",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "clan"
+          },
+          "names": {
+            "name": "names",
+            "type": "string",
+            "description": "Name uniqueness scope: \"server\", across every character of every player",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "server"
+          },
+          "deleteConfirm": {
+            "name": "deleteConfirm",
+            "type": "string",
+            "description": "What the player types to delete a character: \"name\", its name, checked by the host",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "name"
+          },
+          "migration": {
+            "name": "migration",
+            "type": "string",
+            "description": "A pre-Phase-226 save: \"firstCharacter\", each player's one record becomes their first character, unchanged",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "firstCharacter"
+          },
+          "refusals": {
+            "name": "refusals",
+            "type": "json",
+            "description": "Locale keys the host refuses with: { limit, nameTaken, confirm, unknown, rateLimited }",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "limit": "characters.refuse.limit",
+              "nameTaken": "creation.refuse.name_taken",
+              "confirm": "characters.refuse.confirm",
+              "unknown": "characters.refuse.unknown",
+              "rateLimited": "characters.refuse.rate_limited"
+            }
+          }
+        },
+        "relations": {},
+        "behaviors": {
+          "listCharacters": {
+            "name": "listCharacters",
+            "description": "Send a player the list of their characters on this server",
+            "rules": [
+              "The host sends the list after the player chooses a local world or joins a server: name, body, last played",
+              "The client never decides which characters exist; it shows what the host sent"
+            ],
+            "auth": {
+              "roles": [
+                "maintainer"
+              ]
+            }
+          },
+          "createCharacter": {
+            "name": "createCharacter",
+            "description": "Create a new character for a player through the creation screen",
+            "rules": [
+              "Refused over the character limit (refusals.limit)",
+              "Refused when any character on the server has the name or one that looks like it (refusals.nameTaken)",
+              "The new character has an empty pack, base attributes, no skills, research, books, clan or structures",
+              "Nothing is copied from the player's other characters"
+            ],
+            "auth": {
+              "roles": [
+                "maintainer"
+              ]
+            }
+          },
+          "playCharacter": {
+            "name": "playCharacter",
+            "description": "Enter the world as one of the player's characters",
+            "rules": [
+              "Only a character of the connecting player can be entered (refusals.unknown)",
+              "The player's lastCharacter becomes that character"
+            ],
+            "auth": {
+              "roles": [
+                "maintainer"
+              ]
+            }
+          },
+          "deleteCharacter": {
+            "name": "deleteCharacter",
+            "description": "Delete one of the player's characters",
+            "rules": [
+              "The player types the character's name; the host compares it and refuses a mismatch (refusals.confirm)",
+              "Its structures go to its clan, or become ownerless when it has none (onDelete)",
+              "Its name is free again for any new character on the server"
+            ],
+            "auth": {
+              "roles": [
+                "maintainer"
+              ]
+            }
+          },
+          "migrateSave": {
+            "name": "migrateSave",
+            "description": "Load a save written before Phase 226",
+            "rules": [
+              "Each player record becomes that player's first character, every character field unchanged",
+              "The player fields move to the player; the first character is the player's lastCharacter"
+            ],
+            "auth": {
+              "roles": [
+                "maintainer"
+              ]
+            }
+          }
         },
         "pii": [],
         "gdpr": {}

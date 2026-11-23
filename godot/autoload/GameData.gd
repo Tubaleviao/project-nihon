@@ -192,6 +192,7 @@ const PALETTES: Dictionary = {
 
 const PLAYERS: Dictionary = {
 		"Inventory": preload("res://godot/players/inventory.tres"),
+		"Player": preload("res://godot/players/player.tres"),
 		"PlayerCharacter": preload("res://godot/players/playercharacter.tres")
 }
 
@@ -337,6 +338,7 @@ const TUTORIALS: Dictionary = {
 
 const WORLD_SYSTEMS: Dictionary = {
 		"BedSpawn": preload("res://godot/world_systems/bedspawn.tres"),
+		"CharacterRoster": preload("res://godot/world_systems/characterroster.tres"),
 		"ChestsAndDoors": preload("res://godot/world_systems/chestsanddoors.tres"),
 		"Clan": preload("res://godot/world_systems/clan.tres"),
 		"ClanTiers": preload("res://godot/world_systems/clantiers.tres"),
