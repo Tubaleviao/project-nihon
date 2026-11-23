@@ -102,9 +102,12 @@ func account_count() -> int:
 
 # ── changes ──────────────────────────────────────────────────────────────
 
-## Open an empty account. Idempotent.
+## Open an empty account. Idempotent. Past MAX_ACCOUNTS it still opens (a join is never refused for it) but warns:
+## the next load keeps only MAX_ACCOUNTS.
 func add_account(account: String) -> void:
 	if account != "" and not _accounts.has(account):
+		if _accounts.size() == MAX_ACCOUNTS:
+			push_warning("CharacterRoster: more than %d accounts on this server" % MAX_ACCOUNTS)
 		_accounts[account] = { "characters": [], "last": "", "played": {} }
 
 ## Give `account` the character `character_id`. False when the id already belongs to a character, or the account
@@ -168,6 +171,7 @@ func from_data(raw: Variant, valid_id: Callable = Callable()) -> void:
 	accounts.sort()
 	for account: Variant in accounts:
 		if _accounts.size() >= MAX_ACCOUNTS:
+			push_warning("CharacterRoster: the world record holds more than %d accounts; the rest were not loaded" % MAX_ACCOUNTS)
 			break
 		var a: Variant = raw[account]
 		if not (account is String) or not (a is Dictionary) or not _ok(str(account), valid_id):

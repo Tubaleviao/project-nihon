@@ -484,7 +484,7 @@ func leave(player_id: String) -> String:
 	return ""
 
 ## Phase 226 — a deleted character leaves its clan and every invite. A founder hands the clan to its
-## highest-ranked member (oldest id first among equals); a founder alone disbands it with no heir, so its clan
+## highest-ranked member (the lowest id among equals); a founder alone disbands it with no heir, so its clan
 ## chests and structures stay the clan's, which has no members: abandoned, as an emptied clan's are.
 func drop_character(player_id: String) -> void:
 	if player_id == "":

@@ -58,11 +58,17 @@ func _on_roster_intent(op: String, args: Dictionary, peer_id: int) -> void:
 ## belongings to; the caller sends it.
 func resolve(op: String, args: Dictionary, peer_id: int) -> Dictionary:
 	var reg = root._registry
-	var account := _account_for(peer_id, str(args.get("claimed_id", "")))
+	# The rate limit first: an unbound connection's claim may read a record off disk.
 	if peer_id != 0 and _too_soon(peer_id):
-		return reg.accounts.roster_view(account, op, "rateLimited")
+		return reg.accounts.roster_view("", op, "rateLimited")
+	var claimed := str(args.get("claimed_id", ""))
+	var account := _account_for(peer_id, claimed)
 	if account == "":
-		# An unknown or busy account sees an empty list; a join without a choice makes it a fresh one.
+		# An account in the world on another connection is said so, never shown as missing: New or Play would
+		# mint a fresh account the client then caches over its real one.
+		if claimed != "" and reg.roster.has_account(claimed) and reg.accounts.account_online(claimed):
+			return reg.accounts.roster_view("", op, "inPlay")
+		# An unknown account sees an empty list; a join without a choice makes it a fresh one.
 		return reg.accounts.roster_view("", op, "unknown" if op != "list" else "")
 	match op:
 		"list":
@@ -101,13 +107,21 @@ func _too_soon(peer_id: int) -> bool:
 	return false
 
 ## Host: delete a character (`deleteCharacter`, after `PlayerRegistry.delete_refusal` passed). Its clan is read
-## first: its structures, chests and doors go to that clan (`onDelete` "clan"), or become ownerless.
+## first: its structures, chests and doors go to that clan (`onDelete` "clan"), or become ownerless (also when
+## it founded the clan alone, which disbands with it). Its companions go wild and it leaves any settlement. The
+## world is saved at once, so the removed record file and the roster never disagree on disk.
 func delete_character(id: String) -> void:
 	var clan := ""
 	if root._clans != null and CharacterRoster.on_delete() == "clan":
 		clan = str(root._clans.clan_of(id))
 	if root._clans != null:
 		root._clans.drop_character(id)
+		if clan != "" and root._clans.get_clan(clan).is_empty():
+			clan = ""
+	if root._creature != null:
+		root._creature.release_tamed_by(id)
+	if root._settlements != null:
+		root._settlements.leave(id)   # a founder stays one: settlements are legacy, migrated to clans
 	if root._structures != null:
 		root._structures.release_owner(id, clan)
 	if root._chests != null:
@@ -115,6 +129,8 @@ func delete_character(id: String) -> void:
 	root._registry.accounts.drop_character(id)
 	if root._persistence != null:
 		root._persistence.delete_player(id)
+	if root._voxel != null and root._persistence_wiring != null:
+		root._persistence_wiring.save_everything(true)
 
 # ── the screen ───────────────────────────────────────────────────────────
 
@@ -171,9 +187,16 @@ func close() -> void:
 
 ## This machine's own list arrived (peer 0): show it. A new character the host just made is entered at once.
 func _on_roster_synced(peer_id: int, roster: Dictionary) -> void:
-	if peer_id != 0 or panel == null:
+	if peer_id != 0:
 		return
 	var view := RosterView.sanitize(roster)
+	if panel == null:
+		# A client's join was refused (the character it chose is gone): back to the list, no join intent out.
+		if not root._is_client or str(view["result"]["op"]) != "play" or str(view["result"]["reason"]) == "":
+			return
+		root._networking.awaiting_character = true
+		root._networking.chosen_character = ""
+		open()
 	panel.set_view(view)
 	var result: Dictionary = view["result"]
 	if str(result["op"]) == "create" and str(result["reason"]) == "" and str(result["id"]) != "":

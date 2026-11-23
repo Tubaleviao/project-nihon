@@ -107,8 +107,9 @@ func set_view(view: Dictionary) -> void:
 	for c: Dictionary in chars:
 		_list.add_child(_row(c, str(c["id"]) == str(view.get("last", ""))))
 	# An account the host does not know yet has no limit to show: its first character is made on joining.
-	_new_button.disabled = str(view.get("account", "")) != "" and not RosterView.may_create(view)
 	var reason := str((view.get("result", {}) as Dictionary).get("reason", ""))
+	# A busy account (in the world elsewhere) may not make one either: with no account, New would start a new one.
+	_new_button.disabled = (str(view.get("account", "")) != "" and not RosterView.may_create(view)) or reason == "characters.refuse.in_play"
 	_status.modulate = Color(1.0, 0.55, 0.5)
 	_status.text = I18n.t(reason) if reason != "" and I18n.has_key(reason) else ""
 	if reason == "" and str((view.get("result", {}) as Dictionary).get("op", "")) == "delete":

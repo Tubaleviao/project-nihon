@@ -30,6 +30,7 @@ func register() -> void:
 	_run_test("character roster: list actions are rate-limited and wired between the bus and the wire", _test_wire)
 	_run_test("character roster: the list screen shows the host's list and sends Play, New and Delete", _test_panel)
 	_run_test("character roster: admin follows the account onto every character", _test_admin_by_account)
+	_run_test("character roster: a deleted character's companions go wild (review)", _test_companions_released)
 
 
 # ── rig ──────────────────────────────────────────────────────────────────
@@ -97,6 +98,12 @@ func _free_root(gr: Node) -> void:
 	for n: Node in [gr._chests, gr._structures, gr._clans, gr._persistence, gr._registry]:
 		if is_instance_valid(n):
 			n.free()
+	gr.free()
+
+func _free_root_keep_reg(gr: Node) -> void:
+	gr._roster_wiring.unwire()
+	for n: Node in [gr._chests, gr._structures, gr._clans, gr._persistence]:
+		n.free()
 	gr.free()
 
 func _clean_dir() -> void:
@@ -268,6 +275,10 @@ func _test_claims() -> void:
 	var account := reg.accounts.get_account(2)
 	var second := str(reg.accounts.create_character(account)["id"])
 	assert_false(reg.accounts.account_claimable(account), "an account in the world is not handed to a second connection")
+	var gr := _root(reg)
+	var busy: Dictionary = gr._roster_wiring.resolve("list", { "claimed_id": account }, 12)
+	assert_eq(str(busy["result"]["reason"]), "characters.refuse.in_play", "its list says it is in the world, not missing")
+	_free_root_keep_reg(gr)
 	assert_true(reg.resolve_identity(3, account) != first, "a second connection claiming it gets a fresh id")
 	assert_true(reg.accounts.get_account(3) != account, "and a fresh account")
 	_leave(reg, store, 2)
@@ -506,3 +517,13 @@ func _test_admin_by_account() -> void:
 	assert_false(chat.is_admin(reg.resolve_identity(3, "")), "another player is not")
 	chat.free()
 	reg.free()
+
+
+func _test_companions_released() -> void:
+	var cs := CreatureSlice.new()
+	cs._instances["w1"] = { "tamed_by": "char_a" }
+	cs._instances["w2"] = { "tamed_by": "char_b" }
+	assert_eq(cs.release_tamed_by("char_a"), 1, "one companion released")
+	assert_false(cs.is_tamed("w1"), "it is wild")
+	assert_eq(cs.get_tamed_by("w2"), "char_b", "another character's stays")
+	cs.free()
