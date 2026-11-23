@@ -52,6 +52,11 @@ func _test_sword_tiers() -> void:
 	assert_eq(GearTiers.check_ability("executeDisarm", "novice", ""), "", "not even a weapon")
 	assert_eq(GearTiers.check_ability("executePowerStrike", "master", "FerriteShield"), "combat.refuse.weapon_tier:apprentice",
 		"another skill's weapon counts as bare hands")
+	# A shield worn in the off hand beside a sword still counts for Shieldcraft (and not for Swordsmanship).
+	assert_eq(GearTiers.check_ability("executeParry", "master", ["StoneKnife", "FerriteShield"]), "",
+		"an apprentice shield in the off hand serves an apprentice Shieldcraft ability")
+	assert_eq(GearTiers.check_ability("executePowerStrike", "master", ["FerriteShield", "StoneKnife"]),
+		"combat.refuse.weapon_tier:apprentice", "the off-hand shield does not lift Swordsmanship")
 	assert_eq(GearTiers.check_ability("executePowerStrike", "novice", "VeilsteelLongsword"),
 		"combat.refuse.skill_tier:Swordsmanship:apprentice", "a master sword does not lift the skill")
 	assert_eq(GearTiers.check_ability("noSuchAbility", "master", "VeilsteelLongsword"), "unknown_ability", "an unknown ability is refused")

@@ -157,7 +157,6 @@ func craft(recipe_id: String, player_id: String = "") -> Dictionary:
 	if station_reason != "":
 		return _fail(recipe_id, station_reason, pid)
 
-
 	var profession_reason := _check_profession_gate(recipe, pid)
 	if profession_reason != "":
 		return _fail(recipe_id, profession_reason, pid)

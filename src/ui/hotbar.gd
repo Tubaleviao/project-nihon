@@ -278,7 +278,7 @@ static func hint_for(entry: String, kind: String, tier: String = "") -> String:
 ## ability the skill tier and the weapon both reach (`GearTiers.best_usable`); the box is unavailable when the
 ## skill reaches none, or the weapon reaches none of those it does (`tier_needed` is then the tier the box would
 ## need). Any other skill is always available.
-static func skill_box_state(skill: String, tier: String, weapon: String) -> Dictionary:
+static func skill_box_state(skill: String, tier: String, weapon: Variant) -> Dictionary:
 	if not GearTiers.is_combat_skill(skill):
 		return { "available": true, "ability": "", "tier_needed": "", "reason": "" }
 	var ability := GearTiers.best_usable(skill, tier, weapon)
@@ -561,11 +561,12 @@ func _key_text(index: int) -> String:
 	var k := int(binds[index])
 	return OS.get_keycode_string(k) if k != 0 else ""
 
-## The language changed: re-render the tooltips.
+## The held item or the worn set changed: redraw the skill boxes (they dim by the wielded weapon).
 func _on_gear_changed(_player_id: String, _what: Variant) -> void:
 	if not _buttons.is_empty():
 		_render()
 
+## The language changed: re-render the tooltips.
 func relocalize() -> void:
 	if _menu != null:
 		_menu.set_item_text(0, I18n.t("hotbar.menu_set"))
@@ -577,7 +578,7 @@ func _render(held: Dictionary = {}) -> void:
 	if held.is_empty() and held_provider.is_valid():
 		held = held_provider.call()
 	var tiers: Dictionary = tier_provider.call() if tier_provider.is_valid() else {}
-	var weapon: String = str(weapon_provider.call()) if weapon_provider.is_valid() else ""
+	var weapon: Variant = weapon_provider.call() if weapon_provider.is_valid() else ""
 	if _row2 != null:
 		_row2.visible = expanded
 	if _more != null:

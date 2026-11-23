@@ -93,6 +93,15 @@ static func wielded(character_slice: Node) -> String:
 	var held := str(character_slice.held_item_of(char_id))
 	return held if held != "" else str(character_slice.get_equipment_set(char_id).get("MainHand", ""))
 
+## Everything this machine's player holds in its hands: the wielded item (as `wielded`) and the worn off hand.
+static func wielded_items(character_slice: Node) -> Array:
+	var out: Array = [wielded(character_slice)]
+	if character_slice != null:
+		var char_id := str(character_slice.get_player_character())
+		if char_id != "":
+			out.append(str(character_slice.get_equipment_set(char_id).get("OffHand", "")))
+	return out
+
 ## The best tier among `items` whose equipment category is `category` (the floor when none is).
 static func best_tier_of(category: String, items: Array) -> String:
 	var best := floor_tier()
@@ -180,14 +189,20 @@ static func abilities_of(skill: String) -> Array:
 
 ## The tier `weapon` gives an ability: its item tier when it is one of the ability's weapon categories, else
 ## the floor (empty hands or the wrong weapon).
-static func weapon_tier_for(spec: Dictionary, weapon: String) -> String:
-	if weapon == "" or not (spec.get("weapons", []) as Array).has(EquipmentRules.category_of(weapon)):
-		return floor_tier()
-	return item_tier(weapon)
+static func weapon_tier_for(spec: Dictionary, weapon: Variant) -> String:
+	# `weapon` is one item key or the list of held items (a shield sits in the off hand beside a sword): the best
+	# tier among those whose category the ability lists.
+	var best := floor_tier()
+	var items: Array = weapon if weapon is Array else [str(weapon)]
+	for it in items:
+		var item := str(it)
+		if item != "" and (spec.get("weapons", []) as Array).has(EquipmentRules.category_of(item)):
+			best = max_tier(best, item_tier(item))
+	return best
 
 ## "" when an ability can be used with `skill_tier` and `weapon`, else a refusal code. An unknown ability is
 ## `unknown_ability`.
-static func check_ability(ability: String, skill_tier: String, weapon: String) -> String:
+static func check_ability(ability: String, skill_tier: String, weapon: Variant) -> String:
 	var spec := ability_spec(ability)
 	if spec.is_empty():
 		return "unknown_ability"
@@ -200,7 +215,7 @@ static func check_ability(ability: String, skill_tier: String, weapon: String) -
 
 ## The hotbar and skill page projection for a combat skill: one row per ability,
 ## { ability, tier, available, reason, tier_needed } (tier_needed "" when available).
-static func ability_rows(skill: String, skill_tier: String, weapon: String) -> Array:
+static func ability_rows(skill: String, skill_tier: String, weapon: Variant) -> Array:
 	var out: Array = []
 	for row: Dictionary in abilities_of(skill):
 		var reason := check_ability(str(row["ability"]), skill_tier, weapon)
@@ -210,7 +225,7 @@ static func ability_rows(skill: String, skill_tier: String, weapon: String) -> A
 
 ## What a hotbar skill box fires: the highest ability of `skill` that the skill tier and `weapon` both reach, else
 ## the highest the skill tier reaches (so the refusal says which weapon tier is missing), else "".
-static func best_usable(skill: String, skill_tier: String, weapon: String) -> String:
+static func best_usable(skill: String, skill_tier: String, weapon: Variant) -> String:
 	var best := ""
 	for row: Dictionary in abilities_of(skill):
 		if check_ability(str(row["ability"]), skill_tier, weapon) == "":

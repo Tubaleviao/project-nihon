@@ -133,10 +133,13 @@ static func refusal_message(reason: String) -> Dictionary:
 
 ## The weapon a player's ability is judged with, from the host's records: the held item, else the worn main hand
 ## (`_registry_main_hand`); a worn-out one counts as bare hands, as a worn-out tool does for crafting.
-func _wielded_weapon(pid: String, local: bool) -> String:
-	var weapon := _registry_main_hand(pid)
+func _wielded_weapon(pid: String, local: bool) -> Array:
 	var inv: Object = root._inventory if local else root._registry.get_inventory(pid)
-	return weapon if GearTiers.has_wear_left(inv, weapon) else ""
+	var out: Array = []
+	# The held/main-hand weapon, and the worn off hand (a shield) — each only while it has wear left.
+	for item: String in [_registry_main_hand(pid), str(root._registry.get_equipment(pid).get("OffHand", ""))]:
+		out.append(item if GearTiers.has_wear_left(inv, item) else "")
+	return out
 
 ## The tier a player holds in a skill, as crafting and the hotbar read it.
 func _skill_tier_of(pid: String, skill: String) -> String:
@@ -168,7 +171,7 @@ func _local_ability_round(instance_id: String) -> bool:
 func on_skill_slot_triggered(_slot: int, skill: String) -> void:
 	if not GearTiers.is_combat_skill(skill) or root._player == null or root._creature == null:
 		return
-	var ability := GearTiers.best_usable(skill, _skill_tier_of("", skill), GearTiers.wielded(root._character))
+	var ability := GearTiers.best_usable(skill, _skill_tier_of("", skill), GearTiers.wielded_items(root._character))
 	if ability == "":
 		ability = str((GearTiers.abilities_of(skill)[0] as Dictionary)["ability"])
 	var target: String = root._creature.nearest_creature(root._player.get_world_pos(), PlayerSlice.ATTACK_RANGE)

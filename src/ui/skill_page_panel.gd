@@ -19,7 +19,7 @@ const ABILITY_KEY := "ui.ability.%s"
 const CATEGORY_ORDER := ["combat", "crafting", "magic", "exploration", "social", "gathering", "other"]
 
 var skill := ""
-## Phase 229 — `Callable() -> String`: the item the local player wields ("" bare-handed), for the ability rows.
+## Phase 229 — `Callable() -> Array`: the items the local player holds (main hand, off hand; "" bare), for the ability rows.
 var weapon_provider: Callable = Callable()
 var bar: ProgressBar = null
 ## Every label text on the page, for tests.
@@ -27,6 +27,9 @@ var lines: Array[String] = []
 
 func _init() -> void:
 	name = "SkillPage"
+	# A combat skill's rows follow the wielded weapon: rebuild an open page when the gear changes.
+	GameBus.held_item_synced.connect(_on_gear_changed)
+	GameBus.equipment_changed.connect(_on_gear_changed)
 	custom_minimum_size = Vector2(PAGE_WIDTH, 0)
 	add_theme_constant_override("separation", 4)
 
@@ -46,6 +49,10 @@ func clear_page() -> void:
 		c.free()
 	lines.clear()
 	bar = null
+
+func _on_gear_changed(_player_id: String, _what: Variant) -> void:
+	if skill != "" and GearTiers.is_combat_skill(skill) and is_inside_tree():
+		show_skill(skill)
 
 ## Show `skill_id`'s page from the local player's synced XP and focus.
 func show_skill(skill_id: String) -> void:
@@ -79,7 +86,7 @@ func show_skill(skill_id: String) -> void:
 	if GearTiers.is_combat_skill(skill_id):
 		# Phase 229 — each ability with its tier; one the skill or the wielded weapon cannot reach says what it needs.
 		_label(I18n.t("ui.skill_page_abilities"), 15)
-		var weapon: String = str(weapon_provider.call()) if weapon_provider.is_valid() else ""
+		var weapon: Variant = weapon_provider.call() if weapon_provider.is_valid() else ""
 		for r: Dictionary in GearTiers.ability_rows(skill_id, str(p["tier"]), weapon):
 			var line := I18n.t("ui.skill_page_ability", [I18n.t(ABILITY_KEY % str(r["ability"])), I18n.t(TIER_KEY % str(r["tier"]))])
 			if not bool(r["available"]):
