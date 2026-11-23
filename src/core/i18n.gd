@@ -241,8 +241,7 @@ const REASON_PARAM_KINDS := {
 ## the part before the first `:` picks the `reason.<code>` key and the rest are its `{0}`.. params.
 static func reason_text(code: String) -> String:
 	var parts := code.split(":")
-	# A dotted head (`craft.refuse.tool_tier`) is a catalog key of its own; a plain one is a `reason.<code>`.
-	var key: String = parts[0] if parts[0].contains(".") else "reason." + parts[0]
+	var key := reason_key(parts[0])
 	if parts[0] == "" or not has_key(key):
 		return t("reason.unknown", [code])
 	var params: Array = Array(parts.slice(1))
@@ -250,6 +249,22 @@ static func reason_text(code: String) -> String:
 	for i in mini(kinds.size(), params.size()):
 		params[i] = resolve_arg(ref("tier", str(params[i]))) if str(kinds[i]) == "tier" else content(str(kinds[i]), str(params[i]))
 	return t(key, params)
+
+## The catalog key of a reason code's head: a dotted head (`craft.refuse.tool_tier`) is a key of its own,
+## a plain one is a `reason.<code>`.
+static func reason_key(head: String) -> String:
+	return head if head.contains(".") else "reason." + head
+
+## A reason code as a host message (`{key, args}`): content and tiers travel as `ref`s, so each client
+## names them in its own locale (the wire form of `reason_text`).
+static func reason_msg(code: String) -> Dictionary:
+	var parts := code.split(":")
+	var kinds: Array = REASON_PARAM_KINDS.get(parts[0], [])
+	var args: Array = []
+	for i in range(1, parts.size()):
+		var kind: String = str(kinds[i - 1]) if i - 1 < kinds.size() else ""
+		args.append(ref(kind, parts[i]) if kind != "" else parts[i])
+	return msg(reason_key(parts[0]), args)
 
 ## A host message as it travels: key + args, no rendered text.
 static func msg(key: String, args: Array = []) -> Dictionary:

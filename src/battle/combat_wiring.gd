@@ -54,6 +54,9 @@ const ATTACK_REACH_SLACK_M := 1.5
 const ATTACK_MIN_INTERVAL_MS := 200
 ## player id -> Time.get_ticks_msec() of that player's last accepted swing.
 var _last_swing_ms: Dictionary = {}
+## Host: player id -> Time.get_ticks_msec() of that peer's last ability intent, accepted or refused. A refusal
+## answers with a system message, so intents closer than `ATTACK_MIN_INTERVAL_MS` are dropped unanswered.
+var _last_ability_ms: Dictionary = {}
 ## Host: attacker id -> { weapon, step, at } for a peer drawn no body here (a dedicated host), so its combo advances.
 var _bodyless_combo: Dictionary = {}
 
@@ -105,6 +108,15 @@ func on_ability_intent(ability: String, instance_id: String, player_id: String) 
 	var pid: String = root._registry.local_player_id if local else player_id
 	var spec := GearTiers.ability_spec(ability)
 	var reason := "unknown_ability"
+	if not local:
+		var now := Time.get_ticks_msec()
+		var flooding := _last_ability_ms.has(pid) and now - int(_last_ability_ms[pid]) < ATTACK_MIN_INTERVAL_MS
+		_last_ability_ms[pid] = now
+		if flooding:
+			var dropped := { "ability": ability, "instance_id": instance_id, "success": false, "reason": "rate_limited",
+				"player_id": pid }
+			GameBus.ability_resolved.emit(dropped)
+			return dropped
 	if not spec.is_empty():
 		reason = GearTiers.check_ability(ability, _skill_tier_of(pid, str(spec["skill"])), _wielded_weapon(pid, local))
 	if reason == "":
@@ -115,21 +127,9 @@ func on_ability_intent(ability: String, instance_id: String, player_id: String) 
 		"player_id": pid }
 	GameBus.ability_resolved.emit(result)
 	if reason != "" and reason != "rejected" and pid != "":
-		var m := refusal_message(reason)
+		var m := I18n.reason_msg(reason)
 		GameBus.system_message.emit(str(m["key"]), m["args"], pid)
 	return result
-
-## A gear-tier refusal code as a `{key, args}` message: content and tiers travel as `I18n.ref`s, so each client
-## names them in its own locale.
-static func refusal_message(reason: String) -> Dictionary:
-	var parts := reason.split(":")
-	var key: String = parts[0] if parts[0].contains(".") else "reason." + parts[0]
-	var kinds: Array = I18n.REASON_PARAM_KINDS.get(parts[0], [])
-	var args: Array = []
-	for i in range(1, parts.size()):
-		var kind: String = str(kinds[i - 1]) if i - 1 < kinds.size() else ""
-		args.append(I18n.ref(kind, parts[i]) if kind != "" else parts[i])
-	return I18n.msg(key, args)
 
 ## The weapon a player's ability is judged with, from the host's records: the held item, else the worn main hand
 ## (`_registry_main_hand`); a worn-out one counts as bare hands, as a worn-out tool does for crafting.
@@ -171,7 +171,7 @@ func _local_ability_round(instance_id: String) -> bool:
 func on_skill_slot_triggered(_slot: int, skill: String) -> void:
 	if not GearTiers.is_combat_skill(skill) or root._player == null or root._creature == null:
 		return
-	var ability := GearTiers.best_usable(skill, _skill_tier_of("", skill), GearTiers.wielded_items(root._character))
+	var ability := GearTiers.best_usable(skill, _skill_tier_of("", skill), GearTiers.wielded_items(root._character, root._inventory))
 	if ability == "":
 		ability = str((GearTiers.abilities_of(skill)[0] as Dictionary)["ability"])
 	var target: String = root._creature.nearest_creature(root._player.get_world_pos(), PlayerSlice.ATTACK_RANGE)
@@ -216,6 +216,7 @@ func _on_gesture_intent(_gesture_id: String, player_id: String) -> void:
 ## Drop a departed player's swing clock (called from the peer-left path).
 func forget_swinger(player_id: String) -> void:
 	_last_swing_ms.erase(player_id)
+	_last_ability_ms.erase(player_id)
 	_bodyless_combo.erase(player_id)
 	if root._battle != null and root._battle.impact_queue != null:
 		root._battle.impact_queue.cancel(player_id)

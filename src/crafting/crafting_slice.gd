@@ -118,9 +118,6 @@ const STATION_RADIUS: float = 8.0
 ## DEBUG demo, and every isolated test), and `get_skill_for()` is the single
 ## resolution point every guard goes through.
 var _skill_tiers: Dictionary = {}
-## Test seam (Phase 229): recipe id -> structured recipe, read before GameData.RECIPES. The fabric has no
-## recipe above its station's tier, so the suite names one here to prove the station-tier gate.
-var recipe_overrides: Dictionary = {}
 
 func _ready() -> void:
 	for skill_key in GameData.SKILLS:
@@ -263,8 +260,6 @@ func is_recipe_known(recipe_id: String, player_id: String = "") -> bool:
 
 ## Return the structured recipe data for a recipe key, or {} if unknown/malformed.
 func get_recipe(recipe_id: String) -> Dictionary:
-	if recipe_overrides.has(recipe_id):
-		return recipe_overrides[recipe_id]
 	return _structured_field(GameData.RECIPES, recipe_id, "recipe")
 
 ## Set a skill's tier for a player. Returns true when applied, false when `tier`

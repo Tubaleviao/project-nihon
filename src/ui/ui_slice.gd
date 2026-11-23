@@ -1431,7 +1431,7 @@ func _build_skills_content() -> Control:
 	var fit := Button.new()
 	_set_tr(fit, "text", "ui.skills_fit")
 	_skills_window = SkillsWindow.new()
-	_skills_window.build(title, fit); _skills_window.page.weapon_provider = func() -> Array: return GearTiers.wielded_items(character_slice)
+	_skills_window.build(title, fit); _m1.wire_skill_page(_skills_window.page)
 	_skill_wheel = _skills_window.wheel
 	return _skills_window
 

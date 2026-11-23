@@ -21,6 +21,8 @@ const CATEGORY_ORDER := ["combat", "crafting", "magic", "exploration", "social",
 var skill := ""
 ## Phase 229 — `Callable() -> Array`: the items the local player holds (main hand, off hand; "" bare), for the ability rows.
 var weapon_provider: Callable = Callable()
+## `Callable() -> String`: this machine's player id; gear changes of other players are ignored when set.
+var local_player_provider: Callable = Callable()
 var bar: ProgressBar = null
 ## Every label text on the page, for tests.
 var lines: Array[String] = []
@@ -50,7 +52,9 @@ func clear_page() -> void:
 	lines.clear()
 	bar = null
 
-func _on_gear_changed(_player_id: String, _what: Variant) -> void:
+func _on_gear_changed(player_id: String, _what: Variant) -> void:
+	if not GearTiers.is_local_change(player_id, local_player_provider):
+		return
 	if skill != "" and GearTiers.is_combat_skill(skill) and is_inside_tree():
 		show_skill(skill)
 
