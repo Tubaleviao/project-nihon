@@ -1,0 +1,20 @@
+[gd_resource type="Resource" format=3]
+
+[ext_resource type="Script" path="res://godot/world_systems/characterroster.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = ""
+ownership = {"characterId":"character","body":"character","name":"character","hp":"character","position":"character","spawnPoint":"character","statusEffects":"character","attributes":"character","attributeGrowth":"character","inventory":"character","equipment":"character","skills":"character","skillXp":"character","skillFocus":"character","professions":"character","titles":"character","cooldowns":"character","craftCounter":"character","research":"character","booksLearned":"character","tamingFlags":"character","companions":"character","waystones":"character","clanMembership":"character","ownedStructures":"character","spawnBed":"character","friendCode":"player","settings":"player","admin":"player","lastCharacter":"player"}
+characterFields = ["body","name","inventory","equipment","skills","skillXp","attributes","research","booksLearned","clanMembership","ownedStructures","spawnBed"]
+playerFields = ["friendCode","settings","admin"]
+recordKeys = {"player_id":"characterId","position":"position","chunk":"position","local":"position","hp":"hp","respawn_deadline":"hp","status_effects":"statusEffects","appearance":"body","creation":"body","technology":"research","flags":"tamingFlags","waystones":"waystones","companions":"companions","professions":"professions","titles":"titles","craft_counter":"craftCounter","skills":"skills","skill_xp":"skillXp","skill_focus":"skillFocus","attributes":"attributes","attribute_growth":"attributeGrowth","cooldowns":"cooldowns","equipment":"equipment","spawn":"spawnPoint","bed":"spawnBed","bed_station":"spawnBed","inventory":"inventory","inventory_durability":"inventory"}
+worldKeys = {"names":"character","clans":"character","structures":"character","chests":"character"}
+limit = 4
+onDelete = "clan"
+names = "server"
+deleteConfirm = "name"
+migration = "firstCharacter"
+refusals = {"limit":"characters.refuse.limit","nameTaken":"creation.refuse.name_taken","confirm":"characters.refuse.confirm","unknown":"characters.refuse.unknown","rateLimited":"characters.refuse.rate_limited"}
+description = "Several characters per player (Phase 226). The player is the account that connects; a character is who walks the world. A player keeps up to 4 characters on a server, picked from a list after choosing a world or joining a server. A new character starts from scratch: no items, base attributes, no skills, research, books or clan, and nothing from the player's other characters. Names are unique on the server across every character. Deleting a character asks for its name typed out; its structures go to its clan, or become ownerless when it had none. The character owns: characterId, body, name, hp, position, spawnPoint, statusEffects, attributes, attributeGrowth, inventory, equipment, skills, skillXp, skillFocus, professions, titles, cooldowns, craftCounter, research, booksLearned, tamingFlags, companions, waystones, clanMembership, ownedStructures, spawnBed. The player owns: friendCode, settings, admin, lastCharacter."
+tags = ["world-system"]

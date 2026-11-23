@@ -397,7 +397,7 @@ module.exports = {
 
   PlayerIdentityModel: defineEntity({
     tags: ['decision'],
-    description: 'A player identity is a server-issued local UUID (player_id), not an account. The server mints the id on first join, persists it next to the player record, and sends it to the client so a reconnect re-binds to the same record. The client may present a cached id at join, and the server honours it only when it already owns that record and no live peer holds it — a client can therefore never claim another online player\'s record.',
+    description: 'A player identity is a server-issued local UUID (player_id), not an account. The server mints the id on first join, persists it next to the player record, and sends it to the client so a reconnect re-binds to the same record. The client may present a cached id at join, and the server honours it only when it already owns that record and no live peer holds it — a client can therefore never claim another online player\'s record. Amended by Phase 226 (CharacterRoster): player_id identifies the Player (the account that connects); progress (inventory, HP, position, appearance, skills…) belongs to one of the player\'s characters and keys on the character id. A pre-Phase-226 record becomes the player\'s first character, whose id is the old player_id.',
     goal: 'Give every player a connection-independent identity so inventory, HP, position, and appearance survive a reconnect or a server restart, without waiting for an account/auth service',
     fields: {
       id:     { type: 'uuid', primaryKey: true },

@@ -7,7 +7,7 @@ title: "PlayerCharacter"
 
 `player`
 
-The player-controlled character in the world. Stats are derived from attributes (AttributeSystem), equipped items, active skills, and status effects. A player's character persists across sessions; death resets only transient state.
+The player-controlled character in the world. Stats are derived from attributes (AttributeSystem), equipped items, active skills, and status effects. A player's character persists across sessions; death resets only transient state. Phase 226: a player (the account, Player) keeps several characters; every piece of progress is the character's (CharacterRoster.ownership).
 
 > Model the minimum runtime data the server needs to authorise actions and the client needs to render the character
 
@@ -15,6 +15,8 @@ The player-controlled character in the world. Stats are derived from attributes 
 
 | Field | Type | Description |
 | ----- | ---- | ----------- |
+| playerId | uuid | The player (account) this character belongs to (Phase 226) |
+| lastPlayedAt | datetime | When the player last entered the world as this character, for the character list (Phase 226) |
 | state | `alive`, `dead`, `respawning` |  |
 | name | string | Display name chosen at character creation |
 | baseHp | integer | Maximum HP at current level/gear baseline |

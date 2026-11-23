@@ -49,10 +49,13 @@ module.exports = {
     description:
       'The player-controlled character in the world. ' +
       'Stats are derived from attributes (AttributeSystem), equipped items, active skills, and status effects. ' +
-      'A player\'s character persists across sessions; death resets only transient state.',
+      'A player\'s character persists across sessions; death resets only transient state. ' +
+      'Phase 226: a player (the account, Player) keeps several characters; every piece of progress is the character\'s (CharacterRoster.ownership).',
     goal: 'Model the minimum runtime data the server needs to authorise actions and the client needs to render the character',
     fields: {
       id:           { type: 'uuid', primaryKey: true },
+      playerId:     { type: 'uuid', description: 'The player (account) this character belongs to (Phase 226)' },
+      lastPlayedAt: { type: 'datetime', description: 'When the player last entered the world as this character, for the character list (Phase 226)' },
       state:        { type: 'enum', values: PLAYER_STATES },
       name:         { type: 'string', description: 'Display name chosen at character creation' },
       baseHp:       { type: 'integer', description: 'Maximum HP at current level/gear baseline', defaultValue: 100 },

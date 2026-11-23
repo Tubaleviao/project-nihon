@@ -522,6 +522,9 @@ jobs:
       - name: Check the gear-tier validation rejects bad tables (Phase 229)
         run: node tools/check_gear_tiers.js
 
+      - name: Check the character-roster validation rejects bad tables (Phase 226)
+        run: node tools/check_character_roster.js
+
       - name: Check the combo-table validation rejects bad tables
         run: node tools/check_combos.js
       - name: Check the work-clip validation rejects bad tables

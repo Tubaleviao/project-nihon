@@ -9,6 +9,8 @@ enum State {
 }
 
 @export var id: String
+@export var playerId: String
+@export var lastPlayedAt: String
 @export var state: int
 @export var name: String
 @export var baseHp: int

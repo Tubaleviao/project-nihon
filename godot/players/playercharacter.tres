@@ -5,6 +5,8 @@
 [resource]
 script = ExtResource("1")
 id = ""
+playerId = ""
+lastPlayedAt = ""
 state = 0
 name = ""
 baseHp = 100
@@ -16,5 +18,5 @@ positionY = 0.0
 positionZ = 0.0
 state_machine_field = "state"
 initial_state = "alive"
-description = "The player-controlled character in the world. Stats are derived from attributes (AttributeSystem), equipped items, active skills, and status effects. A player's character persists across sessions; death resets only transient state."
+description = "The player-controlled character in the world. Stats are derived from attributes (AttributeSystem), equipped items, active skills, and status effects. A player's character persists across sessions; death resets only transient state. Phase 226: a player (the account, Player) keeps several characters; every piece of progress is the character's (CharacterRoster.ownership)."
 tags = ["player"]

@@ -394,6 +394,19 @@ research, clan membership and owned structures all key on the player id.
   membership, owned structures, spawn bed) and what belongs to the player (friend code, settings,
   admin flag). A character limit per player per server, and whether a deleted character's
   structures fall to its clan or become ownerless.
+  **Done** (the fabric PR, `fabric/gameplay/character_roster.js`, `tools/check_character_roster.js`): a `Player`
+  entity (the account: friend code, settings, admin flag, last character) and the `CharacterRoster` world system.
+  Its `ownership` table puts body, name, HP, position, pack, gear, skills and XP, attributes, research, books,
+  taming flags, companions, waystones, clan membership, owned structures and spawn bed on the character, and
+  friend code, settings, admin and last character on the player; `recordKeys` says where each key of today's
+  `PlayerRegistry` record moves (the check tool scans the runtime so it cannot drift), and `worldKeys` says the
+  world sections keyed by player id today (names, clans, structures, chests) key on the character. Limit 4 characters per player per server; a deleted character's structures go to
+  its clan, or become ownerless when it has none; names unique per server; delete confirmed by the name typed and
+  checked by the host; a pre-226 save becomes each player's first character, whose id is the old player id (the
+  player keeps that id too, so the world sections keep resolving; `PlayerIdentityModel` is amended). `PlayerCharacter` gains `playerId`
+  and `lastPlayedAt`. The validator pins every ownership field to its owner (inventory or skills on the player fail),
+  and rejects a save-record key with no owner or moved onto the player, a limit outside 1–16 and an unknown delete
+  policy. The runtime PR adds the `characters.refuse.*` locale rows (en and pt_BR) the fabric's `refusals` name.
 - **Runtime:** the registry keys character state by character id. The host refuses a new character
   over the limit, and a new character gets no items, skills, research or memberships from the
   player's other characters. Names stay unique per server across all characters (`name_taken`).
