@@ -352,8 +352,8 @@ reason.replacement_not_ratified,The replacement is not ratified.,A substituiçã
 reason.not_supersedable,It cannot be superseded.,Não pode ser substituída.
 reason.invalid_verdict,Invalid verdict.,Voto inválido.
 reason.unknown_ability,Unknown ability.,Habilidade desconhecida.
-craft.refuse.tool_tier,Needs {0} of {1} tier.,Exige {0} de nível {1}.
-craft.refuse.station_tier,Needs {0} of {1} tier.,Exige {0} de nível {1}.
+craft.refuse.tool_tier,Requires {0}: {1} tier.,Exige {0} de nível {1}.
+craft.refuse.station_tier,Requires {0}: {1} tier.,Exige {0} de nível {1}.
 combat.refuse.weapon_tier,Needs a weapon of {0} tier.,Exige uma arma de nível {0}.
 combat.refuse.skill_tier,Needs {0} at {1} tier.,Exige {0} no nível {1}.
 hud.carcass.harvest,X: harvest {0} · Z: carry,X: coletar {0} · Z: carregar

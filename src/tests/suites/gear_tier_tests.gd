@@ -165,6 +165,7 @@ func _test_host_refuses_peer_ability() -> void:
 		assert_eq(msgs[0][2], "p5", "to the peer that sent it, not the payload's name")
 		assert_eq(I18n.render(I18n.msg(msgs[0][0], msgs[0][1])), I18n.t("combat.refuse.weapon_tier", [I18n.t("ui.tier_expert")]), "naming the tier in the reader's locale")
 	r["reg"].record_equipment("p5", { "MainHand": "VeilsteelLongsword" })
+	w._last_ability_ms["p5"] = Time.get_ticks_msec()   # pinned: the next intent lands inside the gap however slow the run
 	n._route_c2h(5, { "type": "ability_intent", "ability": "executeWhirlwindBlade", "instance_id": iid })
 	assert_true(rounds.is_empty(), "an intent right after the last is dropped: a flooding peer is rate limited")
 	assert_eq(msgs.size(), 1, "and gets no reply for it")
