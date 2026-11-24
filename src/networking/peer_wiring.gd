@@ -38,6 +38,7 @@ func _connect_all() -> void:
 	connect_bus(GameBus.player_joined, _on_player_joined)
 	connect_bus(GameBus.player_identity_assigned, _on_player_identity_assigned)
 	connect_bus(GameBus.remote_player_state, on_remote_player_state)
+	connect_bus(GameBus.join_refused, _on_join_refused)   # Phase 297
 	connect_bus(GameBus.remote_player_state, _on_remote_avatar_state)
 	connect_bus(GameBus.peer_equipment_evicted, _remove_remote_avatar)
 	if root._creature != null:
@@ -684,6 +685,13 @@ func _on_connection_failed() -> void:
 	Diag.error("[Networking] connection to host failed")
 	root._snapshot_pending = false
 	root._menu_wiring.join_failed("menu.join.fail_unreachable")   # Phase 223
+
+## Phase 297 — the host speaks another protocol: the join ends with the reason (`reason_key`, in both catalogs).
+func _on_join_refused(reason_key: String) -> void:
+	if not root._is_client:
+		return
+	root._snapshot_pending = false
+	root._menu_wiring.join_failed(reason_key)
 
 func _on_server_disconnected() -> void:
 	if not root._is_client:

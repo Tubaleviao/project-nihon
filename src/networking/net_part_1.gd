@@ -22,6 +22,7 @@ func _apply_profile_arg(args: Array) -> bool:
 
 ## Tear down the peer and return to offline role.
 func disconnect_all() -> void:
+	sl._m3.stop_status()   # Phase 297
 	if sl._peer:
 		sl._peer.close()
 	sl._detach_peer()

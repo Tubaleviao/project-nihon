@@ -51,7 +51,7 @@ const WaypointHorizon  := preload("res://src/ui/waypoint_horizon.gd")
 const SpawnFinder      := preload("res://src/world/spawn_finder.gd")
 const ColonizationMap  := preload("res://src/world/colonization_map.gd")
 const WorldClock       := preload("res://src/world/world_clock.gd")
-const BootWiring := preload("res://src/core/boot_wiring.gd")
+const BootWiring := preload("res://src/core/boot_wiring.gd"); const ServerConnector := preload("res://src/networking/server_connector.gd")
 const CombatWiring := preload("res://src/battle/combat_wiring.gd")
 const WorkAnimWiring := preload("res://src/character/work_anim_wiring.gd"); const WeatherWiring := preload("res://src/world/weather_wiring.gd")
 const WaystoneWiring := preload("res://src/world/waystone_wiring.gd")
@@ -1005,7 +1005,7 @@ func _boot_client() -> void:
 	_networking.claimed_player_id = _persistence.load_client_identity()
 	_networking.friend_code = _friend_code_arg
 	_roster_wiring.open_client()   # Phase 226 — a menu join picks a character before it enters
-	var err: Error = _networking.join(_host_address, _networking.DEFAULT_PORT)
+	var err: Error = await ServerConnector.join(_networking, _host_address, get_tree())   # Phase 297: host:port, IPv6, Happy Eyeballs
 	if err != OK:
 		Diag.error("[Networking] client failed to connect to %s — %s" % [_host_address, error_string(err)])
 		_snapshot_pending = false
@@ -1055,7 +1055,7 @@ func _boot_server() -> void:
 	_chunk_manager.build_first_ring(_chunk_manager.player_chunk())
 	_chunk_manager.refresh()
 	_persistence_wiring.apply_loaded_creature_state()
-	_networking.host(_networking.DEFAULT_PORT, _boot_wiring.max_clients)
+	_networking.host(_boot_wiring.host_port, _boot_wiring.max_clients, _boot_wiring.host_options(_menu_wiring.world, _is_server))
 
 ## A remote avatar is dropped only once it is this far away, a margin PAST the host's AOI
 ## edge. The host stops reporting a peer at exactly AOI_RADIUS, so pruning at the same radius

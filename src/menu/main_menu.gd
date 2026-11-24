@@ -4,7 +4,8 @@ extends CanvasLayer
 ## Home: Play, Join server, Options (greyed until Phase 225), Quit.
 ##   Play — the local worlds (LocalWorlds: name, seed, last played), New world (name only; Phase 238: one fabric seed)
 ##          and Delete with a confirmation. Choosing one asks the root to boot the listen host on it.
-##   Join — an address and an optional friend code, plus the recent servers (RecentServers). Asks the
+##   Join — an address and an optional friend code, plus the recent servers (RecentServers) with their ping and,
+##          since Phase 297, the hosts "On this network" (LAN discovery through the status query). Asks the
 ##          root to boot the client path; a failed join comes back here with a localized reason.
 ##
 ## Presentation only. The menu never boots anything itself: it emits `start_requested(choice)` and the
@@ -17,6 +18,9 @@ const I18n := preload("res://src/core/i18n.gd")
 const OptionsWindow := preload("res://src/ui/options_window.gd")
 const LocalWorlds := preload("res://src/menu/local_worlds.gd")
 const RecentServers := preload("res://src/menu/recent_servers.gd")
+const NetAddress := preload("res://src/networking/net_address.gd")
+const ServerProbe := preload("res://src/networking/server_probe.gd")
+const ServerStatus := preload("res://src/networking/server_status.gd")
 const PersistenceSlice := preload("res://src/persistence/persistence_slice.gd")
 
 const LAYER := 40
@@ -44,6 +48,21 @@ var _address_edit: LineEdit = null
 var _friend_edit: LineEdit = null
 var _join_error: Label = null
 var _recent_list: VBoxContainer = null
+## Phase 297 — LAN discovery and the recent servers' ping, live only while the Join page shows.
+var _lan_list: VBoxContainer = null
+var _lan_none: Label = null
+var _probe: ServerProbe = null
+## instance → {ip, rtt_ms, status} (`ServerProbe.merge_lan_row`)
+var _lan_rows: Dictionary = {}
+## recent address → its ping label
+var _ping_labels: Dictionary = {}
+## Where discovery asks; the net harness points it at loopback.
+var lan_targets: Array = ServerProbe.LAN_TARGETS
+var lan_status_port: int = ServerStatus.default_status_port(NetAddress.DEFAULT_PORT)
+## While the Join page shows, discovery is re-sent every LAN_REFRESH_MS and a host silent for LAN_STALE_MS leaves the list.
+const LAN_REFRESH_MS := 3000
+const LAN_STALE_MS := 7000
+var _last_discover_ms: int = 0
 var _options_button: Button = null
 var _options_window: Control = null   # Phase 225 — built on first use
 var _version_label: Label = null
@@ -65,7 +84,7 @@ static func version_label_text(version: String) -> String:
 static func join_choice(raw_address: String, raw_friend: String) -> Dictionary:
 	var address := raw_address.strip_edges()
 	var friend := raw_friend.strip_edges()
-	if not RecentServers.valid_address(address):
+	if not NetAddress.valid(address):
 		return { "ok": false, "error": "menu.join.error_address" }
 	if not RecentServers.valid_friend(friend):
 		return { "ok": false, "error": "menu.join.error_friend" }
@@ -99,6 +118,10 @@ func show_page(p: String) -> void:
 		refresh_worlds()
 	elif p == PAGE_JOIN:
 		_refresh_recent()
+	if p == PAGE_JOIN:
+		search_servers()
+	else:
+		_stop_probe()
 
 ## A line on the home page (a failed join's reason), already a catalog key.
 func show_notice(key: String) -> void:
@@ -312,8 +335,110 @@ func _build_join(parent: Control) -> Control:
 	box.add_child(recent_head)
 	_recent_list = VBoxContainer.new()
 	box.add_child(_recent_list)
+	# Phase 297 — the hosts that answered the status query on this network.
+	var lan_head := HBoxContainer.new()
+	box.add_child(lan_head)
+	var lan_label := Label.new()
+	lan_label.text = I18n.t("menu.join.lan")
+	lan_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	lan_head.add_child(lan_label)
+	_button(lan_head, "menu.join.lan_refresh", search_servers)
+	_lan_none = Label.new()
+	_lan_none.text = I18n.t("menu.join.lan_none")
+	box.add_child(_lan_none)
+	_lan_list = VBoxContainer.new()
+	box.add_child(_lan_list)
 	_button(box, "menu.back", func() -> void: show_page(PAGE_HOME))
 	return box
+
+## Phase 297 — (re)start LAN discovery and the recent servers' ping. The list starts empty: only hosts that answer
+## this search are shown.
+func search_servers() -> void:
+	_lan_rows.clear()
+	_refresh_lan()
+	if _probe == null:
+		_probe = ServerProbe.new()
+		if _probe.open() != OK:
+			_probe = null
+			return
+	_last_discover_ms = Time.get_ticks_msec()
+	_probe.discover(lan_status_port, "lan", lan_targets, _last_discover_ms)
+	for e in RecentServers.load_list(recent_path):
+		_probe.query_address(str(e["address"]), "recent:" + str(e["address"]))
+
+func _stop_probe() -> void:
+	if _probe != null:
+		_probe.close()
+		_probe = null
+	_lan_rows.clear()
+
+func _process(_delta: float) -> void:
+	if _probe == null:
+		return
+	var now := Time.get_ticks_msec()
+	if now - _last_discover_ms >= LAN_REFRESH_MS:
+		_last_discover_ms = now
+		_probe.discover(lan_status_port, "lan", lan_targets, now)
+	apply_answers(_probe.poll(now))
+	if ServerProbe.drop_stale_rows(_lan_rows, now, LAN_STALE_MS):
+		_refresh_lan()
+
+func _exit_tree() -> void:
+	_stop_probe()
+
+## Status answers in (from the probe, or the suite): LAN rows merged by host, pings written beside recent rows.
+func apply_answers(answers: Array) -> void:
+	var lan_changed := false
+	for ans in answers:
+		var key := str(ans["key"])
+		if key == "lan":
+			ServerProbe.merge_lan_row(_lan_rows, ans)
+			lan_changed = true
+		elif key.begins_with("recent:"):
+			var label: Label = _ping_labels.get(key.substr(7), null)
+			if label != null and is_instance_valid(label):
+				label.text = I18n.t("menu.join.ping", [str(int(ans["rtt_ms"]))])
+	if lan_changed:
+		_refresh_lan()
+
+## The LAN rows as shown: [{text, address, joinable}], most players first, then by world name.
+func lan_rows() -> Array:
+	var out: Array = []
+	var raw: Array = _lan_rows.values()
+	raw.sort_custom(func(a: Dictionary, b: Dictionary) -> bool:
+		var pa := int(a["status"]["players"])
+		var pb := int(b["status"]["players"])
+		return pa > pb if pa != pb else str(a["status"]["world_name"]) < str(b["status"]["world_name"]))
+	for r in raw:
+		out.append(lan_row_view(r))
+	return out
+
+## One LAN row's text and join address. A host of another protocol is listed but cannot be joined.
+static func lan_row_view(row: Dictionary) -> Dictionary:
+	var st: Dictionary = row["status"]
+	var world_name := str(st["world_name"])
+	if world_name == "":
+		world_name = I18n.t("menu.join.lan_unnamed")
+	var joinable := ServerStatus.protocol_refusal(ServerStatus.PROTOCOL_VERSION, int(st["protocol"])) == ""
+	var text := I18n.t("menu.join.lan_row", [world_name, str(int(st["players"])), str(int(st["max_players"])), str(int(row["rtt_ms"]))]) \
+		if joinable else I18n.t("menu.join.lan_incompatible", [world_name, str(st["game_version"])])
+	return { "text": text, "address": NetAddress.format(str(row["ip"]), int(st["game_port"])), "joinable": joinable }
+
+func _refresh_lan() -> void:
+	if _lan_list == null or _lan_none == null:
+		return
+	for c in _lan_list.get_children():
+		_lan_list.remove_child(c)
+		c.free()
+	var rows := lan_rows()
+	_lan_none.visible = rows.is_empty()
+	for r in rows:
+		var b := Button.new()
+		b.text = str(r["text"])
+		b.disabled = not bool(r["joinable"])
+		var addr := str(r["address"])
+		b.pressed.connect(func() -> void: request_join(addr, _friend_edit.text))
+		_lan_list.add_child(b)
 
 func refresh_worlds() -> void:
 	if _world_list == null:
@@ -344,12 +469,19 @@ func _refresh_recent() -> void:
 	for c in _recent_list.get_children():
 		_recent_list.remove_child(c)
 		c.free()
+	_ping_labels.clear()
 	for e in RecentServers.load_list(recent_path):
 		var addr := str(e["address"])
 		var friend := str(e["friend"])
+		var row := HBoxContainer.new()
 		var b := Button.new()
 		b.text = addr if friend == "" else I18n.t("menu.join.recent_row", [addr, friend])
+		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		b.pressed.connect(func() -> void:
 			_address_edit.text = addr
 			_friend_edit.text = friend)
-		_recent_list.add_child(b)
+		row.add_child(b)
+		var ping := Label.new()   # Phase 297 — the status round trip, filled in when the host answers
+		row.add_child(ping)
+		_ping_labels[addr] = ping
+		_recent_list.add_child(row)

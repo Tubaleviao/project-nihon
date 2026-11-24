@@ -26,6 +26,9 @@
 #            NetworkingSlice.NET_PROFILES — lan, wan_br, wan_bad — passed to BOTH processes as
 #            `--net-profile`; unset = loopback, no emulation),
 #            NET_HARNESS_LOGDIR (where the two logs land; default a fresh mktemp -d).
+#            NET_HARNESS_ADDRESS (Phase 297: the loopback address the client joins, 127.0.0.1 or ::1;
+#            default 127.0.0.1. `::1` on a runner with no IPv6 loopback is skipped with a logged reason),
+#            NET_HARNESS_PORT (the game port, default 7777; the status port is this + 1).
 set -uo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -45,6 +48,27 @@ if [ -n "$NET_PROFILE" ]; then
     exit 2
   fi
   TIMEOUT_SECS="$(awk -v t="$TIMEOUT_SECS" -v s="$SCALE" 'BEGIN { v = t * s; print (v == int(v)) ? v : int(v) + 1 }')"
+fi
+NET_ADDRESS="${NET_HARNESS_ADDRESS:-127.0.0.1}"
+NET_PORT="${NET_HARNESS_PORT:-7777}"
+case "$NET_ADDRESS" in
+  127.0.0.1|::1) ;;
+  *) echo "::error::net-harness: NET_HARNESS_ADDRESS must be 127.0.0.1 or ::1 (got '$NET_ADDRESS')" >&2; exit 2 ;;
+esac
+if ! [[ "$NET_PORT" =~ ^[0-9]+$ ]] || [ "$NET_PORT" -lt 1 ] || [ "$NET_PORT" -gt 65534 ]; then
+  echo "::error::net-harness: NET_HARNESS_PORT must be 1-65534 (got '$NET_PORT')" >&2
+  exit 2
+fi
+if [ "$NET_ADDRESS" = "::1" ]; then
+  CLIENT_ADDRESS="[::1]:$NET_PORT"
+  # A runner with IPv6 disabled has no ::1: that is the runner, not a bug in the game, so the run is skipped
+  # (exit 0) with the reason in the log rather than failed.
+  if ! { ip -6 addr show dev lo 2>/dev/null | grep -q '::1/128'; }; then
+    echo "net-harness: skipped — this runner has no IPv6 loopback (::1), so the IPv6 run cannot happen here"
+    exit 0
+  fi
+else
+  CLIENT_ADDRESS="$NET_ADDRESS:$NET_PORT"
 fi
 LOGDIR="${NET_HARNESS_LOGDIR:-$(mktemp -d)}"
 HOST_LOG="$LOGDIR/net-harness-host.log"
@@ -70,8 +94,9 @@ fi
 # A stale server on the port would be joined instead of our host, and the scenario would
 # run against a process this driver does not control. Two processes, then, are what the
 # port has to be free for; refuse to start otherwise.
-if command -v ss >/dev/null 2>&1 && ss -ltn 2>/dev/null | grep -q ':7777 '; then
-  echo "::error::net-harness: port 7777 is already in use — a stale host would be joined instead." >&2
+# ENet and the status port are UDP (`-u`), so that is the table to read.
+if command -v ss >/dev/null 2>&1 && ss -lun 2>/dev/null | grep -qE ":($NET_PORT|$((NET_PORT + 1))) "; then
+  echo "::error::net-harness: UDP port $NET_PORT or $((NET_PORT + 1)) is already in use — a stale host would be joined instead." >&2
   exit 2
 fi
 
@@ -94,11 +119,12 @@ note "godot:    $GODOT"
 note "logs:     $LOGDIR"
 note "timeout:  ${TIMEOUT_SECS}s"
 note "profile:  ${NET_PROFILE:-loopback}"
+note "address:  $CLIENT_ADDRESS"
 
 # No --quit on either side: the harness quits its own process when the scenario ends,
 # which is what makes the exit-code check below mean something. --headless because
 # nothing is rendered; the scenario is wire-level.
-"$GODOT" --headless --path "$REPO_ROOT" -- --net-harness host "${PROFILE_ARGS[@]}" >"$HOST_LOG" 2>&1 &
+"$GODOT" --headless --path "$REPO_ROOT" -- --net-harness host --port "$NET_PORT" "${PROFILE_ARGS[@]}" >"$HOST_LOG" 2>&1 &
 HOST_PID=$!
 
 # The host has to be LISTENING before the client joins, or the client's first
@@ -118,7 +144,7 @@ while ! grep -q 'listening on port' "$HOST_LOG" 2>/dev/null; do
 done
 note "host listening"
 
-"$GODOT" --headless --path "$REPO_ROOT" -- --net-harness client "${PROFILE_ARGS[@]}" >"$CLIENT_LOG" 2>&1 &
+"$GODOT" --headless --path "$REPO_ROOT" -- --net-harness client --client "$CLIENT_ADDRESS" "${PROFILE_ARGS[@]}" >"$CLIENT_LOG" 2>&1 &
 CLIENT_PID=$!
 
 # --- wait for both sides, inside the deadline ------------------------------
@@ -259,6 +285,6 @@ if [ "$FAILURES" -ne 0 ]; then
   echo "net-harness FAILED — $FAILURES problem(s); full logs in $LOGDIR"
   exit 1
 fi
-echo "net-harness passed — $PASSED/$PLANNED steps agreed across both peers (profile: ${NET_PROFILE:-loopback})"
+echo "net-harness passed — $PASSED/$PLANNED steps agreed across both peers (profile: ${NET_PROFILE:-loopback}, address: $CLIENT_ADDRESS)"
 echo "  host log:   $HOST_LOG"
 echo "  client log: $CLIENT_LOG"

@@ -161,6 +161,7 @@ static func steps() -> Array:
 	return [
 		{ "name": "handshake",         "compare": true },
 		{ "name": "snapshot_complete", "compare": true },
+		{ "name": "lan_discovery",     "compare": true },
 		{ "name": "chop_in_reach",     "compare": true },
 		{ "name": "chop_out_of_reach", "compare": false },
 		{ "name": "tree_cleared",      "compare": true },
@@ -414,15 +415,14 @@ func run(root: Node, role: String) -> void:
 		# one. Deliberately not `_boot_client()`: that reads the persisted identity, and
 		# the first join is the one the identity claim is about.
 		_root._networking.claimed_player_id = SPOOFED_ID
-		var err: Error = _root._networking.join(
-			_root._host_address, _root._networking.DEFAULT_PORT)
+		var err: Error = LateSteps.join_host(self)
 		_root._snapshot_pending = true
 		if err != OK:
 			_report("handshake", "fail", "join_failed")
 			_finish()
 			return
 	await _step_handshake()
-	await _step_snapshot_complete()
+	await _step_snapshot_complete(); await LateSteps.new().lan_discovery(self)   # Phase 297
 	await _capture_spare_target()
 	await _step_chop_in_reach()
 	await _step_chop_out_of_reach()
@@ -1359,7 +1359,7 @@ func _step_reconnect_alive() -> void:
 	# buffer is the part that leaks: a snapshot that lost a chunk can never complete.
 	var buffer_cleared: bool = _root._networking._snapshot_buffer.is_empty()
 	await _await_settle(RECONNECT_WAIT_SECS * _time_scale)
-	var err: Error = _root._networking.join(_root._host_address, _root._networking.DEFAULT_PORT)
+	var err: Error = LateSteps.join_host(self)
 	if err != OK:
 		_report("reconnect_alive", "fail", "rejoin_failed")
 		return
@@ -1697,7 +1697,7 @@ func _step_spawn_near_friend() -> void:
 	await _await_settle(RECONNECT_WAIT_SECS * _time_scale)
 	_root._networking.claimed_player_id = ""
 	_root._networking.friend_code = old_handle
-	if _root._networking.join(_root._host_address, _root._networking.DEFAULT_PORT) != OK:
+	if LateSteps.join_host(self) != OK:
 		_report("spawn_near_friend", "fail", "rejoin_failed")
 		return
 	_root._snapshot_pending = true

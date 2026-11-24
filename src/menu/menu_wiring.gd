@@ -38,7 +38,7 @@ var notice: String = ""
 var menu: MainMenu = null
 ## True once the menu started this boot: only then does a failed join return to it.
 var from_menu: bool = false
-## The local world the menu chose ({dir, seed}), applied before the world boot; {} otherwise.
+## The local world the menu chose ({dir, seed, name}), applied before the world boot; {} otherwise.
 var world: Dictionary = {}
 ## Phase 224 — set once Exit to main menu or Quit ran, so a second press does not save twice.
 var leaving: bool = false
@@ -127,7 +127,7 @@ func apply_choice(choice: Dictionary) -> bool:
 			return false
 		root._is_client = false
 		root._is_server = false
-		world = { "dir": dir, "seed": int(choice.get("seed", 0)) }
+		world = { "dir": dir, "seed": int(choice.get("seed", 0)), "name": str(choice.get("name", "")) }   # Phase 297: the status answer's name
 		return true
 	return false
 
