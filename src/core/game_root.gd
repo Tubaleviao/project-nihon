@@ -446,6 +446,8 @@ func _build_and_boot() -> void:
 	_tree.station_slice       = _station
 	_tree.record_writer       = _chunk_manager.update_record
 	_tree.frontier_ready      = _chunk_manager.can_record_now
+	# Phase 282 — a felled tree falls away from the feller (wired here with the tree's other collaborators, issue #709).
+	_tree.feller_pos          = func(pid: String) -> Variant: return _chest_wiring.player_pos(pid if pid != "" else _registry.local_player_id)
 	# Phase 36 — the wire is policed with evidence the bus cannot carry: a tree chop
 	# intent names only a tree id (its position for the reach check comes from the tree
 	# slice) and a trade invite names a counterparty (resolved against the registry's
@@ -914,15 +916,9 @@ func _finish_host_boot() -> void:
 	if _ui != null and not _registry.local_player_id.is_empty():
 		_ui.set_own_handle(_registry.public_handle(_registry.local_player_id))
 
-	# CreatureSlice already spawned each chunk's budget via ChunkManager (Phase 17).
-	# Fire one combat round against the first spawned creature through the bus to
-	# validate the combat pipeline end to end.
-	var instances := _creature.get_all_instances()
-	if instances.size() > 0:
-		var first: Dictionary = instances[0]
-		# Request one combat round against the first spawned creature via the bus
-		# (the real trigger comes from player left-click; this validates the pipeline).
-		GameBus.combat_round_requested.emit("player", first["instance_id"])
+	# Issue #711 — no combat round is fired here: an early-phase pipeline check hit the first
+	# creature as "player" on every boot (a phantom kill on a dedicated server too). The suite and
+	# the net harness cover the combat pipeline.
 
 	# Mining & building — mine a surface block (biome material → inventory) and
 	# place one back, proving the voxel edit API and material flow end to end.

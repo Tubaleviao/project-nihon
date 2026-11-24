@@ -14,6 +14,8 @@ func register() -> void:
 	_run_test("tree model: the variant pick is stable for a tree id",        _test_variant_stable)
 	_run_test("tree model: the placeholder crown is closed",                 _test_crown_closed)
 	_run_test("tree model: the sway material is off on the low path",        _test_sway_material)
+	_run_test("tree model: switching sway off swaps the live pools' material", _test_sway_runtime_swap)
+	_run_test("tree model: a model that failed to load is retried later",    _test_model_retry)
 
 ## True when the triangle (a, b, c) is a front face seen from outside `center`: Godot 4 treats
 ## clockwise vertices as the front, so the geometric normal is (c - a) x (b - a).
@@ -95,8 +97,10 @@ func _test_model_or_fallback() -> void:
 	var t := _make_tree_slice()
 	t.spawn_for_chunk(Vector2i(0, 0))
 	var trees: Array = t.get_all_trees()
+	# Issue #703 — the preconditions are asserted: a slice with no pool or no trees used to pass silently.
+	assert_true(t._pool != null, "the suite's tree slice renders (has a pool)")
+	assert_false(trees.is_empty(), "chunk (0,0) spawns at least one tree")
 	if t._pool == null or trees.is_empty():
-		assert_true(true, "no rendering pool on this path")
 		t.free()
 		return
 	var tree: Dictionary = t.get_tree_record(str(trees[0]["tree_id"]))
@@ -119,8 +123,8 @@ func _test_model_or_fallback() -> void:
 
 func _test_pool_after_rebase() -> void:
 	var t := _make_tree_slice()
+	assert_true(t._pool != null, "the suite's tree slice renders (has a pool)")
 	if t._pool == null:
-		assert_true(true, "no rendering pool on this path")
 		t.free()
 		return
 	var shift := Vector3(512.0, 0.0, -256.0)
@@ -131,7 +135,8 @@ func _test_pool_after_rebase() -> void:
 		if t._model_pools[k] != null:
 			assert_eq(t._model_pools[k].scene_position(), shift, "a lazily made model pool carries the rebase shift")
 			checked += 1
-	assert_true(checked > 0 or t.get_all_trees().is_empty(), "a model pool was made")
+	assert_false(t.get_all_trees().is_empty(), "chunk (0,0) spawns at least one tree")
+	assert_true(checked > 0, "a model pool was made")
 	t.free()
 
 func _test_variant_stable() -> void:
@@ -177,7 +182,8 @@ func _test_crown_closed() -> void:
 			assert_true(tris > 100 and tris <= 600, "%s: a modest triangle count (%d)" % [k, tris])
 			assert_true(volume > 0.0, "%s: the shells enclose positive volume in Godot's winding" % k)
 			var aabb := mesh.get_aabb()
-			assert_true(absf(aabb.position.y) < 0.01 and aabb.end.y > 3.0 and aabb.end.y < 4.0, "%s: foot on the ground, about 3.4 m tall" % k)
+			assert_true(absf(aabb.position.y) < 0.01 and aabb.end.y > 3.0 and aabb.end.y < 4.0, "%s: foot on the ground, about 3.8 m tall" % k)
+			assert_true(absf(aabb.end.y - TreeMaterial.SWAY_TO) < 0.1, "%s: the sway reaches full weight at the crown top (SWAY_TO %.2f, top %.2f)" % [k, TreeMaterial.SWAY_TO, aabb.end.y])
 
 static func _qkey(p: Vector3) -> String:
 	return "%d,%d,%d" % [roundi(p.x * 1000.0), roundi(p.y * 1000.0), roundi(p.z * 1000.0)]
@@ -187,3 +193,52 @@ func _test_sway_material() -> void:
 	var plain := TreeMaterial.make(false)
 	assert_true(plain is StandardMaterial3D, "sway off: the plain vertex-colour material")
 	assert_true((plain as StandardMaterial3D).vertex_color_use_as_albedo, "colours still drive the albedo")
+
+## Issue #703 — a runtime switch to the low path (sway off) reaches pools that already exist.
+func _test_sway_runtime_swap() -> void:
+	var saved: Variant = ProjectSettings.get_setting(TreeMaterial.SWAY_SETTING, true)
+	ProjectSettings.set_setting(TreeMaterial.SWAY_SETTING, true)
+	var t := _make_tree_slice()
+	t.spawn_for_chunk(Vector2i(0, 0))
+	var pools: Array = [t._pool]
+	pools.append_array(t._model_pools.values())
+	assert_true(t._model_pools.size() > 0, "a model pool exists before the switch")
+	for p in pools:
+		assert_true(p.material() is ShaderMaterial, "sway on: %s sways" % p.name)
+	ProjectSettings.set_setting(TreeMaterial.SWAY_SETTING, false)
+	t.refresh_sway()
+	for p in pools:
+		assert_true(p.material() is StandardMaterial3D, "sway off at runtime: %s draws the plain material" % p.name)
+	ProjectSettings.set_setting(TreeMaterial.SWAY_SETTING, true)
+	t.refresh_sway()
+	assert_true(t._pool.material() is ShaderMaterial, "and back on")
+	ProjectSettings.set_setting(TreeMaterial.SWAY_SETTING, saved)
+	t.free()
+
+## Issue #703 — a model key whose mesh did not load is not cached as a null pool: once the mesh loads,
+## the next tree of that key gets the model pool.
+func _test_model_retry() -> void:
+	var t := _make_tree_slice()
+	t.spawn_for_chunk(Vector2i(0, 0))
+	var trees: Array = t.get_all_trees()
+	assert_false(trees.is_empty(), "chunk (0,0) spawns at least one tree")
+	if trees.is_empty():
+		t.free()
+		return
+	var tid := str(trees[0]["tree_id"])
+	var species := str(t.get_tree_record(tid)["species"])
+	var key := TreeMaterial.model_key_for(species, tid)
+	t.free()
+	var saved: Dictionary = TreeMaterial._model_meshes.duplicate()
+	for k in TreeMaterial.model_keys(species):
+		TreeMaterial._model_meshes[k] = null
+	var t2 := _make_tree_slice()
+	t2.spawn_for_chunk(Vector2i(0, 0))
+	assert_eq(str(t2.get_tree_record(tid)["pool_key"]), "", "a failed load draws the fallback")
+	assert_false(t2._model_pools.has(key), "and leaves no pool entry for the key")
+	TreeMaterial._model_meshes = saved
+	t2.despawn_for_chunk(Vector2i(0, 0))
+	t2.spawn_for_chunk(Vector2i(0, 0))
+	assert_eq(str(t2.get_tree_record(tid)["pool_key"]), key, "once the model loads, a respawned tree uses it")
+	assert_true(t2._model_pools.has(key), "from a newly made model pool")
+	t2.free()

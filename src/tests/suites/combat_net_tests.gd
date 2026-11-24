@@ -11,6 +11,7 @@ func register() -> void:
 	_run_test("combat net: the host binds a forwarded swing to the sending connection", _test_host_binds_attacker)
 	_run_test("combat net: the host resolves a peer's swing in reach and refuses the rest", _test_host_checks_swing)
 	_run_test("combat net: a peer's kill reaches only that peer's tutorial", _test_peer_kill_reaches_tutorial)
+	_run_test("combat net: the host boot tail fires no combat round (#711)", _test_host_boot_fires_no_round)
 
 func _test_client_forwards_swing() -> void:
 	var b := BattleSlice.new()
@@ -184,3 +185,19 @@ func _test_peer_kill_reaches_tutorial() -> void:
 		assert_eq(got[0], ["creature_killed", { "creature": species, "tags": ["creature"] }], "with the species")
 		assert_eq(str(got[1][1]["creature"]), "", "an unknown species is not passed on")
 	n.free()
+
+## Issue #711 — `_finish_host_boot` used to emit `combat_round_requested("player", <first creature>)`
+## on every host boot, a phantom hit (and possible kill credited to "player") on listen hosts and
+## dedicated servers. The boot tail needs a whole world, so this reads its body instead: it must not
+## request a combat round or touch a creature's HP.
+func _test_host_boot_fires_no_round() -> void:
+	var src := FileAccess.get_file_as_string("res://src/core/game_root.gd")
+	var start := src.find("func _finish_host_boot()")
+	assert_true(start >= 0, "game_root still has _finish_host_boot")
+	if start < 0:
+		return
+	var end := src.find("\nfunc ", start + 1)
+	var body := src.substr(start, (end if end > start else src.length()) - start)
+	assert_false(body.contains("combat_round_requested"), "the host boot tail requests no combat round")
+	assert_false(body.contains("get_all_instances"), "the host boot tail picks no creature to hit")
+	assert_false(body.contains("apply_damage"), "the host boot tail damages no creature")

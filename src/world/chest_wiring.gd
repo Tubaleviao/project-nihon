@@ -52,7 +52,6 @@ func make_slice(ctx: GameRoot) -> Node:
 	slice.spill = func(item: String, qty: int, pos: Vector3) -> void: root._loot.spawn_pickup(item, qty, pos)
 	slice.remove_station = root._station.remove_station
 	slice.place_for = self.place_for
-	root._tree.feller_pos = func(pid: String) -> Variant: return player_pos(pid if pid != "" else root._registry.local_player_id)   # Phase 282 — a felled tree falls away from the feller
 	root._crafting.position_of = self.crafter_pos   # Phase 202 — a station gate judges the crafter's own position
 	for t: String in ChestRules.station_types():
 		if not ChestRules.holds_items(t):

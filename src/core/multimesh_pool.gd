@@ -60,6 +60,10 @@ func mesh() -> Mesh:
 func material() -> Material:
 	return _multimesh_instance.material_override
 
+## Swap the pool's material in place (every live instance draws with it from the next frame).
+func set_material(m: Material) -> void:
+	_multimesh_instance.material_override = m
+
 ## Allocate a free instance index, growing the MultiMesh when exhausted.
 func alloc() -> int:
 	if not _free.is_empty():

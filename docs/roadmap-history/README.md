@@ -374,3 +374,5 @@ Filed by the owner on 2026-11-14. The other phases of the arc are open in [ROADM
 | 276 | First sounds wired in: clicks, windows, footsteps, the dig, pickups, a creature's attack, ambience and music | Done | [phases-276.md](phases-276.md) |
 | 289 | Hold to work, told and shown: the work bar in view, and the tutorial says hold | Done | [phases-289.md](phases-289.md) |
 | 281 | Work you can see: chopping, mining, digging, building and dissecting animations | Done | [phases-281.md](phases-281.md) |
+| 282 | A felled tree falls, then goes | Done | [phases-282.md](phases-282.md) |
+| 283 | Trees that look like trees: closed faces, a trunk and a real crown | Done | [phases-283.md](phases-283.md) |

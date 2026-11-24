@@ -229,7 +229,9 @@ func _ready() -> void:
 	GameBus.block_edit_resolved.connect(_on_block_edit_resolved)
 	GameBus.station_placed.connect(_on_station_placed)
 	if render_visuals:
+		_sway_on = TreeMaterial.sway_enabled()
 		_build_pool()
+		ProjectSettings.settings_changed.connect(refresh_sway)
 
 func _process(delta: float) -> void:
 	step_visuals(delta)
@@ -1306,6 +1308,7 @@ static func _tree_id(chunk_pos: Vector2i, spawn_index: int) -> String:
 
 ## A tree whose stump was still regrowing when its chunk unloaded comes back as a stump
 ## with the same deadline; an expired memory just means a standing tree.
+## Phase 282 spec: a stump draws nothing, so a restored one stays hidden with no fall replayed (#709).
 func _restore_remembered_stump(tree_id: String) -> void:
 	if not _stump_memory.has(tree_id):
 		return
@@ -1351,8 +1354,7 @@ func shift_scene(shift: Vector3) -> void:
 	if _pool != null:
 		_pool.shift_scene(shift)
 	for k in _model_pools:
-		if _model_pools[k] != null:
-			_model_pools[k].shift_scene(shift)
+		_model_pools[k].shift_scene(shift)
 	var live: Array = []
 	for n in _world_nodes:
 		if is_instance_valid(n):
@@ -1370,10 +1372,15 @@ func scene_offset() -> Vector3:
 func _build_pool() -> void:
 	_pool = _make_pool("TreePool", _tree_mesh())
 
+var _sway_on: bool = true
+## Issue #703 — a runtime sway switch (terrain quality low) reaches the live pools (`ProjectSettings.settings_changed`).
+func refresh_sway() -> void:
+	_sway_on = TreeMaterial.refresh_pools([_pool] + _model_pools.values(), _sway_on)
+
 func _make_pool(pool_name: String, mesh: Mesh) -> Node:
 	var pool := MultimeshPool.new()
 	pool.name = pool_name
-	pool.setup(mesh, true, TreeMaterial.make(TreeMaterial.sway_enabled()))
+	pool.setup(mesh, true, TreeMaterial.make(_sway_on))
 	add_child(pool)
 	# A pool made after a rebase starts at the accumulated shift, like the pools that were shifted.
 	if _origin.value != Vector3.ZERO:
@@ -1418,11 +1425,10 @@ func _alloc_visual(species: String, pos: Vector3, tree_id: String) -> Dictionary
 	if key != "":
 		if not _model_pools.has(key):
 			var mesh := TreeMaterial.model_mesh(key)
-			_model_pools[key] = _make_pool("TreePool_" + key.get_file().get_basename().get_basename(), mesh) if mesh != null else null
-		if _model_pools[key] == null:
-			key = ""
-		else:
-			pool = _model_pools[key]
+			if mesh != null:
+				_model_pools[key] = _make_pool("TreePool_" + key.get_file().get_basename().get_basename(), mesh)
+		pool = _model_pools.get(key, _pool)   # #703: a failed load is not cached, so a later tree retries
+		key = key if _model_pools.has(key) else ""
 	var idx: int = pool.alloc()
 	pool.set_color(idx, Color.WHITE if key != "" else _species_color(species))
 	pool.set_transform(idx, _visual_transform(pos))

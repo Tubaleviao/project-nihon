@@ -7,16 +7,19 @@ extends RefCounted
 
 const Diag := preload("res://src/core/diag.gd")
 const SWAY_SETTING := "nihon/graphics/tree_sway"
-## Metres of crown sway at the top of a tree; the weight rises from `SWAY_FROM` to `SWAY_TO` (a tree's height).
+## Metres of crown sway at the top of a tree; the weight rises from `SWAY_FROM` to `SWAY_TO` (the placeholder
+## models' height, 3.8 m; `tools/gen_tree_models.py`).
 const SWAY_AMPLITUDE := 0.06
 const SWAY_FROM := 1.8
-const SWAY_TO := 3.4
+const SWAY_TO := 3.8
+## Extra model variants a species may have beyond its base model (`<Species>_v1` … `_v<MAX_VARIANTS>`).
+const MAX_VARIANTS := 1
 
 const SHADER_CODE := """
 shader_type spatial;
 uniform float amplitude = 0.06;
 uniform float sway_from = 1.8;
-uniform float sway_to = 3.4;
+uniform float sway_to = 3.8;
 void vertex() {
 	float w = smoothstep(sway_from, sway_to, VERTEX.y);
 	float phase = MODEL_MATRIX[3].x * 0.7 + MODEL_MATRIX[3].z * 0.9;
@@ -33,11 +36,20 @@ static var SHADER_CODE_FALLING: String = SHADER_CODE.replace("void fragment() {\
 	"uniform vec4 tint : source_color = vec4(1.0);\nuniform float alpha = 1.0;\nvoid fragment() {\n\tALBEDO = COLOR.rgb * tint.rgb;\n\tALPHA = alpha;\n}")
 static var _shader: Shader = null
 static var _shader_falling: Shader = null
-const MAX_VARIANTS := 1
 static var _model_meshes: Dictionary = {}
 
 static func sway_enabled() -> bool:
 	return bool(ProjectSettings.get_setting(SWAY_SETTING, true))
+
+## Issue #703 — give every live pool in `pools` the material for the current sway setting when it differs from
+## `was` (what they draw now); null entries are skipped. Returns the setting now applied.
+static func refresh_pools(pools: Array, was: bool) -> bool:
+	var on := sway_enabled()
+	if on != was:
+		for pool in pools:
+			if pool != null:
+				pool.set_material(make(on))
+	return on
 
 ## The material for the tree pools: the swaying shader, or a plain vertex-colour material when sway is off.
 static func make(sway: bool = true) -> Material:

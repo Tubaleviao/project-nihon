@@ -22,7 +22,7 @@ issues are open. Burn them down first (fix, fold into the next phase, or close w
 
 ## Phase index
 
-Phases 1–225, 238–244, 248–250, 252–256, 259–276, 281, 289 are done (200 and 201 were aborted). Their specs and acceptance criteria, and the
+Phases 1–225, 238–244, 248–250, 252–256, 259–276, 281–283, 289 are done (200 and 201 were aborted). Their specs and acceptance criteria, and the
 introductions of the arcs they belonged to, are archived in
 [docs/roadmap-history/](docs/roadmap-history/README.md).
 
@@ -1060,62 +1060,6 @@ hand. Today `hotbar.selected_item()` only feeds station placement; held meshes e
   refused and syncs nothing; more changes than the rate limit in a second are dropped; dropping or using up the
   last held item syncs empty.
 - Net harness step: client B sees client A's held item id change when A selects another slot.
-
-## Phase 282 — A felled tree falls, then goes
-
-Owner's playtest, 2026-11-19: a felled tree squashes into a dark stump in place (scale 0.7/0.18/0.7,
-`tree_slice.gd` `_stump_transform`) and stays until it regrows. It should topple, and then disappear completely.
-
-- On the felled event, clients play a fall: the tree rotates about its base, away from the feller, to the ground
-  over about 2.5 s with an ease-in (a falling tree speeds up), a short bounce, then sinks and fades over 1.5 s
-  and is removed. The fall is client-side presentation only; the host's state is "felled at time t".
-- After the fall nothing of the tree remains (no stump), until it regrows on the existing timer. Regrowth shows a
-  sapling growing to full size over its first stretch of time rather than popping in.
-- A client that loads the chunk after the fall (or joins late) sees no tree and no fall; a client that loads it
-  mid-fall sees the tree already gone (no half-fall replays).
-- The falling tree is a single instance taken out of the MultiMesh into its own node for the fall, then freed;
-  the MultiMesh slot is hidden. No collision during the fall (it never hits players).
-- The fall direction is chosen by the host (away from the feller's position at the felling) and carried in the
-  felled sync: `GameBus.tree_chopped(tree_id, wood, state, respawn_at)` carries no feller or position today, so it
-  gains a `fall_yaw` (radians) that clients use as-is, never computing it from their local copy of the feller.
-- No world-gen change (placement is untouched), so no `WORLDGEN_VERSION` bump.
-
-**Acceptance criteria**
-- Suite (driving the fall with explicit time steps): after the felled event the tree's node tilts toward the side
-  away from the feller and reaches at least 85° by 2.5 s; by 4 s it is freed and its MultiMesh slot hidden; no
-  stump instance exists; orphan audit clean.
-- Suite: a chunk built with a tree already felled shows no tree; regrowth scales from sapling to full over the
-  regrow window.
-- Suite (host): the felled sync's `fall_yaw` points away from the feller's position.
-- Net harness step: both clients see the tree removed after A fells it, and both received the same `fall_yaw`.
-
-## Phase 283 — Trees that look like trees: closed faces, a trunk and a real crown
-
-Owner's playtest, 2026-11-19: the upper part of a tree can be seen into and does not look good. Trees are two boxes
-(`tree_slice.gd` `_tree_mesh()`, `MeshUtil.add_box`) in one MultiMesh. `MeshUtil` winds faces counter-clockwise
-seen from outside, which Godot 4 treats as back faces; with the default culling, the outside faces are culled and
-the inside shows. The voxel terrain hides the same winding with `CULL_DISABLED`; the tree material does not.
-
-- Fix `MeshUtil.add_box` and `MeshUtil.add_box_arrays` (both built from the shared `_box_faces`) and any other
-  `MeshUtil` builder to Godot's front-face winding, and check every user still renders outward: trees, the
-  loose-item fallback, the rare-vein deposit markers (`add_box_arrays` in `voxel_mesh.gd` and `voxel_smooth.gd`),
-  and any debug or placeholder boxes. The terrain's
-  `CULL_DISABLED` stays only where a mesh is truly two-sided.
-- Trees come from a model per tree species (`models/trees/<species>.glb.raw`, the species from the fabric's
-  biome/flora tables), with up to two variants per species, chosen by the tree's seed. Placeholders for every
-  species key are generated in the public repo: a tapered trunk and a crown of several overlapping closed lumps
-  (not one box), coloured per species.
-- The procedural mesh stays as the fallback when a key fails to load, with the fixed winding.
-- Trees get a gentle wind sway in the vertex shader (crown only, weighted by height), off on the low graphics path.
-- No world-gen change (positions and species are untouched), so no `WORLDGEN_VERSION` bump. Art: assets A42.
-
-**Acceptance criteria**
-- Suite: every triangle `MeshUtil.add_box` and `MeshUtil.add_box_arrays` emit has its face normal (from the winding
-  Godot uses) pointing away from the box centre; same for the tree fallback mesh and a chunk's deposit markers.
-- Suite: each fabric tree species has a placeholder model at its key; a tree uses its species' model when it loads
-  and the fallback otherwise; the variant pick is stable for a given tree seed.
-- Suite: the placeholder crown is closed (every edge shared by two triangles).
-- Playtest bot `travel` and `horizon` steps stay within their frame budgets with the new trees.
 
 ## Phase 284 — Hair that sits on the head
 
