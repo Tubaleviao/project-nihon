@@ -52,10 +52,14 @@ func _start_dial(ip: String, port: int, request: Dictionary, reply_cap: int, now
 
 ## Server side, once the request is in: send `reply` and close when it is written.
 func reply(msg: Dictionary, cap: int = RegistryWire.MAX_REQUEST_BYTES) -> void:
+	reply_frame(RegistryWire.frame(msg, cap))
+
+## The same with a frame already encoded (the registry's cached list reply).
+func reply_frame(frame: PackedByteArray) -> void:
 	if not _server_side or _replied:
 		return
 	_replied = true
-	_out = RegistryWire.frame(msg, cap)
+	_out = frame
 	if _out.is_empty():
 		_fail("oversize")
 

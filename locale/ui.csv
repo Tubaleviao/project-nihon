@@ -877,6 +877,7 @@ menu.public.col_ping,Ping,Ping
 menu.public.col_version,Version,Versão
 menu.public.players_value,{0}/{1},{0}/{1}
 menu.public.ping_unknown,…,…
+menu.public.no_answer,The server has not answered yet.,O servidor ainda não respondeu.
 menu.public.other_version,Can't join: other version,Não dá para entrar: outra versão
 menu.public.fetching,Asking the server list…,Consultando a lista de servidores…
 menu.public.none,No public servers right now.,Nenhum servidor público no momento.

@@ -26,6 +26,7 @@ const ServerStatus := preload("res://src/networking/server_status.gd")
 const PersistenceSlice := preload("res://src/persistence/persistence_slice.gd")
 const PublicServers := preload("res://src/menu/public_servers.gd")
 const RegistryList := preload("res://src/networking/registry_list.gd")
+const RegistryWire := preload("res://src/networking/registry_wire.gd")
 
 const LAYER := 40
 const PAGE_HOME := "home"
@@ -80,6 +81,7 @@ var _public_sort: OptionButton = null
 var _registries_edit: LineEdit = null
 var public_sort_by: String = PublicServers.SORT_PING
 var _public_check: CheckBox = null
+var _region_pick: OptionButton = null
 var _options_button: Button = null
 var _options_window: Control = null   # Phase 225 — built on first use
 var _version_label: Label = null
@@ -197,6 +199,7 @@ func play_world(id: String) -> bool:
 		return false
 	var choice := host_choice(w)
 	choice["public"] = _public_check != null and _public_check.button_pressed   # Phase 298
+	choice["region"] = RegistryWire.REGIONS[maxi(0, _region_pick.selected)] if _region_pick != null else ""
 	start_requested.emit(choice)
 	return true
 
@@ -331,9 +334,17 @@ func _build_play(parent: Control) -> Control:
 	_name_edit = _line(box, "menu.world.name", LocalWorlds.NAME_MAX)
 	_world_error = _error_label(box)
 	# Phase 298 — a listen host announces itself to the registries when this is ticked.
+	var pub_row := HBoxContainer.new()
+	box.add_child(pub_row)
 	_public_check = CheckBox.new()
 	_public_check.text = I18n.t("menu.world.public")
-	box.add_child(_public_check)
+	_public_check.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	pub_row.add_child(_public_check)
+	_region_pick = OptionButton.new()   # the region the list shows for this host
+	for r in RegistryWire.REGIONS:
+		_region_pick.add_item(I18n.t("menu.region." + (str(r) if str(r) != "" else "none")))
+	_region_pick.tooltip_text = I18n.t("menu.public.col_region")
+	pub_row.add_child(_region_pick)
 	_button(box, "menu.world.create", func() -> void: create_world(_name_edit.text))
 	_button(box, "menu.back", func() -> void: show_page(PAGE_HOME))
 	return box
@@ -492,7 +503,8 @@ func public_rows() -> Array:
 ## A row was clicked: its address goes into the form and the join starts. "" when requested, else the error key.
 func join_public(row: Dictionary) -> String:
 	if not bool(row.get("joinable", false)):
-		return "menu.join.fail_protocol_newer"
+		var why := str(row.get("refusal", ""))
+		return why if why != "" else "menu.public.no_answer"
 	var addr := str(row["address"])
 	if _address_edit != null:
 		_address_edit.text = addr

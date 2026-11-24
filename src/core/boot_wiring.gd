@@ -129,9 +129,10 @@ func host_options(menu_world: Dictionary, dedicated: bool) -> Dictionary:
 		"status_port": status_port if status_port >= 0 else ServerStatus.default_status_port(host_port),
 		"world_name": str(menu_world.get("name", "")) if str(menu_world.get("name", "")) != "" else world_name,
 		"local_players": 0 if dedicated else 1,
-		"public": public if dedicated else bool(menu_world.get("public", false)),
+		# A menu world follows its Play-page choices; a dedicated server or a CLI listen host its flags.
+		"public": bool(menu_world.get("public", false)) if not menu_world.is_empty() and not dedicated else public,
 		"registries": RegistryList.current(),
-		"region": region,
+		"region": RegistryWire.region_of(menu_world.get("region", "")) if not menu_world.is_empty() and not dedicated else region,
 	}
 
 ## Phase 298 — `--registry [port]`: this process is a registry and nothing else. The port, or 0 when the flag is

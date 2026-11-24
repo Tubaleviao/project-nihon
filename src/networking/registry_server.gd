@@ -4,7 +4,9 @@ extends Node
 ##
 ## TCP on `port` (dual-stack): each connection carries one request — a host's heartbeat or a client's list query —
 ## and one reply (`RegistryWire`). Untrusted input on an open port, so: at most MAX_CONNECTIONS open at once and
-## MAX_PER_IP from one address (more are closed unread), every frame size-capped, every exchange on a deadline. The
+## MAX_PER_IP from one address bucket (an IPv4 address or an IPv6 /64; more are closed unread), every frame
+## size-capped, every exchange on a deadline, list queries rate-limited per bucket and their reply encoded once per
+## table change. The
 ## back-probe (`RegistryTable`) goes out from one UDP socket (`ServerProbe`), so an entry is listed only once the
 ## host at the heartbeat's source IP answered on its status port.
 
@@ -24,6 +26,12 @@ var _probe: ServerProbe = null
 ## Open exchanges: [RegistryExchange]
 var _open: Array = []
 var _last_sweep_ms: int = 0
+const LIST_WINDOW_MS := 10000
+const LIST_PER_WINDOW := 20
+var _list_window_start: int = -LIST_WINDOW_MS
+var _list_rate: Dictionary = {}
+var _list_frame := PackedByteArray()
+var _list_version: int = -1
 
 ## Listen on `port` (`bind_address` "*" is dual-stack). OK, or the error that stopped it.
 func start(port: int, bind_address: String = "*") -> Error:
@@ -72,13 +80,16 @@ func poll(now_ms: int = Time.get_ticks_msec()) -> void:
 		var was_pending: bool = x.state == RegistryExchange.PENDING
 		x.poll(now_ms)
 		if was_pending and x.state == RegistryExchange.DONE:
-			x.reply(handle(x.peer_ip, x.message, now_ms), RegistryWire.MAX_LIST_BYTES)
+			x.reply_frame(reply_frame(x.peer_ip, x.message, now_ms))
 			x.poll(now_ms)
 		if x.finished():
 			x.close()
 			_open.erase(x)
-	for p in table.probe_due(now_ms):
-		_probe.query_ip(str(p["ip"]), int(p["status_port"]), str(p["key"]), now_ms)
+	for p in table.probe_due():
+		if _probe.query_ip(str(p["ip"]), int(p["status_port"]), str(p["key"]), now_ms):
+			table.probe_sent(str(p["key"]), now_ms)
+		else:
+			break   # the probe's pending table is full: the rest stay due for a later frame
 	for ans in _probe.poll(now_ms):
 		if table.probe_answered(str(ans["key"]), str(ans["ip"]), ans["status"]):
 			print("[Registry] listed %s (%s)" % [str(ans["key"]), str(ans["status"]["world_name"])])
@@ -87,7 +98,8 @@ func poll(now_ms: int = Time.get_ticks_msec()) -> void:
 		for key in table.sweep(now_ms):
 			print("[Registry] dropped %s" % str(key))
 
-## The reply to one request from `ip`. Pure apart from the table, so the suite drives it without sockets.
+## The reply to one request from `ip`. Pure apart from the table and the list-query rate limit, so the suite drives
+## it without sockets.
 func handle(ip: String, msg: Dictionary, now_ms: int) -> Dictionary:
 	match str(msg.get("type", "")):
 		"heartbeat":
@@ -96,8 +108,34 @@ func handle(ip: String, msg: Dictionary, now_ms: int) -> Dictionary:
 				return { "type": "error", "code": str(r["code"]) }
 			return { "type": "heartbeat_ok", "listed": bool(r["listed"]), "interval_s": table.interval_s }
 		"list":
+			if not _admit_list(ip, now_ms):
+				return { "type": "error", "code": "rate_limited" }
 			return _fit_list(table.listed())
 	return { "type": "error", "code": "malformed" }
+
+## The encoded reply. A list reply is encoded once per table version and reused, so list queries cost a copy, not a
+## sort and an encode each.
+func reply_frame(ip: String, msg: Dictionary, now_ms: int) -> PackedByteArray:
+	var reply := handle(ip, msg, now_ms)
+	if str(reply.get("type", "")) != "list":
+		return RegistryWire.frame(reply)
+	if _list_frame.is_empty() or _list_version != table.version:
+		_list_frame = RegistryWire.frame(reply, RegistryWire.MAX_LIST_BYTES)
+		_list_version = table.version
+	return _list_frame
+
+## At most LIST_PER_WINDOW list queries per address bucket per LIST_WINDOW_MS: a client asks every 15 s, so this is
+## generous for players behind one NAT and bounds what one source can pull.
+func _admit_list(ip: String, now_ms: int) -> bool:
+	if now_ms - _list_window_start >= LIST_WINDOW_MS:
+		_list_window_start = now_ms
+		_list_rate.clear()
+	var b := RegistryTable.bucket(ip)
+	var n := int(_list_rate.get(b, 0))
+	if n >= LIST_PER_WINDOW or (n == 0 and _list_rate.size() >= RegistryTable.MAX_RATE_SOURCES):
+		return false
+	_list_rate[b] = n + 1
+	return true
 
 ## The list reply, trimmed until its frame fits MAX_LIST_BYTES (long names on many entries).
 static func _fit_list(servers: Array) -> Dictionary:
@@ -117,14 +155,15 @@ func _accept(now_ms: int) -> void:
 		if tcp == null:
 			break
 		var ip := tcp.get_connected_host()
-		if _open.size() >= MAX_CONNECTIONS or _open_from(ip) >= MAX_PER_IP:
+		if _open.size() >= MAX_CONNECTIONS or _open_from(RegistryTable.bucket(ip)) >= MAX_PER_IP:
 			tcp.disconnect_from_host()
 			continue
 		_open.append(RegistryExchange.accept(tcp, RegistryWire.MAX_REQUEST_BYTES, now_ms))
 
-func _open_from(ip: String) -> int:
+## Open connections from the address bucket `b` (an IPv4 address or an IPv6 /64).
+func _open_from(b: String) -> int:
 	var n := 0
 	for x in _open:
-		if x.peer_ip == ip:
+		if RegistryTable.bucket(x.peer_ip) == b:
 			n += 1
 	return n

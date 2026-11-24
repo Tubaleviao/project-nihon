@@ -11,6 +11,9 @@
 #   • the client does not then join Beta from the list (`[Menu] joining Beta`, then the joined line) and exit 0;
 #   • any process exits non-zero, or a deadline passes.
 #
+# The client keeps its cached list and recent servers under user://registry-harness/ and each host its save there, so
+# a run never touches a player's own files.
+#
 # Usage:
 #   GODOT=/tmp/godot/Godot_v4.7-stable_linux.x86_64 tools/registry_harness.sh
 #
@@ -125,11 +128,14 @@ done
 grep -E '^\[Menu\] public row' "$C_LOG" | sed 's/^/registry-harness:   /'
 [ "$FAILURES" -eq 0 ] || exit 1
 
+# The clock starts before the kill, so the measured time is never shorter than the real one. Worst case: the
+# registry drops an entry 92 s after its last heartbeat (sent at most just before the stop), its sweep runs once a
+# second and the harness client re-fetches every 3 s, about 96 s against the 100 s limit.
+STOPPED=$(date +%s)
 note "stopping Alpha"
 kill "$A_PID" 2>/dev/null
 wait "$A_PID" 2>/dev/null
 A_PID=""
-STOPPED=$(date +%s)
 wait_line "$C_LOG" "[Menu] public list dropped Alpha" "$C_PID" "$((DROP_LIMIT_S + 20))" "the client" || exit 1
 DROPPED_AFTER=$(( $(date +%s) - STOPPED ))
 note "Alpha left the client's list ${DROPPED_AFTER}s after it stopped"
@@ -152,8 +158,8 @@ else
   [ "$rc" -eq 0 ] || fail "the client exited $rc"
 fi
 C_PID=""
-if ! grep -q "peer connected\|player_joined\|joined" "$B_LOG"; then
-  note "(Beta's log names no join line; the client's joined line is the check)"
+if ! grep -q "^\[Server\] joined player" "$B_LOG"; then
+  fail "Beta never logged the client joining"
 fi
 
 for log in "$REG_LOG" "$B_LOG" "$C_LOG"; do

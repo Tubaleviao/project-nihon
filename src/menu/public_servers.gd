@@ -134,12 +134,23 @@ func apply_answer(key: String, ans: Dictionary) -> bool:
 			var st: Dictionary = ans["status"]
 			if str(ans["ip"]) != str(e["ip"]) or int(st["game_port"]) != int(e["game_port"]):
 				return false
-			answers[key] = { "rtt_ms": int(ans["rtt_ms"]), "status": st, "ip": str(ans["ip"]) }
+			answers[key] = { "rtt_ms": int(ans["rtt_ms"]), "status": st, "ip": str(ans["ip"]), "at": int(ans.get("at", 0)) }
 			return true
 	return false
 
-func _queue_all() -> void:
-	_queue = entries.duplicate()
+## Queue the status queries: servers with no answer, in random order (so a long list of silent entries a registry
+## puts first cannot keep real servers from ever being asked), then those whose answer is older than a refresh.
+func _queue_all(now_ms: int = Time.get_ticks_msec()) -> void:
+	var fresh: Array = []
+	var stale: Array = []
+	for e in entries:
+		var a: Dictionary = answers.get(RegistryWire.entry_key(str(e["ip"]), int(e["game_port"])), {})
+		if a.is_empty():
+			fresh.append(e)
+		elif now_ms - int(a.get("at", 0)) >= refresh_ms:
+			stale.append(e)
+	fresh.shuffle()
+	_queue = fresh + stale
 	_inflight.clear()
 
 # ---------------------------------------------------------------------------
@@ -157,16 +168,22 @@ func rows(filter: String = "", hide_full: bool = false, sort_by: String = SORT_P
 		var r := row_of(e, answers.get(key, {}))
 		r["key"] = key
 		if bool(r["answered"]):
-			var inst := int((answers[key]["status"] as Dictionary)["instance"])
-			if by_instance.has(inst):
-				var other: Dictionary = by_instance[inst]
-				# One host heard on both families: keep the IPv4 row (it needs no scope), else the faster.
-				var prefer_new := NetAddress.is_v6(str(other["ip"])) and not NetAddress.is_v6(str(r["ip"]))
-				if prefer_new:
-					out.erase(other)
-				else:
-					continue
-			by_instance[inst] = r
+			# One host heard on both families is shown once, on IPv4 (it needs no scope). Two rows are one host only
+			# when one is IPv4 and the other IPv6, on the same game port, and their status answers agree on the
+			# instance, world, version and counts; anything less keeps both rows, so a server that copies another's
+			# instance cannot hide or replace it unless it mirrors that host's live answer (Phase 299's signed
+			# entries close that last gap).
+			var twin := _twin_key(answers[key]["status"], int(e["game_port"]))
+			var fam := "v6" if NetAddress.is_v6(str(r["ip"])) else "v4"
+			var other_fam := "v4" if fam == "v6" else "v6"
+			if by_instance.has(twin + other_fam) and not by_instance.has(twin + fam):
+				var other: Dictionary = by_instance[twin + other_fam]
+				by_instance[twin + fam] = r
+				if fam == "v6":
+					continue   # the IPv4 row is already shown
+				out.erase(other)
+			elif not by_instance.has(twin + fam):
+				by_instance[twin + fam] = r
 		out.append(r)
 	var want := filter.strip_edges().to_lower()
 	var kept: Array = []
@@ -186,6 +203,11 @@ func rows(filter: String = "", hide_full: bool = false, sort_by: String = SORT_P
 		return str(a["name"]) < str(b["name"]))
 	return kept
 
+## What two rows of one dual-stack host share: the instance, the game port and the live answer's fields.
+static func _twin_key(st: Dictionary, game_port: int) -> String:
+	return "%d|%d|%s|%s|%d|%d|" % [int(st["instance"]), game_port, str(st["world_name"]), str(st["game_version"]),
+		int(st["players"]), int(st["max_players"])]
+
 ## One row from a registry entry and this client's own status answer (`ans`, {} while none arrived). Before an
 ## answer the registry's counts are shown and the ping is unknown.
 static func row_of(e: Dictionary, ans: Dictionary) -> Dictionary:
@@ -194,7 +216,7 @@ static func row_of(e: Dictionary, ans: Dictionary) -> Dictionary:
 	var name := str(st.get("world_name", e["world_name"]))
 	if name == "":
 		name = I18n.t("menu.join.lan_unnamed")
-	var protocol := int(st.get("protocol", e["protocol"]))
+	var protocol := int(st.get("protocol", -1))
 	var players := int(st.get("players", e["players"]))
 	var max_players := int(st.get("max_players", e["max_players"]))
 	var region := str(e["region"])
@@ -207,7 +229,10 @@ static func row_of(e: Dictionary, ans: Dictionary) -> Dictionary:
 		"max_players": max_players,
 		"ping": int(ans.get("rtt_ms", -1)),
 		"version": str(st.get("game_version", "")),
-		"joinable": ServerStatus.protocol_refusal(ServerStatus.PROTOCOL_VERSION, protocol) == "",
+		# Joinable only once this client heard the server itself, on this protocol: a registry's word alone never
+		# sends a player to an address.
+		"joinable": answered and ServerStatus.protocol_refusal(ServerStatus.PROTOCOL_VERSION, protocol) == "",
+		"refusal": "menu.public.no_answer" if not answered else ServerStatus.protocol_refusal(ServerStatus.PROTOCOL_VERSION, protocol),
 		"full": max_players > 0 and players >= max_players,
 		"address": NetAddress.format(str(e["ip"]), int(e["game_port"])),
 		"answered": answered,
@@ -220,7 +245,7 @@ static func row_texts(r: Dictionary) -> Dictionary:
 		"region": str(r["region_label"]),
 		"players": I18n.t("menu.public.players_value", [I18n.number(int(r["players"])), I18n.number(int(r["max_players"]))]),
 		"ping": I18n.t("menu.join.ping", [I18n.number(int(r["ping"]))]) if bool(r["answered"]) else I18n.t("menu.public.ping_unknown"),
-		"version": str(r["version"]) if bool(r["joinable"]) else I18n.t("menu.public.other_version"),
+		"version": str(r["version"]) if bool(r["joinable"]) or not bool(r["answered"]) else I18n.t("menu.public.other_version"),
 	}
 
 # ---------------------------------------------------------------------------

@@ -7,6 +7,7 @@ extends "res://src/core/wiring.gd"
 ## the tools pass skips the menu, so those boots are what they were before it.
 
 const GameSettings := preload("res://src/core/game_settings.gd")
+const RegistryWire := preload("res://src/networking/registry_wire.gd")
 const MainMenu := preload("res://src/menu/main_menu.gd")
 const LocalWorlds := preload("res://src/menu/local_worlds.gd")
 const NativeBuilder := preload("res://src/terrain/native_builder.gd")
@@ -124,6 +125,7 @@ const PUBLIC_SHOWN_LINE := "[Menu] public list shows"
 const PUBLIC_DROPPED_LINE := "[Menu] public list dropped"
 const PUBLIC_JOIN_TIMEOUT := 400.0
 const PUBLIC_HARNESS_REFRESH_MS := 3000
+const PUBLIC_HARNESS_CACHE := "user://registry-harness/server_list.json"
 var _public_seen: Array = []
 var _public_stage: int = 0
 
@@ -132,6 +134,10 @@ func _menu_public_join() -> void:
 		root.get_tree().quit(1)
 		return
 	menu.public_servers.refresh_ms = PUBLIC_HARNESS_REFRESH_MS
+	menu.public_servers.cache_path = PUBLIC_HARNESS_CACHE   # never the player's own cached list or recent servers
+	menu.recent_path = PUBLIC_HARNESS_CACHE.get_base_dir() + "/recent_servers.json"
+	DirAccess.make_dir_recursive_absolute(PUBLIC_HARNESS_CACHE.get_base_dir())
+	DirAccess.remove_absolute(ProjectSettings.globalize_path(PUBLIC_HARNESS_CACHE))
 	menu.show_page(MainMenu.PAGE_JOIN)
 	menu.show_public_tab()
 	_arm_menu_join(PUBLIC_JOIN_TIMEOUT)
@@ -188,7 +194,8 @@ func apply_choice(choice: Dictionary) -> bool:
 		root._is_client = false
 		root._is_server = false
 		world = { "dir": dir, "seed": int(choice.get("seed", 0)), "name": str(choice.get("name", "")),   # Phase 297: the status answer's name
-			"public": bool(choice.get("public", false)) }   # Phase 298: "Show in server list"
+			"public": bool(choice.get("public", false)),   # Phase 298: "Show in server list"
+			"region": RegistryWire.region_of(choice.get("region", "")) }
 		return true
 	return false
 

@@ -130,8 +130,9 @@ JSON frame with a size cap (`src/networking/registry_wire.gd`).
 A heartbeat goes over TCP, so its source address cannot be spoofed, and once over each address family the registry
 resolves to. The registry takes the server's IP from the connection, never from the heartbeat, and lists the entry
 only once that IP answers a status query on the heartbeat's status port. An entry that misses three heartbeats is
-dropped (about 90 s). Per address: at most 4 servers and 8 heartbeats per 30 s; at most 64 open connections, 4 per
-address. A community runs its own registry and lists it in `config/registries.json` (the seed for a new install) or
+dropped (about 90 s); its player counts come from the registry's own status queries. Per address (an IPv4 address or
+an IPv6 /64): at most 4 servers, 8 heartbeats per 30 s, 20 list queries per 10 s and 4 open connections; in all 64
+connections and 4,096 entries, 256 of them unverified. A community runs its own registry and lists it in `config/registries.json` (the seed for a new install) or
 in the Join screen's Public servers tab (saved under `registries` in `user://settings.json`). An empty list means no
 public list. Clients query each listed server's status port themselves for the ping, players and version they show,
 and cache the last list in `user://server_list.json`.

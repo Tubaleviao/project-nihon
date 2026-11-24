@@ -23,7 +23,7 @@ const KEYS := ["menu.join.tab_direct", "menu.public.tab", "menu.public.filter", 
 	"menu.public.col_region", "menu.public.col_players", "menu.public.col_ping", "menu.public.col_version",
 	"menu.public.players_value", "menu.public.ping_unknown", "menu.public.other_version", "menu.public.fetching",
 	"menu.public.none", "menu.public.none_match", "menu.public.no_registries", "menu.public.error_fetch",
-	"menu.public.error_socket", "menu.public.registries", "menu.public.registries_save", "menu.world.public",
+	"menu.public.error_socket", "menu.public.no_answer", "menu.public.registries", "menu.public.registries_save", "menu.world.public",
 	"menu.region.none"]
 
 func register() -> void:
@@ -54,32 +54,62 @@ func _status(game_port: int = 7000, instance: int = 1, players: int = 2, protoco
 	return { "nonce": 1, "protocol": protocol, "game_port": game_port, "players": players, "max_players": 8,
 		"instance": instance, "game_version": "0.2.0", "world_name": "Alpha" }
 
+## The back-probes due now, each reported sent (what the registry's prober does when its socket takes them).
+func _due(t: RegistryTable, now_ms: int) -> Array:
+	var due := t.probe_due()
+	for p in due:
+		t.probe_sent(str(p["key"]), now_ms)
+	return due
+
 func _test_back_probe() -> void:
 	var t := RegistryTable.new()
 	var r := t.heartbeat("203.0.113.5", _hb(), 0)
 	assert_true(bool(r["ok"]) and not bool(r["listed"]), "a first heartbeat is accepted but not listed")
 	assert_eq(t.listed(), [], "nothing is listed before the back-probe")
-	var due := t.probe_due(10)
+	var due := _due(t, 10)
 	assert_eq(due.size(), 1, "one back-probe is due")
 	assert_eq([due[0]["ip"], due[0]["status_port"]], ["203.0.113.5", 7001], "to the heartbeat's source IP and status port")
-	assert_eq(t.probe_due(20), [], "and it is sent once")
+	assert_eq(_due(t, 20), [], "and it is sent once")
 	var key := str(due[0]["key"])
 	assert_false(t.probe_answered(key, "198.51.100.9", _status()), "an answer from another IP does not list it")
 	assert_false(t.probe_answered(key, "203.0.113.5", _status(7100)), "nor one naming another game port")
 	assert_true(t.probe_answered(key, "203.0.113.5", _status()), "the host's own answer lists it")
 	assert_eq(t.listed().size(), 1, "and it is in the list")
 	assert_true(bool(t.heartbeat("203.0.113.5", _hb(), 1000)["listed"]), "the next heartbeat's reply says listed")
-	# An unanswered back-probe is given up, and the next heartbeat asks again.
+	# An unanswered back-probe drops the unverified entry at once; the next heartbeat starts over.
 	t.heartbeat("203.0.113.6", _hb(), 2000)
-	t.probe_due(2000)
-	t.sweep(2000 + RegistryTable.PROBE_TIMEOUT_MS + 1)
+	_due(t, 2000)
+	assert_eq(t.pending_count(), 1, "an unverified entry is pending")
+	assert_eq(t.sweep(2000 + RegistryTable.PROBE_TIMEOUT_MS + 1).size(), 1, "an unanswered back-probe drops it")
+	assert_eq(t.pending_count(), 0, "and frees its pending slot")
 	t.heartbeat("203.0.113.6", _hb(), 2000 + RegistryTable.PROBE_TIMEOUT_MS + 2)
-	assert_eq(t.probe_due(2000 + RegistryTable.PROBE_TIMEOUT_MS + 3).size(), 1, "an unanswered back-probe is tried again on the next heartbeat")
+	assert_eq(_due(t, 2000 + RegistryTable.PROBE_TIMEOUT_MS + 3).size(), 1, "the next heartbeat is probed again")
+	# A probe the socket could not send stays due.
+	var u := RegistryTable.new()
+	u.heartbeat("203.0.113.8", _hb(), 0)
+	assert_eq(u.probe_due().size(), 1, "due")
+	assert_eq(u.probe_due().size(), 1, "and still due while nobody reported it sent")
+	# The list's counts are the status answer's, never the heartbeat body's.
+	var w := RegistryTable.new()
+	w.heartbeat("203.0.113.9", _hb(7000, 7001, { "players": 65535, "max_players": 65535 }), 0)
+	w.probe_answered(str(_due(w, 0)[0]["key"]), "203.0.113.9", _status(7000, 1, 3))
+	assert_eq([int(w.listed()[0]["players"]), int(w.listed()[0]["max_players"])], [3, 8], "the listed counts are the back-probe's")
+	w.heartbeat("203.0.113.9", _hb(7000, 7001, { "players": 65535 }), 1000)
+	assert_eq(w.listed().size(), 1, "a listed entry stays listed while its counts are re-asked")
+	var re := _due(w, 1000)
+	assert_eq(re.size(), 1, "each heartbeat of a listed entry asks its status port again")
+	w.probe_answered(str(re[0]["key"]), "203.0.113.9", _status(7000, 1, 5))
+	assert_eq(int(w.listed()[0]["players"]), 5, "and takes the fresh counts")
+	_due(w, 2000)
+	w.heartbeat("203.0.113.9", _hb(), 2000)
+	_due(w, 2000)
+	w.sweep(2000 + RegistryTable.PROBE_TIMEOUT_MS + 1)
+	assert_eq(w.listed().size(), 1, "a listed entry whose refresh probe times out keeps its place until its heartbeats stop")
 
 func _test_body_address_ignored() -> void:
 	var t := RegistryTable.new()
 	t.heartbeat("203.0.113.5", _hb(7000, 7001, { "ip": "8.8.8.8", "address": "8.8.8.8", "host": "8.8.8.8" }), 0)
-	var due := t.probe_due(0)
+	var due := _due(t, 0)
 	assert_eq(str(due[0]["ip"]), "203.0.113.5", "the back-probe goes to the connection's source, not the body's IP")
 	t.probe_answered(str(due[0]["key"]), "203.0.113.5", _status())
 	assert_eq(str(t.listed()[0]["ip"]), "203.0.113.5", "the listed IP is the source")
@@ -89,7 +119,7 @@ func _test_body_address_ignored() -> void:
 func _test_missed_heartbeats() -> void:
 	var t := RegistryTable.new()
 	t.heartbeat("203.0.113.5", _hb(), 0)
-	t.probe_answered(str(t.probe_due(0)[0]["key"]), "203.0.113.5", _status())
+	t.probe_answered(str(_due(t, 0)[0]["key"]), "203.0.113.5", _status())
 	var interval := RegistryWire.HEARTBEAT_S * 1000
 	t.heartbeat("203.0.113.5", _hb(), interval)
 	assert_eq(t.sweep(interval + 2 * interval).size(), 0, "two missed heartbeats keep the entry")
@@ -114,14 +144,34 @@ func _test_caps() -> void:
 	assert_eq(refused, 5, "heartbeats past the per-address rate are refused")
 	assert_true(bool(u.heartbeat("203.0.113.7", _hb(), RegistryWire.HEARTBEAT_S * 1000)["ok"]), "the next window admits again")
 	assert_eq(str(u.heartbeat("not-an-ip", _hb(), 0).get("code", "")), "malformed", "a source that is no IP is refused")
+	# IPv6: one /64 is one address, so rotating the low bits buys nothing.
+	assert_eq(RegistryTable.bucket("2001:db8:1:2::5"), RegistryTable.bucket("2001:0db8:0001:0002:ffff:1:2:3"), "one /64 is one bucket")
+	assert_true(RegistryTable.bucket("2001:db8:1:2::5") != RegistryTable.bucket("2001:db8:1:3::5"), "another /64 is another")
+	assert_eq(RegistryTable.bucket("0:0:0:0:0:0:0:1"), RegistryTable.bucket("::1"), "expanded and compressed forms agree")
+	assert_eq(RegistryTable.bucket("::ffff:203.0.113.5"), "203.0.113.5", "an IPv4-mapped address counts as its IPv4 address")
+	var v := RegistryTable.new()
+	var ok := 0
+	for i in 40:
+		if bool(v.heartbeat("2001:db8:1:2::%x" % (i + 1), _hb(7000 + 2 * (i % 4), 7001), 0)["ok"]):
+			ok += 1
+	assert_eq(ok, RegistryTable.MAX_PER_ADDRESS, "a /64 gets the per-address cap however many addresses it uses")
+	# Unverified entries have their own cap, below the table's.
+	var x := RegistryTable.new()
+	var full := ""
+	for i in RegistryTable.MAX_PENDING + 1:
+		var r2 := x.heartbeat("10.%d.%d.1" % [i / 250, i % 250], _hb(), 0)
+		if not bool(r2["ok"]):
+			full = str(r2["code"])
+	assert_eq(x.pending_count(), RegistryTable.MAX_PENDING, "at most MAX_PENDING entries wait for their back-probe")
+	assert_eq(full, "registry_full", "one more is refused")
 
 func _test_status_port_change() -> void:
 	var t := RegistryTable.new()
 	t.heartbeat("203.0.113.5", _hb(), 0)
-	t.probe_answered(str(t.probe_due(0)[0]["key"]), "203.0.113.5", _status())
+	t.probe_answered(str(_due(t, 0)[0]["key"]), "203.0.113.5", _status())
 	t.heartbeat("203.0.113.5", _hb(7000, 7555), 100)
 	assert_eq(t.listed(), [], "a heartbeat with a new status port unlists the entry")
-	var due := t.probe_due(100)
+	var due := _due(t, 100)
 	assert_eq(int(due[0]["status_port"]), 7555, "and probes the new port")
 	assert_true(t.probe_answered(str(due[0]["key"]), "203.0.113.5", _status()), "an answer there lists it again")
 
@@ -197,6 +247,15 @@ func _test_handle() -> void:
 	assert_eq(reg.handle("203.0.113.5", { "type": "list" }, 0), RegistryWire.list_reply([]), "the list holds only verified servers")
 	assert_eq(reg.handle("203.0.113.5", { "type": "nope" }, 0), { "type": "error", "code": "malformed" }, "junk gets an error")
 	assert_eq(str(reg.handle("203.0.113.5", { "type": "heartbeat" }, 0)["code"]), "malformed", "a heartbeat with no ports too")
+	var refused := 0
+	for i in RegistryServer.LIST_PER_WINDOW + 3:
+		if str(reg.handle("2001:db8::%x" % (i + 1), { "type": "list" }, 100).get("code", "")) == "rate_limited":
+			refused += 1
+	assert_eq(refused, 3, "list queries are rate-limited per address bucket (a /64 is one)")
+	assert_eq(str(reg.handle("2001:db8::1", { "type": "list" }, 100 + RegistryServer.LIST_WINDOW_MS)["type"]), "list", "the next window admits again")
+	var f1 := reg.reply_frame("198.51.100.1", { "type": "list" }, 0)
+	var f2 := reg.reply_frame("198.51.100.2", { "type": "list" }, 0)
+	assert_true(f1 == f2 and reg._list_version == reg.table.version, "the list reply is encoded once per table version")
 	reg.free()
 
 ## A registry, a status port and a heartbeat on loopback, ticked by hand: the heartbeat is back-probed and listed,
@@ -310,6 +369,15 @@ func _test_public_rows() -> void:
 	assert_eq(str(PublicServers.row_texts(rows[1])["version"]), I18n.t("menu.public.other_version"), "and is marked")
 	assert_eq(str(PublicServers.row_texts(rows[3])["ping"]), I18n.t("menu.public.ping_unknown"), "no answer yet: the ping is unknown")
 	assert_eq(str(PublicServers.row_texts(rows[0])["players"]), I18n.t("menu.public.players_value", ["3", "8"]), "players and the cap")
+	assert_false(bool(rows[3]["joinable"]), "a server that never answered this client cannot be joined")
+	assert_eq(str(rows[3]["refusal"]), "menu.public.no_answer", "and says why")
+	# A server that copies another's instance does not hide or replace it.
+	var cp := PublicServers.new()
+	cp.apply_list([_entry("2001:db8::9", "Victim"), _entry("10.0.0.9", "Copycat")])
+	cp.apply_answer("2001:db8::9|7000", _ans("2001:db8::9", 30, 55, "Victim"))
+	cp.apply_answer("10.0.0.9|7000", _ans("10.0.0.9", 5, 55, "Copycat"))
+	assert_eq(cp.rows().map(func(r: Dictionary) -> String: return str(r["address"])), ["10.0.0.9:7000", "[2001:db8::9]:7000"],
+		"a copied instance with another answer keeps both rows")
 	var by_players := ps.rows("", false, PublicServers.SORT_PLAYERS)
 	assert_eq(str(by_players[0]["name"]), "Beta", "sorted by players, the busiest first")
 	assert_eq(ps.rows("", true).map(func(r: Dictionary) -> String: return str(r["name"])).has("Beta"), false, "hide full drops a full server")
@@ -357,8 +425,10 @@ func _test_public_tab() -> void:
 	var first: HBoxContainer = menu._public_list.get_child(0)
 	assert_eq((first.get_child(0) as Button).text, "Beta", "the answered server first (by ping)")
 	assert_eq((first.get_child(3) as Label).text, I18n.t("menu.join.ping", ["7"]), "with its ping")
+	assert_true((menu._public_list.get_child(1).get_child(0) as Button).disabled, "a server that has not answered cannot be clicked")
+	assert_eq(menu.join_public(menu.public_rows()[1]), "menu.public.no_answer", "nor joined")
 	menu.set_public_sort(PublicServers.SORT_PLAYERS)
-	menu._public_filter.text = "alp"
+	menu._public_filter.text = "bet"
 	menu.refresh_public_rows()
 	assert_eq(menu._public_list.get_child_count(), 1, "the filter narrows the table")
 	var asked: Array = []
@@ -366,8 +436,8 @@ func _test_public_tab() -> void:
 	(menu._public_list.get_child(0).get_child(0) as Button).emit_signal("pressed")
 	assert_eq(asked.size(), 1, "a row joins on click")
 	if asked.size() == 1:
-		assert_eq(str(asked[0]["address"]), "10.0.0.1:7000", "on its address and game port")
-		assert_eq(menu._address_edit.text, "10.0.0.1:7000", "which fills the address field")
+		assert_eq(str(asked[0]["address"]), "10.0.0.2:7000", "on its address and game port")
+		assert_eq(menu._address_edit.text, "10.0.0.2:7000", "which fills the address field")
 	menu.save_registries("127.0.0.1:7700, bad address, 127.0.0.1:7700")
 	assert_eq(RegistryList.saved(), ["127.0.0.1:7700"], "the tab saves the cleaned registry list")
 	menu.show_page(MainMenu.PAGE_HOME)
@@ -411,8 +481,12 @@ func _test_boot_flags() -> void:
 	var asked: Array = []
 	menu.start_requested.connect(func(c: Dictionary) -> void: asked.append(c))
 	menu._public_check.button_pressed = true
+	menu._region_pick.select(RegistryWire.REGIONS.find("eu"))
 	menu.play_world(str(made.get("id", "")))
 	assert_true(asked.size() == 1 and bool(asked[0].get("public", false)), "Show in server list rides the host choice")
+	assert_true(asked.size() == 1 and str(asked[0].get("region", "")) == "eu", "with the region picked beside it")
+	assert_eq(str(bw.host_options({ "name": "Mine", "public": true, "region": "eu" }, false)["region"]), "eu", "which the listen host announces")
+	assert_eq(str(bw.host_options({ "name": "Mine", "region": "moon" }, false)["region"]), "", "an unknown one is none")
 	remove_child(menu)
 	menu.free()
 	_remove_tree("user://test_registry_worlds2/")

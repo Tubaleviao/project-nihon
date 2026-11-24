@@ -145,7 +145,10 @@ func _test_play_page() -> void:
 	var chosen: Array = []
 	menu.start_requested.connect(func(c: Dictionary) -> void: chosen.append(c))
 	menu.show_page(MainMenu.PAGE_PLAY)
-	assert_eq(menu._pages[MainMenu.PAGE_PLAY].find_children("*", "LineEdit", true, false).size(), 1, "the New world dialog has only a name field, no seed (Phase 238)")
+	# Phase 298 — the region picker's popup carries its own search field; only the page's own fields count.
+	var fields: Array = menu._pages[MainMenu.PAGE_PLAY].find_children("*", "LineEdit", true, false).filter(func(e: Node) -> bool:
+		return not (menu._region_pick as Node).is_ancestor_of(e))
+	assert_eq(fields.size(), 1, "the New world dialog has only a name field, no seed (Phase 238)")
 	assert_true(bool(menu.create_world("Alpha", "11")["ok"]), "New world creates one")
 	assert_true(not bool(menu.create_world("", "")["ok"]), "and refuses a blank name")
 	assert_eq(menu.worlds().size(), 1, "the list shows it")
@@ -225,7 +228,7 @@ func _test_apply_choice() -> void:
 	assert_true(not w.apply_choice({ "mode": "other" }), "an unknown mode is refused")
 	assert_true(w.apply_choice({ "mode": "host", "dir": "user://worlds/alpha/", "seed": 9 }), "a host choice is applied")
 	assert_true(not root._is_client and not root._is_server, "as the listen host")
-	assert_eq(w.world, { "dir": "user://worlds/alpha/", "seed": 9, "name": "", "public": false },
+	assert_eq(w.world, { "dir": "user://worlds/alpha/", "seed": 9, "name": "", "public": false, "region": "" },
 		"on that world (Phase 297: and its name; Phase 298: not in the server list unless ticked)")
 	assert_true(w.apply_choice({ "mode": "host", "dir": "user://worlds/alpha/", "seed": 9, "public": true }) and bool(w.world["public"]),
 		"Phase 298 — Show in server list reaches the world the boot reads")
