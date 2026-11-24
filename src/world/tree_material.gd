@@ -1,14 +1,15 @@
 extends RefCounted
 ## The tree material (Phase 283): vertex (and per-instance) colour as albedo, plus a gentle wind sway of
 ## the crown in the vertex shader. The sway is weighted by height, so the trunk's foot never moves, and is
-## off when the project setting `nihon/graphics/tree_sway` is 0 (not exposed in the options UI yet), where
-## the plain colour material is used. The sway phase comes from the instance position, so a floating-origin
+## off when the project setting `nihon/graphics/tree_sway` is false (terrain quality "low" in the options,
+## `GameSettings`), where the plain colour material is used. The sway phase comes from the instance position, so a floating-origin
 ## rebase shifts every tree's phase at once (a sub-0.1 m effect). Placeholder models stand about 3.8 m tall.
 
 const Diag := preload("res://src/core/diag.gd")
 const SWAY_SETTING := "nihon/graphics/tree_sway"
 ## Metres of crown sway at the top of a tree; the weight rises from `SWAY_FROM` to `SWAY_TO` (the placeholder
-## models' height, 3.8 m; `tools/gen_tree_models.py`).
+## models' height, 3.8 m; `tools/gen_tree_models.py`). The procedural fallback tree is shorter (3.35 m,
+## `TreeSlice.TRUNK_HEIGHT + CANOPY_HEIGHT`), so its crown top reaches about 0.84 of the full sway.
 const SWAY_AMPLITUDE := 0.06
 const SWAY_FROM := 1.8
 const SWAY_TO := 3.8
@@ -37,6 +38,8 @@ static var SHADER_CODE_FALLING: String = SHADER_CODE.replace("void fragment() {\
 static var _shader: Shader = null
 static var _shader_falling: Shader = null
 static var _model_meshes: Dictionary = {}
+## Model keys already warned about as unusable, so a missing model warns once per run, not once per retry.
+static var _model_warned: Dictionary = {}
 
 static func sway_enabled() -> bool:
 	return bool(ProjectSettings.get_setting(SWAY_SETTING, true))
@@ -126,7 +129,9 @@ static func model_mesh(key: String) -> Mesh:
 	if AssetOverlay.has_key("meshes", key):
 		mesh = AssetOverlay.load_mesh(key)
 	if mesh == null:
-		Diag.warn("[Tree] no usable model %s; using the procedural tree" % key)
+		if not _model_warned.has(key):
+			_model_warned[key] = true
+			Diag.warn("[Tree] no usable model %s; using the procedural tree" % key)
 		return null   # not cached: the overlay may mount later
 	_model_meshes[key] = mesh
 	return mesh

@@ -201,3 +201,4 @@ func _test_host_boot_fires_no_round() -> void:
 	assert_false(body.contains("combat_round_requested"), "the host boot tail requests no combat round")
 	assert_false(body.contains("get_all_instances"), "the host boot tail picks no creature to hit")
 	assert_false(body.contains("apply_damage"), "the host boot tail damages no creature")
+	assert_false(src.contains("combat_round_requested.emit(\"player\""), "no boot helper hits a creature as \"player\" either")

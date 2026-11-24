@@ -145,6 +145,10 @@ var _stump_memory: Dictionary = {}
 var _pool: Node = null
 ## Model key -> MultiMesh pool of the trees drawn from that model (`models/trees/<Species>[_v1].glb.raw`).
 var _model_pools: Dictionary = {}
+## Model keys whose mesh failed to load during the current chunk spawn: later trees of the key in the same
+## spawn go straight to the fallback pool, and the next `spawn_for_chunk` retries them (the overlay may mount
+## later). Without it a missing or broken model is reloaded, and warned about, once per tree (#746 review).
+var _model_failed: Dictionary = {}
 ## When false (headless server / `--server`), no pool and no collision bodies are
 ## built: the same records drive a bare authoritative simulation.
 var render_visuals: bool = true
@@ -247,6 +251,7 @@ func _process(delta: float) -> void:
 ## and ids are deterministic, so a reload restores the same trees; surviving trees
 ## are counted first so a chunk reload never exceeds the budget.
 func spawn_for_chunk(chunk_pos: Vector2i) -> void:
+	_model_failed.clear()
 	if not _spawned_chunks.has(chunk_pos):
 		_spawned_chunks[chunk_pos] = true
 		_bucket_add(chunk_pos)
@@ -1423,10 +1428,12 @@ func _alloc_visual(species: String, pos: Vector3, tree_id: String) -> Dictionary
 	var key := TreeMaterial.model_key_for(species, tree_id)
 	var pool: Node = _pool
 	if key != "":
-		if not _model_pools.has(key):
+		if not _model_pools.has(key) and not _model_failed.has(key):
 			var mesh := TreeMaterial.model_mesh(key)
 			if mesh != null:
 				_model_pools[key] = _make_pool("TreePool_" + key.get_file().get_basename().get_basename(), mesh)
+			else:
+				_model_failed[key] = true
 		pool = _model_pools.get(key, _pool)   # #703: a failed load is not cached, so a later tree retries
 		key = key if _model_pools.has(key) else ""
 	var idx: int = pool.alloc()

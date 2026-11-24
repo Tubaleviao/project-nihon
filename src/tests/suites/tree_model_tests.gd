@@ -236,6 +236,7 @@ func _test_model_retry() -> void:
 	t2.spawn_for_chunk(Vector2i(0, 0))
 	assert_eq(str(t2.get_tree_record(tid)["pool_key"]), "", "a failed load draws the fallback")
 	assert_false(t2._model_pools.has(key), "and leaves no pool entry for the key")
+	assert_true(t2._model_failed.has(key), "the failed key is remembered for the rest of the spawn, not reloaded per tree")
 	TreeMaterial._model_meshes = saved
 	t2.despawn_for_chunk(Vector2i(0, 0))
 	t2.spawn_for_chunk(Vector2i(0, 0))
