@@ -854,6 +854,15 @@ menu.join.fail_connect,Could not start the connection.,Não foi possível inicia
 menu.join.fail_unreachable,The server did not answer.,O servidor não respondeu.
 menu.join.fail_disconnected,The server closed the connection.,O servidor encerrou a conexão.
 menu.join.fail_timeout,The server never sent the world.,O servidor não enviou o mundo.
+menu.join.fail_protocol_newer,The server runs a newer version of the game. Update to join it.,O servidor usa uma versão mais nova do jogo. Atualize para entrar.
+menu.join.fail_protocol_older,The server runs an older version of the game that this one cannot join.,O servidor usa uma versão mais antiga do jogo com a qual esta não consegue jogar.
+menu.join.lan,On this network,Nesta rede
+menu.join.lan_refresh,Search again,Procurar de novo
+menu.join.lan_none,No servers found on this network.,Nenhum servidor encontrado nesta rede.
+menu.join.lan_row,"{0} · {1}/{2} players · {3} ms","{0} · {1}/{2} jogadores · {3} ms"
+menu.join.lan_unnamed,Unnamed world,Mundo sem nome
+menu.join.lan_incompatible,"{0} · version {1}, cannot join","{0} · versão {1}, não dá para entrar"
+menu.join.ping,{0} ms,{0} ms
 pause.title,Paused,Pausa
 pause.resume,Resume,Continuar
 pause.options,Options,Opções

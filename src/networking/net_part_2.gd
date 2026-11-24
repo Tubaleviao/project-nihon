@@ -374,6 +374,32 @@ func refuse_attribute_claim(sender: int, now_ms: float = -1.0) -> void:
 	sl._attribute_refusal_warn_ms[sender] = now_ms
 	sl.Diag.warn("NetworkingSlice: peer %d sent attribute values — refused (the host owns attributes)" % sender)
 
+## Phase 297 — a join or character-list intent must name this host's protocol. One that does not (an older or newer
+## client, or one from before Phase 297 that names none) is answered once with `protocol_refused` and the peer is
+## dropped shortly after, so the refusal reaches it first. The intent itself is never acted on.
+const PROTOCOL_DROP_DELAY := 0.5
+var _protocol_refused: Dictionary = {}
+func protocol_ok(sender: int, payload: Dictionary) -> bool:
+	var claimed: Variant = payload.get("protocol", null)
+	var own: int = sl._m3.ServerStatus.PROTOCOL_VERSION
+	if (claimed is int or claimed is float) and int(claimed) == own:
+		return true
+	if _protocol_refused.has(sender):
+		return false
+	if _protocol_refused.size() > 256:
+		_protocol_refused.clear()
+	_protocol_refused[sender] = true
+	sl.Diag.warn("NetworkingSlice: peer %d speaks protocol %s, this host %d — refused" % [sender, str(claimed), own])
+	sl._deliver(sender, { "type": "protocol_refused", "protocol": own })
+	if sl.is_inside_tree() and sl._peer != null:
+		var peer: ENetMultiplayerPeer = sl._peer
+		sl.get_tree().create_timer(PROTOCOL_DROP_DELAY).timeout.connect(func() -> void:
+			# Still the refused connection (a disconnect erases the mark, and ENet may reuse the id after it).
+			if _protocol_refused.has(sender) and sl._peer == peer \
+					and peer.get_connection_status() == MultiplayerPeer.CONNECTION_CONNECTED:
+				peer.disconnect_peer(sender))
+	return false
+
 ## Route a client → host packet. Only client-originated types are accepted;
 ## host-only types sent by a malicious client are dropped and logged.
 func _route_c2h(sender: int, payload: Dictionary) -> void:
@@ -383,7 +409,10 @@ func _route_c2h(sender: int, payload: Dictionary) -> void:
 			or str(payload.get("type", "")) == "attributes_intent":
 		refuse_attribute_claim(sender)
 		return
-	match str(payload.get("type", "")):
+	var ptype := str(payload.get("type", ""))
+	if (ptype == "join_intent" or ptype == "roster_intent") and not protocol_ok(sender, payload):
+		return
+	match ptype:
 		"join_intent":
 			# Phase 33 — the client presents its cached id ("" on a first join).
 			# The registry owns resolution; the host answers with player_joined.
@@ -924,6 +953,7 @@ func _drain_emulator(now_ms: float = -1.0) -> void:
 ## after LAST_KNOWN_STATE_TTL_MS if the peer never reconnects.
 func _on_peer_disconnected(id: int) -> void:
 	sl._malformed_position_warn_ms.erase(id)
+	_protocol_refused.erase(id)   # Phase 297
 	GameBus.peer_disconnected.emit(id)
 	# Phase 33 — the connection is gone, so its transport mapping goes with it.
 	# The player's durable record stays on disk, which is what lets a reconnect

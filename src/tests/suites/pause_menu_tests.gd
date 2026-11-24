@@ -11,6 +11,7 @@ const MainMenu := preload("res://src/menu/main_menu.gd")
 const MenuWiring := preload("res://src/menu/menu_wiring.gd")
 const LocalWorlds := preload("res://src/menu/local_worlds.gd")
 const RecentServers := preload("res://src/menu/recent_servers.gd")
+const NetAddress := preload("res://src/networking/net_address.gd")
 const BootWiring := preload("res://src/core/boot_wiring.gd")
 const PauseMenu := preload("res://src/ui/pause_menu.gd")
 const I18n := preload("res://src/core/i18n.gd")
@@ -238,9 +239,9 @@ func _test_one_address_rule() -> void:
 	var was_quiet := Diag.quiet
 	Diag.quiet = true
 	var long_host := "a".repeat(RecentServers.ADDRESS_MAX + 1)
-	for addr in ["127.0.0.1", "example.org", "::1", "host-1.local", "10.0.0.2:7777", "", "http://x", "a/b", "a b",
+	for addr in ["127.0.0.1", "example.org", "::1", "host-1.local", "10.0.0.2:7777", "[::1]:7000", "", "http://x", "a/b", "a b",
 			"a\tb", "-lead", ".dot", long_host, "a".repeat(RecentServers.ADDRESS_MAX)]:
-		var valid := RecentServers.valid_address(addr)
+		var valid := NetAddress.valid(addr)   # Phase 297 — the one rule (ports and IPv6 since then)
 		assert_eq(BootWiring.client_address(addr) == addr, valid, "--client agrees on '%s'" % addr.left(20))
 		assert_eq(bool(MainMenu.join_choice(addr, "")["ok"]), valid, "the Join form agrees on '%s'" % addr.left(20))
 	assert_eq(BootWiring.client_address("http://x"), "127.0.0.1", "a bad --client address falls back to localhost")

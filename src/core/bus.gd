@@ -84,6 +84,8 @@ signal ability_resolved(result: Dictionary)
 
 ## Emitted by NetworkingSlice when a remote peer connects.
 signal peer_connected(peer_id: int)
+## Phase 297 — client: the host speaks a protocol this client does not (`reason_key` is a `menu.join.*` key).
+signal join_refused(reason_key: String)
 
 ## Emitted by NetworkingSlice when a remote peer disconnects.
 signal peer_disconnected(peer_id: int)

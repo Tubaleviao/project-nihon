@@ -39,18 +39,17 @@ work in order.
 
 | Priority | Phase | Title |
 |---|---|---|
-| 1 | 297 | Finding servers nearby: dual-stack IPv6, a status port and LAN discovery |
-| 2 | 298 | The server list: a registry and the Join screen's public list |
-| 3 | 257 | Split files named by what they do |
-| 4 | 245 | The planet bake: continents, rivers with flow, erosion and biomes at 2 km |
-| 5 | 232 | Water that holds up: lake shores, the river seam and mounts at fords |
-| 6 | 247 | Ground cover: grass and bushes by biome |
-| 7 | 235 | Roads |
-| 8 | 234 | Boats |
-| 9 | 258 | The public wiki and the community channels |
-| 10 | 299 | Many registries: signed entries, gossip and no single owner |
-| 11 | 236 | Changing hair style and colour (parked: picked up only when un-parked) |
-| 12 | 251 | A human playtest: what would make the game fun (a standing checkpoint, when the owner has time) |
+| 1 | 298 | The server list: a registry and the Join screen's public list |
+| 2 | 257 | Split files named by what they do |
+| 3 | 245 | The planet bake: continents, rivers with flow, erosion and biomes at 2 km |
+| 4 | 232 | Water that holds up: lake shores, the river seam and mounts at fords |
+| 5 | 247 | Ground cover: grass and bushes by biome |
+| 6 | 235 | Roads |
+| 7 | 234 | Boats |
+| 8 | 258 | The public wiki and the community channels |
+| 9 | 299 | Many registries: signed entries, gossip and no single owner |
+| 10 | 236 | Changing hair style and colour (parked: picked up only when un-parked) |
+| 11 | 251 | A human playtest: what would make the game fun (a standing checkpoint, when the owner has time) |
 
 Why this order:
 
@@ -59,8 +58,10 @@ Why this order:
 - **229 done.** Skill tiers gated by gear, built on the equipment categories 295–296 introduced: the fabric
   PR (#737) and the runtime PR.
 - **226 done.** Several characters per player: the fabric PR (#740) and the runtime PR.
-- **297, 298: playing with others.** The 2026-11-20 session was the first with a second player. Finding a
-  server on the LAN and from a public list makes that the normal way to play instead of typing an address.
+- **297 done.** Finding servers nearby: ports and IPv6 in the address, a status port, a protocol version and LAN
+  discovery on the Join screen.
+- **298: playing with others.** The 2026-11-20 session was the first with a second player. Finding a server on the
+  LAN (297) and from a public list makes that the normal way to play instead of typing an address.
 - **257 before the big world work.** A rename of the numbered `*_part_N.gd` files is cheap now and makes
   the terrain and net code easier to read for 245 onward.
 - **245 → 232 → 247 → 235 → 234: the world.** Phase 245 replaces Phase 217's river trace, so 232's
@@ -1612,6 +1613,33 @@ This phase is the base the server list (298, 299) builds on.
   same on `127.0.0.1`. A LAN discovery query on loopback finds the harness host. Skipped with a logged reason on
   a runner without IPv6.
 - Every new UI string is in `locale/ui.csv` in both columns.
+
+**Done** (2026-11-24). `src/networking/net_address.gd` is the one address rule (`RecentServers.valid_address` is gone):
+`parse` returns host, port and family for `host`, `host:port`, `[v6]:port`, `[v6]` and a bare IPv6 literal, and refuses
+a scheme, path, whitespace, a zone (`%eth0`), an unclosed bracket and a port outside 1–65535 with
+`menu.join.error_address`; `--client`, the Join form and the recent-servers loader all call it. A host takes `--port`,
+`--bind` (default `*`, one dual-stack socket), `--status-port` (default the game port + 1, `0` off) and `--world-name`
+(`BootWiring.parse_host_args` / `host_options`; a menu world answers with its own name). The status wire
+(`src/networking/server_status.gd`) is binary and fixed-size: a query padded to the answer's 192 bytes (at most 512),
+an answer of exactly 192 with the nonce echoed, protocol, game port, players, max players, a per-process instance id,
+the game version and the world name (cut to their byte caps on a character boundary, control characters dropped).
+`StatusServer` (a child of the networking slice while hosting) drops short, oversized, foreign and other-format
+queries without a reply and answers at most 4 per source address and 200 in all per second. `PROTOCOL_VERSION` (1)
+rides the status answer, a `server_hello` the host sends on connect, and every `join_intent` / `roster_intent`; a host
+refuses an intent of another protocol (or none) with `protocol_refused` and drops the peer 0.5 s later, and a client
+leaves on either with `menu.join.fail_protocol_newer` / `_older` (`GameBus.join_refused`). `ServerProbe` is the client
+socket: queries matched to their nonce (a stray answer is ignored), names resolved on the resolver queue, LAN rows
+merged by instance (one row per host, joined on its IPv4 address, at most 32). The Join page lists "On this network"
+(world, players, round trip; another protocol listed but disabled) with Search again, and a ping beside each recent
+server. `ServerConnector.resolve_join` races a name with both families on the status query (IPv6, then IPv4 250 ms
+later, first answer wins, the resolver's first address after 1 s) rather than on ENet, since a losing ENet attempt
+would leave a half-open peer on the host. One deviation: Godot 4.7's sockets carry no IPv6 scope id (`ff02::1%eth0` is
+accepted and the zone dropped, checked on this machine), so the `ff02::1` query goes out once, on the OS's default
+multicast interface, not once per interface; IPv4 broadcast covers the rest of a LAN. Suite `discovery_tests.gd`
+(parser, one rule, codec, query rules, rate limit, protocol refusal and wire, LAN rows and the Join page, Happy
+Eyeballs, host flags, real dual-stack ENet and status sockets on `127.0.0.1` and `::1`, catalog); net harness step
+`lan_discovery`, and the harness runs on both loopbacks in CI (`NET_HARNESS_ADDRESS`, a matrix; `::1` skipped with a
+logged reason on a runner without it; `NET_HARNESS_PORT` moves it off 7777).
 
 ## Phase 298 — The server list: a registry and the Join screen's public list
 

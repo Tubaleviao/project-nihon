@@ -10,10 +10,18 @@ const STRESS_RECORDER_PATH := "res://src/tests/stress_recorder.gd"
 const NetworkingSlice := preload("res://src/networking/networking_slice.gd")
 const TestSuite := preload("res://src/tests/test_suite.gd")
 const NetHarness := preload("res://src/tests/net_harness.gd")
-const RecentServers := preload("res://src/menu/recent_servers.gd")
+const NetAddress := preload("res://src/networking/net_address.gd")
+const ServerStatus := preload("res://src/networking/server_status.gd")
 
 ## Phase 162 — the dedicated server's connection cap (a stress host raises it past the ladder's top).
 var max_clients: int = NetworkingSlice.DEFAULT_MAX_CLIENTS
+## Phase 297 — what a host listens on: `--port <n>` (the game port), `--bind <addr>` (default "*", dual-stack),
+## `--status-port <n>` (default the game port + 1, 0 = off) and `--world-name <text>` (the status answer's name for a
+## dedicated server; a menu world answers with its own name).
+var host_port: int = NetworkingSlice.DEFAULT_PORT
+var bind_address: String = "*"
+var status_port: int = -1
+var world_name: String = ""
 
 ## Parse `--client [addr]` from OS user args to determine network role. Defaults
 ## to host (authoritative single-player) when no args are present. A malformed
@@ -31,6 +39,7 @@ func parse_network_args(args: PackedStringArray = OS.get_cmdline_user_args()) ->
 	for i in range(args.size()):
 		if args[i] == "--friend" and i + 1 < args.size():
 			root._friend_code_arg = str(args[i + 1])
+	parse_host_args(args)
 	# Phase 39 — the harness role decides the network role too: `--net-harness host` is
 	# the dedicated server half of the pair and `--net-harness client` the joining half,
 	# so the driver names one side rather than having to keep two arguments consistent.
@@ -57,11 +66,46 @@ func install_quit_guard() -> void:
 	if not root._is_client:
 		root.get_tree().auto_accept_quit = false
 
+## Phase 297 — `--port`, `--bind`, `--status-port`, `--world-name`. A malformed value warns and keeps the default.
+func parse_host_args(args: PackedStringArray) -> void:
+	for i in range(args.size() - 1):
+		var v := str(args[i + 1])
+		match str(args[i]):
+			"--port":
+				var p := NetAddress.port_of(v)
+				if p > 0:
+					host_port = p
+				else:
+					Diag.warn("[Networking] invalid --port '%s' — using %d" % [v, host_port])
+			"--bind":
+				if v == "*" or v.is_valid_ip_address():
+					bind_address = v
+				else:
+					Diag.warn("[Networking] invalid --bind '%s' — binding every address" % v)
+			"--status-port":
+				var sp := NetAddress.port_of(v)
+				if v == "0" or sp > 0:
+					status_port = sp
+				else:
+					Diag.warn("[Networking] invalid --status-port '%s' — using the game port + 1" % v)
+			"--world-name":
+				world_name = ServerStatus.clean_text(v).left(64)
+
+## Phase 297 — the options `NetworkingSlice.host` takes for this boot. `menu_world` is the menu's choice ({name} on a
+## listen host started from it); `dedicated` says no player plays in this process.
+func host_options(menu_world: Dictionary, dedicated: bool) -> Dictionary:
+	return {
+		"bind": bind_address,
+		"status_port": status_port if status_port >= 0 else ServerStatus.default_status_port(host_port),
+		"world_name": str(menu_world.get("name", "")) if str(menu_world.get("name", "")) != "" else world_name,
+		"local_players": 0 if dedicated else 1,
+	}
+
 ## The host a `--client <addr>` boot joins. The address rule is the main menu's Join form's
-## (`RecentServers.valid_address`, one function since Phase 224 / #599): a literal IP or a plain hostname,
-## no scheme, path or whitespace. A malformed value warns loudly and falls back to 127.0.0.1.
+## (`NetAddress.parse`, one rule since Phase 224 / #599, with ports and IPv6 since Phase 297). A malformed value
+## warns loudly and falls back to 127.0.0.1.
 static func client_address(addr: String) -> String:
-	if RecentServers.valid_address(addr):
+	if NetAddress.valid(addr):
 		return addr
 	Diag.warn("[Networking] invalid --client address '%s' — using 127.0.0.1" % addr)
 	return "127.0.0.1"

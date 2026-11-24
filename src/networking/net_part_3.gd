@@ -6,9 +6,21 @@ var sl: Node
 ## Phase 196 — the most HP one `player_healed` packet may restore (one regen interval at any sane rate).
 const MAX_REST_HEAL := 1000.0
 
+const ServerStatus := preload("res://src/networking/server_status.gd")
+const StatusServer := preload("res://src/networking/status_server.gd")
+## Phase 297 — the host's status port (a child of the slice while hosting), null otherwise.
+var status_server: Node = null
+## Phase 297 — what the status answer reports beside the live counts: the world's name, the players this process
+## hosts itself (1 on a listen host) and the connection cap.
+var status_world_name: String = ""
+var status_local_players: int = 0
+var _max_clients: int = 0
+var _game_port: int = 0
+
 func _init(slice: Node) -> void:
 	sl = slice
 	GameBus.block_damaged.connect(_on_block_damaged)
+	GameBus.peer_connected.connect(_send_server_hello)
 
 ## Phase 205 — host → clients in range: a hit left a structure block standing at `fraction` of its durability.
 func _on_block_damaged(position: Vector3, fraction: float) -> void:
@@ -20,16 +32,85 @@ func _on_block_damaged(position: Vector3, fraction: float) -> void:
 ## Prints one boot line on success (the same line a dedicated server and a
 ## listen host both emit) so CI can assert the server actually came up rather
 ## than merely failing to crash.
-func host(port: int = sl.DEFAULT_PORT, max_clients: int = sl.DEFAULT_MAX_CLIENTS) -> Error:
+##
+## Phase 297 — `opts`: `bind` (default "*": one dual-stack socket, IPv4 alone where the OS has no IPv6),
+## `status_port` (default the game port + 1; 0 turns it off), `world_name` and `local_players` for the status answer.
+func host(port: int = sl.DEFAULT_PORT, max_clients: int = sl.DEFAULT_MAX_CLIENTS, opts: Dictionary = {}) -> Error:
 	sl._peer = ENetMultiplayerPeer.new()
+	var bind_address := str(opts.get("bind", "*"))
+	sl._peer.set_bind_ip(bind_address)
 	var err = sl._peer.create_server(port, max_clients)
 	if err != OK:
-		sl.Diag.error("NetworkingSlice: failed to create server on port %d — %s" % [port, error_string(err)])
+		sl.Diag.error("NetworkingSlice: failed to create server on %s port %d — %s" % [bind_address, port, error_string(err)])
 		return err
 	sl._role = sl.Role.HOST
 	sl._attach_peer()
+	_max_clients = max_clients
+	_game_port = port
+	status_world_name = str(opts.get("world_name", status_world_name))
+	status_local_players = int(opts.get("local_players", status_local_players))
 	print("[Server] listening on port %d, max_clients %d" % [port, max_clients])
+	start_status(int(opts.get("status_port", ServerStatus.default_status_port(port))), bind_address)
 	return OK
+
+## Phase 297 — open the status port beside the game port (0 = off). A port that will not bind is logged and the
+## host plays on without it: discovery is a convenience, the game port is the game.
+func start_status(status_port: int, bind_address: String = "*") -> void:
+	stop_status()
+	if status_port <= 0:
+		print("[Server] status port off")
+		return
+	status_server = StatusServer.new()
+	status_server.name = "StatusServer"
+	status_server.info = status_info
+	var err: Error = status_server.start(status_port, bind_address)
+	if err != OK:
+		sl.Diag.warn("NetworkingSlice: status port %d did not open — %s; LAN discovery will not list this host" % [status_port, error_string(err)])
+		status_server.free()
+		status_server = null
+		return
+	sl.add_child(status_server)
+	print("[Server] status port %d" % status_port)
+
+func stop_status() -> void:
+	if status_server != null and is_instance_valid(status_server):
+		status_server.stop()
+		if status_server.get_parent() != null:
+			status_server.get_parent().remove_child(status_server)
+		status_server.free()
+	status_server = null
+
+## The status answer's live fields.
+func status_info() -> Dictionary:
+	return {
+		"protocol": ServerStatus.PROTOCOL_VERSION,
+		"game_port": _game_port,
+		"players": sl._player_ids.size() + status_local_players,
+		"max_players": _max_clients + status_local_players,
+		"game_version": str(ProjectSettings.get_setting("application/config/version", "")),
+		"world_name": status_world_name,
+	}
+
+## Phase 297 — host → a peer that just connected: the protocol this host speaks, before anything else, so a client
+## of another version stops at once with a reason instead of misbehaving.
+func _send_server_hello(peer_id: int) -> void:
+	if sl._role != sl.Role.HOST or peer_id <= 1:
+		return
+	sl._deliver(peer_id, { "type": "server_hello", "protocol": ServerStatus.PROTOCOL_VERSION })
+
+## Phase 297 — client: the host's protocol (from its hello, or a refusal it sent). A version this client does not
+## speak ends the join with a reason key; the caller's `join_failed` shows it.
+func _check_host_protocol(payload: Dictionary) -> void:
+	var host_protocol: Variant = payload.get("protocol", null)
+	var key := ServerStatus.protocol_refusal(ServerStatus.PROTOCOL_VERSION,
+		int(host_protocol) if host_protocol is int or host_protocol is float else -1)
+	if key == "" and str(payload.get("type", "")) == "protocol_refused":
+		key = "menu.join.fail_protocol_older"   # the host refused ours, whatever it says its own is
+	if key == "":
+		return
+	sl.Diag.error("[Networking] host speaks protocol %s, this client %d — leaving (%s)" % [str(host_protocol), ServerStatus.PROTOCOL_VERSION, key])
+	GameBus.join_refused.emit(key)
+	sl.disconnect_all()
 
 ## Phase 171 — the exact position a `creature_state_changed` packet carries (compact `pk`, else the wire
 ## `position`; a legacy float array is split). A packet whose `pk` does not decode is empty (the caller drops it).
@@ -576,6 +657,8 @@ func _route_h2c(payload: Dictionary) -> void:
 			# direct call, and re-emitting from a listener on the same signal would
 			# make the client loop forever on its own packet.
 			GameBus.own_state_synced.emit(payload.get("data", {}))
+		"server_hello", "protocol_refused":
+			_check_host_protocol(payload)   # Phase 297
 		"identity_assigned":
 			# Phase 33 — the host's answer to our join intent. Cache it so a
 			# reconnect claims the same record. Phase 36 — it now also carries our
@@ -645,7 +728,8 @@ func relay_creature_state(instance_id: String, creature_id: String, state: Strin
 func send_roster_intent(op: String, id: String = "", confirm: String = "") -> void:
 	if sl._role != sl.Role.CLIENT:
 		return
-	_deliver(1, { "type": "roster_intent", "op": op, "claimed_id": sl.claimed_player_id, "id": id, "confirm": confirm })
+	_deliver(1, { "type": "roster_intent", "op": op, "claimed_id": sl.claimed_player_id, "id": id, "confirm": confirm,
+		"protocol": ServerStatus.PROTOCOL_VERSION })
 
 ## Phase 226 — client: the list chose a character; the join goes on with it.
 func choose_character(character_id: String) -> void:

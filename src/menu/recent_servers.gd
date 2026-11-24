@@ -2,21 +2,15 @@ extends RefCounted
 ## Phase 223 — the servers the main menu's Join screen remembers, most recent first.
 ##
 ## `user://recent_servers.json` is `{"servers": [{"address", "friend", "last"}]}`. It is read back as
-## untrusted input: an entry whose address or friend code would not pass the Join form is dropped.
+## untrusted input: an entry whose address (`NetAddress`, Phase 297) or friend code would not pass the Join form is dropped.
 
 const PlayerRegistry := preload("res://src/persistence/player_registry.gd")
 
+const NetAddress := preload("res://src/networking/net_address.gd")
+
 const DEFAULT_PATH := "user://recent_servers.json"
 const MAX_ENTRIES := 8
-const ADDRESS_MAX := 253
-
-## A literal IP or a plain hostname: no scheme, path or whitespace (the `--client` rule, Phase 32).
-static func valid_address(addr: String) -> bool:
-	if addr.is_empty() or addr.length() > ADDRESS_MAX:
-		return false
-	if addr.contains("://") or addr.contains("/") or addr.contains(" ") or addr.contains("\t"):
-		return false
-	return RegEx.create_from_string("^[A-Za-z0-9][A-Za-z0-9.:-]*$").search(addr) != null
+const ADDRESS_MAX := NetAddress.ADDRESS_MAX
 
 ## "" (no friend) or a well-formed friend code.
 static func valid_friend(code: String) -> bool:
@@ -37,7 +31,7 @@ static func load_list(path: String = DEFAULT_PATH) -> Array:
 			continue
 		var addr := str(e.get("address", "")).strip_edges()
 		var friend := str(e.get("friend", "")).strip_edges()
-		if not valid_address(addr) or not valid_friend(friend):
+		if not NetAddress.valid(addr) or not valid_friend(friend):
 			continue
 		out.append({ "address": addr, "friend": friend, "last": int(e.get("last", 0)) })
 		if out.size() >= MAX_ENTRIES:
@@ -47,7 +41,7 @@ static func load_list(path: String = DEFAULT_PATH) -> Array:
 ## Put `address` (with `friend`) at the top of the list, dropping its older entry and the overflow.
 static func remember(address: String, friend: String, path: String = DEFAULT_PATH, now: int = -1) -> Array:
 	var list := load_list(path)
-	if not valid_address(address) or not valid_friend(friend):
+	if not NetAddress.valid(address) or not valid_friend(friend):
 		return list
 	var kept: Array = [{ "address": address, "friend": friend,
 		"last": now if now >= 0 else int(Time.get_unix_time_from_system()) }]

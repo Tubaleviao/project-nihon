@@ -164,9 +164,7 @@ const NetPart1 := preload("res://src/networking/net_part_1.gd")
 const NetPart2 := preload("res://src/networking/net_part_2.gd")
 const NetPart3 := preload("res://src/networking/net_part_3.gd")
 var _m3 := NetPart3.new(self)
-
 var _m2 := NetPart2.new(self)
-
 var _m1 := NetPart1.new(self)
 
 var claimed_handle: String = ""
@@ -413,8 +411,8 @@ func _process(_delta: float) -> void:
 # Public API
 # ---------------------------------------------------------------------------
 
-func host(port: int = DEFAULT_PORT, max_clients: int = DEFAULT_MAX_CLIENTS) -> Error:
-	return _m3.host(port, max_clients)
+func host(port: int = DEFAULT_PORT, max_clients: int = DEFAULT_MAX_CLIENTS, opts: Dictionary = {}) -> Error:
+	return _m3.host(port, max_clients, opts)   # Phase 297: bind, status port, world name
 
 ## Connect to a remote host. Sets the slice to CLIENT role.
 func join(address: String = "127.0.0.1", port: int = DEFAULT_PORT) -> Error:
@@ -1465,7 +1463,8 @@ func request_handshake() -> void:
 	if awaiting_character:   # Phase 226 — no join until the character list chose one: ask for the list
 		_m3.send_roster_intent("list")
 		return
-	_deliver(1, { "type": "join_intent", "claimed_id": claimed_player_id, "friend_code": friend_code, "character": chosen_character })
+	_deliver(1, { "type": "join_intent", "claimed_id": claimed_player_id, "friend_code": friend_code, "character": chosen_character,
+		"protocol": _m3.ServerStatus.PROTOCOL_VERSION })   # Phase 297: a host of another version refuses the join
 
 ## Phase 53 — host side: tell the peer where it was placed when there is something to say (an
 ## unknown friend code fell back to the normal search). The message is a catalog key, short, and

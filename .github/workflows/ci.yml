@@ -569,11 +569,17 @@ jobs:
           tools/check_changelog.sh
 
   net-harness:
-    name: Two-client network harness (loopback ENet)
+    name: Two-client network harness (loopback ENet, ${{ matrix.address }})
     # A manual dispatch skips this job (the manual crowd stress run is in perf.yml).
     needs: changes
     if: github.event_name != 'workflow_dispatch' && needs.changes.outputs.light != 'true'
     runs-on: ubuntu-latest
+    # Phase 297 — the same scenario over IPv4 and IPv6 loopback, in parallel (the host's one "*" bind is dual-stack).
+    # A runner without IPv6 skips the ::1 run with a logged reason (see tools/net_harness.sh).
+    strategy:
+      fail-fast: false
+      matrix:
+        address: ["127.0.0.1", "::1"]
     steps:
       - uses: actions/checkout@v4
         # Same submodule note as godot-tests: the public repo runs on the
@@ -596,6 +602,7 @@ jobs:
           NET_HARNESS_LOGDIR: ${{ runner.temp }}/net-harness
           # 300 s was the deadline most slow-runner failures hit (`host did not finish within 300s`).
           NET_HARNESS_TIMEOUT: "480"
+          NET_HARNESS_ADDRESS: ${{ matrix.address }}
         # One retry: a real regression fails both runs, a slow shared runner rarely does. The first run's
         # errors stay in the log and its logs are uploaded, so a pass on the retry is still visible.
         id: harness
@@ -611,7 +618,7 @@ jobs:
         if: failure() || steps.harness.outputs.retried == 'true'
         uses: actions/upload-artifact@v4
         with:
-          name: net-harness-logs
+          name: net-harness-logs-${{ matrix.address == '::1' && 'ipv6' || 'ipv4' }}
           path: |
             ${{ runner.temp }}/net-harness
             ${{ runner.temp }}/net-harness-retry

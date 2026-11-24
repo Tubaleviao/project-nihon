@@ -224,6 +224,46 @@ func _queued_for(net: Object, peer: int, needle: String) -> int:
 			n += 1
 	return n
 
+## Phase 297 — LAN discovery finds the harness host: the client sends the status query the Join screen sends, aimed at
+## the loopback address it joined (`ServerProbe.discover` with that one target), and must get the host's answer with
+## its game port and this build's protocol. The host must have answered it on its status port.
+const ServerProbe := preload("res://src/networking/server_probe.gd")
+const ServerStatus := preload("res://src/networking/server_status.gd")
+const NetAddress := preload("res://src/networking/net_address.gd")
+## Phase 297 — join the host the driver named (`--client <addr>`: a host, `host:port`, `[v6]:port` or bare IPv6).
+static func join_host(h: Node) -> Error:
+	var a := NetAddress.parse(str(h._root._host_address))
+	if not bool(a["ok"]):
+		return ERR_INVALID_PARAMETER
+	return h._root._networking.join(str(a["host"]), int(a["port"]))
+
+func lan_discovery(h: Node) -> void:
+	if h._role == "host":
+		var answered: bool = await h._await_until(func() -> bool:
+			var st: Node = h._root._networking._m3.status_server
+			return st != null and int(st.answered) > 0, h._step_timeout() * 2.0)
+		h._report("lan_discovery", h.verdict(answered, true), "status-answered" if answered else "no_query_answered")
+		return
+	var a := NetAddress.parse(str(h._root._host_address))
+	var probe := ServerProbe.new()
+	var found := {}
+	if bool(a["ok"]) and probe.open() == OK:
+		var status_port := ServerStatus.default_status_port(int(a["port"]))
+		var sent := { "at": -100000 }
+		await h._await_until(func() -> bool:
+			var now := Time.get_ticks_msec()
+			if now - int(sent["at"]) >= 1000:
+				sent["at"] = now
+				probe.discover(status_port, "lan", [str(a["host"])], now)
+			for ans in probe.poll(now):
+				var st: Dictionary = ans["status"]
+				if int(st["game_port"]) == int(a["port"]) and int(st["protocol"]) == ServerStatus.PROTOCOL_VERSION:
+					found["ip"] = str(ans["ip"])   # a lambda's locals are copies: mutate, do not reassign
+			return not found.is_empty(), h._step_timeout() * 2.0)
+	probe.close()
+	h._report("lan_discovery", h.verdict(not found.is_empty(), true),
+		"status-answered" if not found.is_empty() else "no_answer_from_%s" % str(a.get("host", "?")))
+
 ## Phase 223 — the main menu's join path connects; since Phase 224 (#599) through a real main menu. The harness
 ## client drops its connection and boots a third process with no role (`--menu-join <host>`): the main menu opens,
 ## the Join form's choice (`MainMenu.join_choice`) goes through `MenuWiring.start` and `GameRoot._build_and_boot`,
@@ -1064,7 +1104,7 @@ func character_roster(h: Node) -> void:
 	await h._await_settle(h.RECONNECT_WAIT_SECS * h._time_scale)
 	net.awaiting_character = true
 	var listed := false
-	if net.join(h._root._host_address, net.DEFAULT_PORT) == OK:
+	if join_host(h) == OK:
 		listed = await h._await_until(func(): return not lists.is_empty(), h._step_timeout())
 	var one: bool = listed and (lists[-1]["characters"] as Array).size() == 1 and str(lists[-1]["characters"][0]["id"]) == first
 	await h._await_settle(0.5)
@@ -1089,7 +1129,7 @@ func character_roster(h: Node) -> void:
 	h._root._handshake_elapsed = 0.0
 	h._root._handshake_retries = 0
 	var in_first := false
-	if net.join(h._root._host_address, net.DEFAULT_PORT) == OK:
+	if join_host(h) == OK:
 		in_first = await h._await_until(func():
 			return net.own_character_id == first and not h._root._snapshot_pending, h._step_timeout() * 2.0)
 	GameBus.character_roster_synced.disconnect(on_list)

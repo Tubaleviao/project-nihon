@@ -43,6 +43,8 @@ Four entry points; the first two are deliberately separate:
 #    process on loopback, drives a scripted session over real ENet, and asserts the two
 #    sides' log lines agree. Needs a Godot 4.7 binary:
 GODOT=/tmp/godot/Godot_v4.7-stable_linux.x86_64 tools/net_harness.sh
+#    Phase 297: NET_HARNESS_ADDRESS=::1 runs it over IPv6 loopback (CI runs both), and
+#    NET_HARNESS_PORT moves it off 7777 (and the status port off 7778), e.g. beside a live server.
 
 # 3. The same harness under a link profile (Phase 135): lan, wan_br (60 ms ± 15 ms, 1% loss)
 #    or wan_bad (200 ms ± 60 ms, 5% loss, 256 kbit/s). NET_PROFILE is passed to both
@@ -83,6 +85,26 @@ delivers when the tree ticks, and the suite has no frames to give it — so it i
 boot mode; the purely computational half of it (the step table, the log-line format and
 parser, the convergence verdict, the target selection) is still registered in the suite
 and covered on every boot.
+
+## Hosting: ports, IPv6 and LAN discovery
+
+Phase 297. A listen host and a dedicated server take these user args (after `--`):
+
+| Flag | Default | Meaning |
+|---|---|---|
+| `--port <n>` | 7777 | The game port (UDP, ENet). |
+| `--bind <addr>` | `*` | The address to listen on. `*` is one dual-stack socket (IPv4 and IPv6; IPv4 alone where the OS has no IPv6). |
+| `--status-port <n>` | game port + 1 | The UDP status port that LAN discovery and the Join screen's ping ask. `0` turns it off. |
+| `--world-name <text>` | the menu world's name | What the status answer calls a dedicated server's world. |
+
+A player types `host`, `host:port`, `1.2.3.4:port`, `[2001:db8::1]:port` or a bare `2001:db8::1` (no port) on the
+Join screen or after `--client` (one rule, `src/networking/net_address.gd`). A host name with both IPv6 and IPv4
+addresses is raced on the status query (IPv6 first, IPv4 250 ms later, Happy Eyeballs). A host behind IPv4 CGNAT can
+be reached on its IPv6 address with a firewall rule for the game port and the status port, without a port forward.
+
+The status answer and the join handshake carry `ServerStatus.PROTOCOL_VERSION`; bump it when an old client would
+misbehave against a new host (or the reverse). A client and a host of different versions refuse each other with a
+`menu.join.fail_protocol_*` reason.
 
 ## Admin commands
 
