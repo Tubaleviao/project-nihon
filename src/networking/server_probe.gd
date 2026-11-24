@@ -86,7 +86,7 @@ func discover(status_port: int, key: String = "lan", targets: Array = LAN_TARGET
 			n += 1
 	return n
 
-## What arrived since the last call: [{key, ip, rtt_ms, status}] (status as `ServerStatus.decode_answer`).
+## What arrived since the last call: [{key, ip, rtt_ms, status, at}] (status as `ServerStatus.decode_answer`).
 func poll(now_ms: int = Time.get_ticks_msec()) -> Array:
 	var out: Array = []
 	if _udp == null:
@@ -101,7 +101,7 @@ func poll(now_ms: int = Time.get_ticks_msec()) -> Array:
 		if status.is_empty() or not _sent.has(int(status["nonce"])):
 			continue
 		var q: Dictionary = _sent[int(status["nonce"])]
-		out.append({ "key": str(q["key"]), "ip": ip, "rtt_ms": maxi(0, now_ms - int(q["at"])), "status": status })
+		out.append({ "key": str(q["key"]), "ip": ip, "rtt_ms": maxi(0, now_ms - int(q["at"])), "status": status, "at": now_ms })
 	for nonce in _sent.keys():
 		if now_ms - int(_sent[nonce]["at"]) > QUERY_TTL_MS:
 			_sent.erase(nonce)
@@ -121,18 +121,39 @@ func _poll_resolver(now_ms: int) -> void:
 		IP.erase_resolve_item(int(id))
 
 ## LAN rows from answers: one per host `instance` (a host heard on IPv4 and IPv6 is one row, joined on its IPv4
-## address, which needs no IPv6 scope), with the best round trip. `rows` is updated in place, keyed by instance.
+## address, which needs no IPv6 scope), with the best round trip and when it last answered (`at`, the probe's clock).
+## `rows` is updated in place, keyed by instance. At MAX_LAN_ROWS a new host replaces the slowest row only when it
+## answered faster, so a flood of made-up instances cannot freeze the list against real hosts nearby.
 static func merge_lan_row(rows: Dictionary, answer: Dictionary) -> void:
 	var status: Dictionary = answer["status"]
 	var inst := int(status["instance"])
 	var ip := str(answer["ip"])
+	var rtt := int(answer["rtt_ms"])
+	var at := int(answer.get("at", 0))
 	var row: Dictionary = rows.get(inst, {})
 	if row.is_empty():
 		if rows.size() >= MAX_LAN_ROWS:
-			return
-		rows[inst] = { "ip": ip, "rtt_ms": int(answer["rtt_ms"]), "status": status }
+			var worst: Variant = null
+			for k in rows:
+				if worst == null or int(rows[k]["rtt_ms"]) > int(rows[worst]["rtt_ms"]):
+					worst = k
+			if rtt >= int(rows[worst]["rtt_ms"]):
+				return
+			rows.erase(worst)
+		rows[inst] = { "ip": ip, "rtt_ms": rtt, "status": status, "seen": at }
 		return
-	row["rtt_ms"] = mini(int(row["rtt_ms"]), int(answer["rtt_ms"]))
+	row["rtt_ms"] = mini(int(row["rtt_ms"]), rtt)
 	row["status"] = status
+	row["seen"] = maxi(int(row.get("seen", 0)), at)
 	if NetAddress.is_v6(str(row["ip"])) and not NetAddress.is_v6(ip):
 		row["ip"] = ip
+
+## Drop the rows that have not answered since `now_ms - stale_ms` (a host that shut down leaves the list). True when
+## any row went.
+static func drop_stale_rows(rows: Dictionary, now_ms: int, stale_ms: int) -> bool:
+	var gone := false
+	for k in rows.keys():
+		if now_ms - int(rows[k].get("seen", 0)) > stale_ms:
+			rows.erase(k)
+			gone = true
+	return gone

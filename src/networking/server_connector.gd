@@ -61,34 +61,57 @@ class Eyeballs:
 	func address_of(key: String) -> String:
 		return v6 if key == "v6" else v4
 
-## Join `address` on `networking` (a NetworkingSlice): its host and port, raced as `resolve_join` says.
-static func join(networking: Node, address: String) -> Error:
-	var target := resolve_join(address)
+## The longest a host name may take to resolve before the join goes on with ENet's own lookup.
+const RESOLVE_MAX_MS := 5000
+
+## Join `address` on `networking` (a NetworkingSlice): its host and port, a name raced as `resolve_join` says.
+## A coroutine: `await` it. `tree` paces the wait (one frame at a time, the window stays live).
+static func join(networking: Node, address: String, tree: SceneTree) -> Error:
+	var target: Dictionary = await resolve_join(address, tree)
 	if not bool(target["ok"]):
 		return ERR_INVALID_PARAMETER
+	if not is_instance_valid(networking):
+		return ERR_UNAVAILABLE
 	return networking.join(str(target["host"]), int(target["port"]))
 
-## {ok, host, port} to dial for `address` (already accepted by `NetAddress`). A literal is dialled as given; a name
-## with both families is raced (blocks the boot for at most DECIDE_MS); a name that does not resolve is handed to
-## ENet as is, which then fails the way it always did.
-static func resolve_join(address: String) -> Dictionary:
+## {ok, host, port} for a literal address (dialled as given), or {} for a host name, which needs `resolve_join`.
+## {ok: false} when `address` does not parse.
+static func literal_target(address: String) -> Dictionary:
 	var a := NetAddress.parse(address)
 	if not bool(a["ok"]):
 		return { "ok": false }
+	if str(a["family"]) == NetAddress.FAMILY_NAME:
+		return {}
+	return { "ok": true, "host": str(a["host"]), "port": int(a["port"]) }
+
+## {ok, host, port} to dial for `address` (already accepted by `NetAddress`). A coroutine that never blocks the main
+## thread: the name resolves on the resolver queue and the race is polled once a frame (`tree`). A name with one
+## family is dialled at once; a name that does not resolve in time is handed to ENet as is, which then fails the way
+## it always did.
+static func resolve_join(address: String, tree: SceneTree) -> Dictionary:
+	var lit := literal_target(address)
+	if not lit.is_empty():
+		return lit
+	var a := NetAddress.parse(address)
 	var host := str(a["host"])
 	var port := int(a["port"])
-	if str(a["family"]) != NetAddress.FAMILY_NAME:
-		return { "ok": true, "host": host, "port": port }
-	var addrs := Array(IP.resolve_hostname_addresses(host, IP.TYPE_ANY))
+	var id := IP.resolve_hostname_queue_item(host, IP.TYPE_ANY)
+	var addrs: Array = []
+	if id != IP.RESOLVER_INVALID_ID:
+		var until := Time.get_ticks_msec() + RESOLVE_MAX_MS
+		while IP.get_resolve_item_status(id) == IP.RESOLVER_STATUS_WAITING and Time.get_ticks_msec() < until:
+			await tree.process_frame
+		if IP.get_resolve_item_status(id) == IP.RESOLVER_STATUS_DONE:
+			addrs = Array(IP.get_resolve_item_addresses(id))
+		IP.erase_resolve_item(id)
 	var race := Eyeballs.new()
-	var first := race.begin(addrs, Time.get_ticks_msec())
+	var pending := race.begin(addrs, Time.get_ticks_msec())
 	if race.chosen != "" or addrs.is_empty():
 		return { "ok": true, "host": race.chosen if race.chosen != "" else host, "port": port }
 	var probe := ServerProbe.new()
 	if probe.open() != OK:
 		return { "ok": true, "host": race.fallback, "port": port }
 	var status_port := ServerStatus.default_status_port(port)
-	var pending := first
 	while race.chosen == "":
 		var now := Time.get_ticks_msec()
 		for key in pending:
@@ -98,7 +121,7 @@ static func resolve_join(address: String) -> Dictionary:
 		pending = race.due(now)
 		race.expire(now)
 		if race.chosen == "":
-			OS.delay_msec(5)
+			await tree.process_frame
 	probe.close()
 	print("[Networking] %s resolves to both families — dialling %s" % [host, race.chosen])
 	return { "ok": true, "host": race.chosen, "port": port }

@@ -222,8 +222,14 @@ func _test_lan_rows() -> void:
 	ServerProbe.merge_lan_row(rows, _answer("fe80::1", 9, 3))
 	assert_eq(str(rows[9]["ip"]), "192.168.0.4", "a later IPv6 answer keeps the IPv4 address")
 	for i in ServerProbe.MAX_LAN_ROWS + 10:
-		ServerProbe.merge_lan_row(rows, _answer("10.0.0.%d" % (i % 250), 1000 + i, 5))
+		ServerProbe.merge_lan_row(rows, _answer("10.0.0.%d" % (i % 250), 1000 + i, 50))
 	assert_eq(rows.size(), ServerProbe.MAX_LAN_ROWS, "a flood of instances cannot grow the list past its cap")
+	assert_true(rows.has(9), "and does not push out a faster host")
+	ServerProbe.merge_lan_row(rows, _answer("10.0.1.1", 77, 2))
+	assert_true(rows.has(77) and rows.size() == ServerProbe.MAX_LAN_ROWS, "a faster new host replaces the slowest row at the cap")
+	var aged := { 1: { "seen": 100 }, 2: { "seen": 5000 } }
+	assert_true(ServerProbe.drop_stale_rows(aged, 6000, 3000), "a host silent past the stale time")
+	assert_eq(aged.keys(), [2], "leaves the list; one that answered stays")
 	var view := MainMenu.lan_row_view(rows[9])
 	assert_true(bool(view["joinable"]), "a host of this protocol can be joined")
 	assert_eq(str(view["address"]), "192.168.0.4:7000", "on the game port from its answer")
@@ -251,8 +257,12 @@ func _test_lan_rows() -> void:
 	assert_eq(asked.size(), 1, "a row joins on click")
 	if asked.size() == 1:
 		assert_eq(str(asked[0]["address"]), "192.168.0.5:7000", "the host on its game port")
+	menu.search_servers()
+	assert_eq(menu.lan_rows(), [], "Search again starts from an empty list")
+	menu.apply_answers([_answer("192.168.0.4", 1, 9)])
 	menu.show_page(MainMenu.PAGE_HOME)
 	assert_true(menu._probe == null, "leaving the page closes the probe")
+	assert_eq(menu.lan_rows(), [], "and forgets the rows")
 	remove_child(menu)
 	menu.free()
 	DirAccess.remove_absolute(ProjectSettings.globalize_path(recent_path))
@@ -280,8 +290,11 @@ func _test_eyeballs() -> void:
 	var one := ServerConnector.Eyeballs.new()
 	assert_eq(one.begin(["192.0.2.7"], 0), [], "one family needs no race")
 	assert_eq(one.chosen, "192.0.2.7", "it is dialled at once")
-	var lit: Dictionary = ServerConnector.resolve_join("[::1]:7100")
+	var lit: Dictionary = ServerConnector.literal_target("[::1]:7100")
 	assert_eq([lit["host"], lit["port"]], ["::1", 7100], "a literal is dialled as given")
+	assert_eq(ServerConnector.literal_target("example.org"), {}, "a name goes to the race")
+	var src := FileAccess.get_file_as_string("res://src/networking/server_connector.gd")
+	assert_false(src.contains("OS.delay_msec") or src.contains("resolve_hostname_addresses("), "the race never blocks the main thread")
 
 func _test_host_args() -> void:
 	var was_quiet := Diag.quiet
@@ -356,6 +369,22 @@ func _test_dual_stack_sockets() -> void:
 		assert_true(seen.has(addr), "the status query is answered on %s" % addr)
 		if seen.has(addr):
 			assert_eq(int(seen[addr]["status"]["game_port"]), 7000, "with the host's game port")
+	# LAN discovery's real targets (IPv4 broadcast, IPv6 all-nodes) reach a host on this machine too.
+	var lan := ServerProbe.new()
+	lan.open()
+	var sent := lan.discover(sport)
+	if sent == 0:
+		print("  (this machine refuses broadcast and multicast sends: the LAN-target half is skipped)")
+	else:
+		var heard := {}
+		deadline = Time.get_ticks_msec() + 2000
+		while Time.get_ticks_msec() < deadline and heard.is_empty():
+			status.poll()
+			for ans in lan.poll():
+				heard[int(ans["status"]["instance"])] = ans
+			OS.delay_msec(5)
+		assert_true(heard.has(status.instance), "a discovery query to %s finds the host" % str(ServerProbe.LAN_TARGETS))
+	lan.close()
 	var stray := PacketPeerUDP.new()
 	stray.bind(0, "*")
 	stray.set_dest_address("127.0.0.1", probe._udp.get_local_port())

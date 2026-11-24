@@ -394,7 +394,10 @@ func protocol_ok(sender: int, payload: Dictionary) -> bool:
 	if sl.is_inside_tree() and sl._peer != null:
 		var peer: ENetMultiplayerPeer = sl._peer
 		sl.get_tree().create_timer(PROTOCOL_DROP_DELAY).timeout.connect(func() -> void:
-			# Still the refused connection (a disconnect erases the mark, and ENet may reuse the id after it).
+			# Still the refused connection (a disconnect erases the mark, and ENet may reuse the id after it); the slice
+			# may be gone already (a listen host that left to the menu).
+			if not is_instance_valid(sl) or not is_instance_valid(peer):
+				return
 			if _protocol_refused.has(sender) and sl._peer == peer \
 					and peer.get_connection_status() == MultiplayerPeer.CONNECTION_CONNECTED:
 				peer.disconnect_peer(sender))

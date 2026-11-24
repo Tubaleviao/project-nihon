@@ -1005,7 +1005,7 @@ func _boot_client() -> void:
 	_networking.claimed_player_id = _persistence.load_client_identity()
 	_networking.friend_code = _friend_code_arg
 	_roster_wiring.open_client()   # Phase 226 — a menu join picks a character before it enters
-	var err: Error = ServerConnector.join(_networking, _host_address)   # Phase 297: host:port, IPv6, Happy Eyeballs
+	var err: Error = await ServerConnector.join(_networking, _host_address, get_tree())   # Phase 297: host:port, IPv6, Happy Eyeballs
 	if err != OK:
 		Diag.error("[Networking] client failed to connect to %s — %s" % [_host_address, error_string(err)])
 		_snapshot_pending = false

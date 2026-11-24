@@ -6,6 +6,10 @@ extends Node
 ## `ServerStatus.QUERY_MAX`, or of another format is dropped with no reply; each source address gets at most
 ## PER_ADDRESS answers per window and the port at most PER_WINDOW in all, so a flood (spoofed or not) costs the host
 ## a bounded number of fixed-size packets; the table of sources is capped and cleared every window.
+##
+## A known limit, accepted for a convenience port: PER_WINDOW is shared by every source, so a flood from many (spoofed)
+## addresses can use it up and starve real discovery queries until the flood stops. The game port is not affected,
+## and a client whose status query goes unanswered still joins (Happy Eyeballs falls back after 1 s).
 
 const ServerStatus := preload("res://src/networking/server_status.gd")
 

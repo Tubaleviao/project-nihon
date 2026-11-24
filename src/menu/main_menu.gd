@@ -59,6 +59,10 @@ var _ping_labels: Dictionary = {}
 ## Where discovery asks; the net harness points it at loopback.
 var lan_targets: Array = ServerProbe.LAN_TARGETS
 var lan_status_port: int = ServerStatus.default_status_port(NetAddress.DEFAULT_PORT)
+## While the Join page shows, discovery is re-sent every LAN_REFRESH_MS and a host silent for LAN_STALE_MS leaves the list.
+const LAN_REFRESH_MS := 3000
+const LAN_STALE_MS := 7000
+var _last_discover_ms: int = 0
 var _options_button: Button = null
 var _options_window: Control = null   # Phase 225 — built on first use
 var _version_label: Label = null
@@ -347,15 +351,18 @@ func _build_join(parent: Control) -> Control:
 	_button(box, "menu.back", func() -> void: show_page(PAGE_HOME))
 	return box
 
-## Phase 297 — (re)start LAN discovery and the recent servers' ping. Rows already found stay until a fresher
-## answer replaces them.
+## Phase 297 — (re)start LAN discovery and the recent servers' ping. The list starts empty: only hosts that answer
+## this search are shown.
 func search_servers() -> void:
+	_lan_rows.clear()
+	_refresh_lan()
 	if _probe == null:
 		_probe = ServerProbe.new()
 		if _probe.open() != OK:
 			_probe = null
 			return
-	_probe.discover(lan_status_port, "lan", lan_targets)
+	_last_discover_ms = Time.get_ticks_msec()
+	_probe.discover(lan_status_port, "lan", lan_targets, _last_discover_ms)
 	for e in RecentServers.load_list(recent_path):
 		_probe.query_address(str(e["address"]), "recent:" + str(e["address"]))
 
@@ -363,10 +370,18 @@ func _stop_probe() -> void:
 	if _probe != null:
 		_probe.close()
 		_probe = null
+	_lan_rows.clear()
 
 func _process(_delta: float) -> void:
-	if _probe != null:
-		apply_answers(_probe.poll())
+	if _probe == null:
+		return
+	var now := Time.get_ticks_msec()
+	if now - _last_discover_ms >= LAN_REFRESH_MS:
+		_last_discover_ms = now
+		_probe.discover(lan_status_port, "lan", lan_targets, now)
+	apply_answers(_probe.poll(now))
+	if ServerProbe.drop_stale_rows(_lan_rows, now, LAN_STALE_MS):
+		_refresh_lan()
 
 func _exit_tree() -> void:
 	_stop_probe()
@@ -410,7 +425,7 @@ static func lan_row_view(row: Dictionary) -> Dictionary:
 	return { "text": text, "address": NetAddress.format(str(row["ip"]), int(st["game_port"])), "joinable": joinable }
 
 func _refresh_lan() -> void:
-	if _lan_list == null:
+	if _lan_list == null or _lan_none == null:
 		return
 	for c in _lan_list.get_children():
 		_lan_list.remove_child(c)

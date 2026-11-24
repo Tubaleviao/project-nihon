@@ -1629,11 +1629,14 @@ rides the status answer, a `server_hello` the host sends on connect, and every `
 refuses an intent of another protocol (or none) with `protocol_refused` and drops the peer 0.5 s later, and a client
 leaves on either with `menu.join.fail_protocol_newer` / `_older` (`GameBus.join_refused`). `ServerProbe` is the client
 socket: queries matched to their nonce (a stray answer is ignored), names resolved on the resolver queue, LAN rows
-merged by instance (one row per host, joined on its IPv4 address, at most 32). The Join page lists "On this network"
-(world, players, round trip; another protocol listed but disabled) with Search again, and a ping beside each recent
-server. `ServerConnector.resolve_join` races a name with both families on the status query (IPv6, then IPv4 250 ms
-later, first answer wins, the resolver's first address after 1 s) rather than on ENet, since a losing ENet attempt
-would leave a half-open peer on the host. One deviation: Godot 4.7's sockets carry no IPv6 scope id (`ff02::1%eth0` is
+merged by instance (one row per host, joined on its IPv4 address, at most 32, a faster newcomer replacing the slowest
+row). The Join page lists "On this network" (world, players, round trip; another protocol listed but disabled),
+re-asks every 3 s and drops a host silent for 7 s; Search again starts the list empty; a ping sits beside each recent
+server. `ServerConnector.resolve_join` (a coroutine, one frame at a time: the window never freezes) resolves a name on
+the resolver queue and races both families on the status query (IPv6, then IPv4 250 ms later, first answer wins, the
+resolver's first address after 1 s) rather than on ENet, since a losing ENet attempt would leave a half-open peer on
+the host. The status port's 200 answers a second are shared by all sources, so a spoofed flood can starve discovery
+(not the game port) while it lasts: accepted for a convenience port. One deviation: Godot 4.7's sockets carry no IPv6 scope id (`ff02::1%eth0` is
 accepted and the zone dropped, checked on this machine), so the `ff02::1` query goes out once, on the OS's default
 multicast interface, not once per interface; IPv4 broadcast covers the rest of a LAN. Suite `discovery_tests.gd`
 (parser, one rule, codec, query rules, rate limit, protocol refusal and wire, LAN rows and the Join page, Happy
