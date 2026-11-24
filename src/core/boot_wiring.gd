@@ -12,6 +12,9 @@ const TestSuite := preload("res://src/tests/test_suite.gd")
 const NetHarness := preload("res://src/tests/net_harness.gd")
 const NetAddress := preload("res://src/networking/net_address.gd")
 const ServerStatus := preload("res://src/networking/server_status.gd")
+const RegistryWire := preload("res://src/networking/registry_wire.gd")
+const RegistryList := preload("res://src/networking/registry_list.gd")
+const RegistryServer := preload("res://src/networking/registry_server.gd")
 
 ## Phase 162 — the dedicated server's connection cap (a stress host raises it past the ladder's top).
 var max_clients: int = NetworkingSlice.DEFAULT_MAX_CLIENTS
@@ -22,6 +25,12 @@ var host_port: int = NetworkingSlice.DEFAULT_PORT
 var bind_address: String = "*"
 var status_port: int = -1
 var world_name: String = ""
+## Phase 298 — `--public` (announce this dedicated server to the registries, `--registries a,b` or the saved list),
+## `--region <tag>` (one of `RegistryWire.REGIONS`) and `--save-dir user://…/` (a second dedicated server on one
+## machine keeps its own save).
+var public: bool = false
+var region: String = ""
+var save_dir: String = ""
 
 ## Parse `--client [addr]` from OS user args to determine network role. Defaults
 ## to host (authoritative single-player) when no args are present. A malformed
@@ -90,6 +99,27 @@ func parse_host_args(args: PackedStringArray) -> void:
 					Diag.warn("[Networking] invalid --status-port '%s' — using the game port + 1" % v)
 			"--world-name":
 				world_name = ServerStatus.clean_text(v).left(64)
+			"--region":
+				region = RegistryWire.region_of(v)
+				if region == "" and v != "":
+					Diag.warn("[Networking] unknown --region '%s' — no region" % v)
+			"--save-dir":
+				if valid_save_dir(v):
+					save_dir = v
+				else:
+					Diag.warn("[Networking] invalid --save-dir '%s' — it must be a folder under user:// ending in /" % v)
+	public = args.has("--public")
+
+## `--save-dir`: the authoritative save of a dedicated server or a CLI listen host goes there (a menu world keeps its
+## own folder).
+func apply_save_dir() -> void:
+	if save_dir != "" and root._menu_wiring.world.is_empty() and not root._is_client:
+		root._persistence.server_save_dir = save_dir
+		print("[Server] save folder %s" % save_dir)
+
+## A save folder a boot flag may name: under `user://`, no `..`, ending in `/`.
+static func valid_save_dir(dir: String) -> bool:
+	return dir.begins_with("user://") and not dir.contains("..") and dir.ends_with("/") and dir.length() > 8
 
 ## Phase 297 — the options `NetworkingSlice.host` takes for this boot. `menu_world` is the menu's choice ({name} on a
 ## listen host started from it); `dedicated` says no player plays in this process.
@@ -99,7 +129,43 @@ func host_options(menu_world: Dictionary, dedicated: bool) -> Dictionary:
 		"status_port": status_port if status_port >= 0 else ServerStatus.default_status_port(host_port),
 		"world_name": str(menu_world.get("name", "")) if str(menu_world.get("name", "")) != "" else world_name,
 		"local_players": 0 if dedicated else 1,
+		# A menu world follows its Play-page choices; a dedicated server or a CLI listen host its flags.
+		"public": bool(menu_world.get("public", false)) if not menu_world.is_empty() and not dedicated else public,
+		"registries": RegistryList.current(),
+		"region": RegistryWire.region_of(menu_world.get("region", "")) if not menu_world.is_empty() and not dedicated else region,
 	}
+
+## Phase 298 — `--registry [port]`: this process is a registry and nothing else. The port, or 0 when the flag is
+## absent (RegistryWire.DEFAULT_PORT when it names none); -1 for a malformed one.
+static func registry_port(args: Array) -> int:
+	var i := args.find("--registry")
+	if i < 0:
+		return 0
+	if i + 1 >= args.size() or str(args[i + 1]).begins_with("--"):
+		return RegistryWire.DEFAULT_PORT
+	var p := NetAddress.port_of(str(args[i + 1]))
+	return p if p > 0 else -1
+
+## Start the registry role when asked. True when it took the boot (the caller builds no world); a port that will
+## not open quits the process with 1.
+func start_registry(args: Array = Array(OS.get_cmdline_user_args())) -> bool:
+	var port := registry_port(args)
+	if port == 0:
+		return false
+	root.set_process(false)
+	root.set_physics_process(false)
+	if port < 0:
+		Diag.error("[Registry] invalid --registry port")
+		root.get_tree().quit(1)
+		return true
+	var reg := RegistryServer.new()
+	reg.name = "Registry"
+	root.add_child(reg)
+	var err: Error = reg.start(port, bind_address)
+	if err != OK:
+		Diag.error("[Registry] could not listen on port %d — %s" % [port, error_string(err)])
+		root.get_tree().quit(1)
+	return true
 
 ## The host a `--client <addr>` boot joins. The address rule is the main menu's Join form's
 ## (`NetAddress.parse`, one rule since Phase 224 / #599, with ports and IPv6 since Phase 297). A malformed value

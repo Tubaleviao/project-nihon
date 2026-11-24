@@ -7,6 +7,8 @@ extends CanvasLayer
 ##   Join — an address and an optional friend code, plus the recent servers (RecentServers) with their ping and,
 ##          since Phase 297, the hosts "On this network" (LAN discovery through the status query). Asks the
 ##          root to boot the client path; a failed join comes back here with a localized reason.
+##          Phase 298: a second tab, "Public servers", lists what the registries know (`PublicServers`), with each
+##          server's own status answer, sort, filter, "hide full" and the registry list itself.
 ##
 ## Presentation only. The menu never boots anything itself: it emits `start_requested(choice)` and the
 ## root builds the world. A choice is `{mode: "host", dir, seed, name}` or `{mode: "join", address, friend}`.
@@ -22,6 +24,9 @@ const NetAddress := preload("res://src/networking/net_address.gd")
 const ServerProbe := preload("res://src/networking/server_probe.gd")
 const ServerStatus := preload("res://src/networking/server_status.gd")
 const PersistenceSlice := preload("res://src/persistence/persistence_slice.gd")
+const PublicServers := preload("res://src/menu/public_servers.gd")
+const RegistryList := preload("res://src/networking/registry_list.gd")
+const RegistryWire := preload("res://src/networking/registry_wire.gd")
 
 const LAYER := 40
 const PAGE_HOME := "home"
@@ -63,6 +68,20 @@ var lan_status_port: int = ServerStatus.default_status_port(NetAddress.DEFAULT_P
 const LAN_REFRESH_MS := 3000
 const LAN_STALE_MS := 7000
 var _last_discover_ms: int = 0
+## Phase 298 — the Public servers tab.
+const TAB_DIRECT := 0
+const TAB_PUBLIC := 1
+var public_servers := PublicServers.new()
+var _join_tabs: TabContainer = null
+var _public_list: VBoxContainer = null
+var _public_notice: Label = null
+var _public_filter: LineEdit = null
+var _public_hide_full: CheckBox = null
+var _public_sort: OptionButton = null
+var _registries_edit: LineEdit = null
+var public_sort_by: String = PublicServers.SORT_PING
+var _public_check: CheckBox = null
+var _region_pick: OptionButton = null
 var _options_button: Button = null
 var _options_window: Control = null   # Phase 225 — built on first use
 var _version_label: Label = null
@@ -120,8 +139,11 @@ func show_page(p: String) -> void:
 		_refresh_recent()
 	if p == PAGE_JOIN:
 		search_servers()
+		if _join_tabs != null and _join_tabs.current_tab == TAB_PUBLIC:
+			open_public()
 	else:
 		_stop_probe()
+		public_servers.close()
 
 ## A line on the home page (a failed join's reason), already a catalog key.
 func show_notice(key: String) -> void:
@@ -175,7 +197,10 @@ func play_world(id: String) -> bool:
 	var w := _find(id)
 	if w.is_empty():
 		return false
-	start_requested.emit(host_choice(w))
+	var choice := host_choice(w)
+	choice["public"] = _public_check != null and _public_check.button_pressed   # Phase 298
+	choice["region"] = RegistryWire.REGIONS[maxi(0, _region_pick.selected)] if _region_pick != null else ""
+	start_requested.emit(choice)
 	return true
 
 ## Submit the Join form. Returns "" when the join was requested, else the error key shown.
@@ -308,6 +333,18 @@ func _build_play(parent: Control) -> Control:
 	box.add_child(new_head)
 	_name_edit = _line(box, "menu.world.name", LocalWorlds.NAME_MAX)
 	_world_error = _error_label(box)
+	# Phase 298 — a listen host announces itself to the registries when this is ticked.
+	var pub_row := HBoxContainer.new()
+	box.add_child(pub_row)
+	_public_check = CheckBox.new()
+	_public_check.text = I18n.t("menu.world.public")
+	_public_check.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	pub_row.add_child(_public_check)
+	_region_pick = OptionButton.new()   # the region the list shows for this host
+	for r in RegistryWire.REGIONS:
+		_region_pick.add_item(I18n.t("menu.region." + (str(r) if str(r) != "" else "none")))
+	_region_pick.tooltip_text = I18n.t("menu.public.col_region")
+	pub_row.add_child(_region_pick)
 	_button(box, "menu.world.create", func() -> void: create_world(_name_edit.text))
 	_button(box, "menu.back", func() -> void: show_page(PAGE_HOME))
 	return box
@@ -322,10 +359,26 @@ func _build_confirm(parent: Control) -> Control:
 	return box
 
 func _build_join(parent: Control) -> Control:
-	var box := _page_box(parent, PAGE_JOIN)
+	var page := _page_box(parent, PAGE_JOIN)
 	var head := Label.new()
 	head.text = I18n.t("menu.join_title")
-	box.add_child(head)
+	page.add_child(head)
+	# Phase 298 — two tabs: the address form with recent and LAN servers, and the public list.
+	_join_tabs = TabContainer.new()
+	_join_tabs.custom_minimum_size = Vector2(640, 360)
+	page.add_child(_join_tabs)
+	var box := VBoxContainer.new()
+	box.name = "Direct"
+	box.add_theme_constant_override("separation", 8)
+	_join_tabs.add_child(box)
+	_join_tabs.set_tab_title(TAB_DIRECT, I18n.t("menu.join.tab_direct"))
+	_build_public(_join_tabs)
+	_join_tabs.set_tab_title(TAB_PUBLIC, I18n.t("menu.public.tab"))
+	_join_tabs.tab_changed.connect(func(t: int) -> void:
+		if t == TAB_PUBLIC:
+			open_public()
+		else:
+			public_servers.close())
 	_address_edit = _line(box, "menu.join.address", RecentServers.ADDRESS_MAX)
 	_friend_edit = _line(box, "menu.join.friend", 32)
 	_join_error = _error_label(box)
@@ -348,8 +401,134 @@ func _build_join(parent: Control) -> Control:
 	box.add_child(_lan_none)
 	_lan_list = VBoxContainer.new()
 	box.add_child(_lan_list)
-	_button(box, "menu.back", func() -> void: show_page(PAGE_HOME))
-	return box
+	_button(page, "menu.back", func() -> void: show_page(PAGE_HOME))
+	return page
+
+## Phase 298 — the Public servers tab: filter, hide full, sort, refresh; the column headers; the rows; the registries.
+func _build_public(parent: Control) -> void:
+	var box := VBoxContainer.new()
+	box.name = "Public"
+	box.add_theme_constant_override("separation", 6)
+	parent.add_child(box)
+	var bar := HBoxContainer.new()
+	box.add_child(bar)
+	_public_filter = _line(bar, "menu.public.filter", 64)
+	_public_filter.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_public_filter.text_changed.connect(func(_t: String) -> void: refresh_public_rows())
+	_public_hide_full = CheckBox.new()
+	_public_hide_full.text = I18n.t("menu.public.hide_full")
+	_public_hide_full.toggled.connect(func(_on: bool) -> void: refresh_public_rows())
+	bar.add_child(_public_hide_full)
+	_public_sort = OptionButton.new()
+	_public_sort.add_item(I18n.t("menu.public.sort_ping"))
+	_public_sort.add_item(I18n.t("menu.public.sort_players"))
+	_public_sort.item_selected.connect(func(i: int) -> void:
+		set_public_sort(PublicServers.SORT_PING if i == 0 else PublicServers.SORT_PLAYERS))
+	bar.add_child(_public_sort)
+	_button(bar, "menu.public.refresh", func() -> void: public_servers.refresh())
+	_public_notice = Label.new()
+	_public_notice.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	box.add_child(_public_notice)
+	box.add_child(_public_row_box(PUBLIC_HEADERS.map(func(k: String) -> String: return I18n.t(k)), null))
+	var scroll := ScrollContainer.new()
+	scroll.custom_minimum_size = Vector2(0, 180)
+	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	box.add_child(scroll)
+	_public_list = VBoxContainer.new()
+	_public_list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	scroll.add_child(_public_list)
+	var reg := HBoxContainer.new()
+	box.add_child(reg)
+	_registries_edit = _line(reg, "menu.public.registries", 512)
+	_registries_edit.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_button(reg, "menu.public.registries_save", func() -> void: save_registries(_registries_edit.text))
+
+## The column headers, in order: world, region, players, ping, version.
+const PUBLIC_HEADERS := ["menu.public.col_name", "menu.public.col_region", "menu.public.col_players",
+	"menu.public.col_ping", "menu.public.col_version"]
+const PUBLIC_COL_WIDTHS := [0, 110, 90, 70, 110]
+
+## One line of the table: the first cell a button (a row joins on click) or a label (the header).
+func _public_row_box(cells: Array, on_click: Variant) -> HBoxContainer:
+	var row := HBoxContainer.new()
+	for i in cells.size():
+		var c: Control
+		if i == 0 and on_click is Callable:
+			var b := Button.new()
+			b.text = str(cells[i])
+			b.alignment = HORIZONTAL_ALIGNMENT_LEFT
+			b.pressed.connect(on_click)
+			c = b
+		else:
+			var l := Label.new()
+			l.text = str(cells[i])
+			l.clip_text = true
+			c = l
+		if int(PUBLIC_COL_WIDTHS[i]) == 0:
+			c.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		else:
+			c.custom_minimum_size = Vector2(PUBLIC_COL_WIDTHS[i], 0)
+		row.add_child(c)
+	return row
+
+## Phase 298 — the Public servers tab opened: the registry list in effect, the cached rows at once, then a fetch.
+func open_public() -> void:
+	public_servers.registries = RegistryList.current()
+	if _registries_edit != null:
+		_registries_edit.text = RegistryList.to_text(public_servers.registries)
+	public_servers.open()
+	refresh_public_rows()
+
+func show_public_tab() -> void:
+	if _join_tabs != null:
+		_join_tabs.current_tab = TAB_PUBLIC
+
+## Save the player's registry list from the tab's field and fetch again.
+func save_registries(text: String) -> void:
+	public_servers.registries = RegistryList.save(RegistryList.from_text(text))
+	if _registries_edit != null:
+		_registries_edit.text = RegistryList.to_text(public_servers.registries)
+	public_servers.refresh()
+	refresh_public_rows()
+
+func set_public_sort(by: String) -> void:
+	public_sort_by = by
+	refresh_public_rows()
+
+## The rows the tab shows now (after its filter, hide full and sort).
+func public_rows() -> Array:
+	return public_servers.rows(_public_filter.text if _public_filter != null else "",
+		_public_hide_full != null and _public_hide_full.button_pressed, public_sort_by)
+
+## A row was clicked: its address goes into the form and the join starts. "" when requested, else the error key.
+func join_public(row: Dictionary) -> String:
+	if not bool(row.get("joinable", false)):
+		var why := str(row.get("refusal", ""))
+		return why if why != "" else "menu.public.no_answer"
+	var addr := str(row["address"])
+	if _address_edit != null:
+		_address_edit.text = addr
+	return request_join(addr, _friend_edit.text if _friend_edit != null else "")
+
+func refresh_public_rows() -> void:
+	if _public_list == null:
+		return
+	for c in _public_list.get_children():
+		_public_list.remove_child(c)
+		c.free()
+	var rows := public_rows()
+	var notice := public_servers.notice
+	if notice == "" and rows.is_empty() and not public_servers.entries.is_empty():
+		notice = "menu.public.none_match"
+	_public_notice.text = I18n.t(notice) if notice != "" else ""
+	_public_notice.visible = notice != ""
+	for r in rows:
+		var t := PublicServers.row_texts(r)
+		var row_data: Dictionary = r
+		var line := _public_row_box([t["name"], t["region"], t["players"], t["ping"], t["version"]],
+			func() -> void: join_public(row_data))
+		(line.get_child(0) as Button).disabled = not bool(r["joinable"])
+		_public_list.add_child(line)
 
 ## Phase 297 — (re)start LAN discovery and the recent servers' ping. The list starts empty: only hosts that answer
 ## this search are shown.
@@ -373,9 +552,11 @@ func _stop_probe() -> void:
 	_lan_rows.clear()
 
 func _process(_delta: float) -> void:
+	var now := Time.get_ticks_msec()
+	if public_servers.poll(now):
+		refresh_public_rows()
 	if _probe == null:
 		return
-	var now := Time.get_ticks_msec()
 	if now - _last_discover_ms >= LAN_REFRESH_MS:
 		_last_discover_ms = now
 		_probe.discover(lan_status_port, "lan", lan_targets, now)
@@ -385,6 +566,7 @@ func _process(_delta: float) -> void:
 
 func _exit_tree() -> void:
 	_stop_probe()
+	public_servers.close()
 
 ## Status answers in (from the probe, or the suite): LAN rows merged by host, pings written beside recent rows.
 func apply_answers(answers: Array) -> void:
