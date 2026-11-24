@@ -863,6 +863,37 @@ menu.join.lan_row,"{0} · {1}/{2} players · {3} ms","{0} · {1}/{2} jogadores �
 menu.join.lan_unnamed,Unnamed world,Mundo sem nome
 menu.join.lan_incompatible,"{0} · version {1}, cannot join","{0} · versão {1}, não dá para entrar"
 menu.join.ping,{0} ms,{0} ms
+menu.join.tab_direct,Address and nearby,Endereço e na rede
+menu.public.tab,Public servers,Servidores públicos
+menu.public.filter,Filter by name or region,Filtrar por nome ou região
+menu.public.hide_full,Hide full,Ocultar cheios
+menu.public.sort_ping,Sort by ping,Ordenar por ping
+menu.public.sort_players,Sort by players,Ordenar por jogadores
+menu.public.refresh,Refresh,Atualizar
+menu.public.col_name,World,Mundo
+menu.public.col_region,Region,Região
+menu.public.col_players,Players,Jogadores
+menu.public.col_ping,Ping,Ping
+menu.public.col_version,Version,Versão
+menu.public.players_value,{0}/{1},{0}/{1}
+menu.public.ping_unknown,…,…
+menu.public.other_version,Can't join: other version,Não dá para entrar: outra versão
+menu.public.fetching,Asking the server list…,Consultando a lista de servidores…
+menu.public.none,No public servers right now.,Nenhum servidor público no momento.
+menu.public.none_match,No server matches the filter.,Nenhum servidor corresponde ao filtro.
+menu.public.no_registries,No server list is set. Add a registry address below.,Nenhuma lista de servidores configurada. Adicione o endereço de um registro abaixo.
+menu.public.error_fetch,Could not reach the server list. Showing the last one saved.,Não foi possível acessar a lista de servidores. Mostrando a última salva.
+menu.public.error_socket,Could not open a network socket.,Não foi possível abrir uma conexão de rede.
+menu.public.registries,"Server lists (registries), separated by commas","Listas de servidores (registros), separadas por vírgulas"
+menu.public.registries_save,Save,Salvar
+menu.world.public,Show in server list,Mostrar na lista de servidores
+menu.region.none,—,—
+menu.region.sa,South America,América do Sul
+menu.region.na,North America,América do Norte
+menu.region.eu,Europe,Europa
+menu.region.af,Africa,África
+menu.region.as,Asia,Ásia
+menu.region.oc,Oceania,Oceania
 pause.title,Paused,Pausa
 pause.resume,Resume,Continuar
 pause.options,Options,Opções

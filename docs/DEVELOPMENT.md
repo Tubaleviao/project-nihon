@@ -46,6 +46,13 @@ GODOT=/tmp/godot/Godot_v4.7-stable_linux.x86_64 tools/net_harness.sh
 #    Phase 297: NET_HARNESS_ADDRESS=::1 runs it over IPv6 loopback (CI runs both), and
 #    NET_HARNESS_PORT moves it off 7777 (and the status port off 7778), e.g. beside a live server.
 
+# 2b. The server-list harness (Phase 298). A registry, two `--public` dedicated servers ("Alpha" and
+#    "Beta") and a client that opens the main menu's Public servers tab, on loopback: the list must
+#    show both with players and ping, Alpha (stopped by the driver) must leave it within 100 s, and
+#    the client then joins Beta from it. About 3 minutes. REGISTRY_HARNESS_ADDRESS=::1 runs it on
+#    IPv6; REGISTRY_HARNESS_PORT (default 7720) is the base of the six ports it uses.
+GODOT=/tmp/godot/Godot_v4.7-stable_linux.x86_64 tools/registry_harness.sh
+
 # 3. The same harness under a link profile (Phase 135): lan, wan_br (60 ms ± 15 ms, 1% loss)
 #    or wan_bad (200 ms ± 60 ms, 5% loss, 256 kbit/s). NET_PROFILE is passed to both
 #    processes as `--net-profile`; step timeouts scale with the profile's round trip. An
@@ -105,6 +112,29 @@ be reached on its IPv6 address with a firewall rule for the game port and the st
 The status answer and the join handshake carry `ServerStatus.PROTOCOL_VERSION`; bump it when an old client would
 misbehave against a new host (or the reverse). A client and a host of different versions refuse each other with a
 `menu.join.fail_protocol_*` reason.
+
+## The public server list: registries
+
+Phase 298. A registry is the same build started with `--registry [port]` (default TCP 7700, dual-stack): a headless
+process that keeps a table of public servers in memory and answers list queries. Every message is a length-prefixed
+JSON frame with a size cap (`src/networking/registry_wire.gd`).
+
+| Flag | On | Meaning |
+|---|---|---|
+| `--registry [port]` | a registry | Run as a registry and nothing else. |
+| `--public` | a dedicated server | Announce this server to the registries every 30 s (a listen host: "Show in server list" on the Play page). Needs the status port. |
+| `--registries <a,b>` | any | The registries to use, overriding the player's saved list and `config/registries.json`. |
+| `--region <tag>` | a dedicated server | `sa`, `na`, `eu`, `af`, `as` or `oc`; shown translated in the list. |
+| `--save-dir user://…/` | a dedicated server | Its own save folder (two servers on one machine). |
+
+A heartbeat goes over TCP, so its source address cannot be spoofed, and once over each address family the registry
+resolves to. The registry takes the server's IP from the connection, never from the heartbeat, and lists the entry
+only once that IP answers a status query on the heartbeat's status port. An entry that misses three heartbeats is
+dropped (about 90 s). Per address: at most 4 servers and 8 heartbeats per 30 s; at most 64 open connections, 4 per
+address. A community runs its own registry and lists it in `config/registries.json` (the seed for a new install) or
+in the Join screen's Public servers tab (saved under `registries` in `user://settings.json`). An empty list means no
+public list. Clients query each listed server's status port themselves for the ping, players and version they show,
+and cache the last list in `user://server_list.json`.
 
 ## Admin commands
 

@@ -225,7 +225,10 @@ func _test_apply_choice() -> void:
 	assert_true(not w.apply_choice({ "mode": "other" }), "an unknown mode is refused")
 	assert_true(w.apply_choice({ "mode": "host", "dir": "user://worlds/alpha/", "seed": 9 }), "a host choice is applied")
 	assert_true(not root._is_client and not root._is_server, "as the listen host")
-	assert_eq(w.world, { "dir": "user://worlds/alpha/", "seed": 9, "name": "" }, "on that world (Phase 297: and its name)")
+	assert_eq(w.world, { "dir": "user://worlds/alpha/", "seed": 9, "name": "", "public": false },
+		"on that world (Phase 297: and its name; Phase 298: not in the server list unless ticked)")
+	assert_true(w.apply_choice({ "mode": "host", "dir": "user://worlds/alpha/", "seed": 9, "public": true }) and bool(w.world["public"]),
+		"Phase 298 — Show in server list reaches the world the boot reads")
 	root.free()
 
 func _test_join_failed_returns() -> void:

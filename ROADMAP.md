@@ -39,17 +39,16 @@ work in order.
 
 | Priority | Phase | Title |
 |---|---|---|
-| 1 | 298 | The server list: a registry and the Join screen's public list |
-| 2 | 257 | Split files named by what they do |
-| 3 | 245 | The planet bake: continents, rivers with flow, erosion and biomes at 2 km |
-| 4 | 232 | Water that holds up: lake shores, the river seam and mounts at fords |
-| 5 | 247 | Ground cover: grass and bushes by biome |
-| 6 | 235 | Roads |
-| 7 | 234 | Boats |
-| 8 | 258 | The public wiki and the community channels |
-| 9 | 299 | Many registries: signed entries, gossip and no single owner |
-| 10 | 236 | Changing hair style and colour (parked: picked up only when un-parked) |
-| 11 | 251 | A human playtest: what would make the game fun (a standing checkpoint, when the owner has time) |
+| 1 | 257 | Split files named by what they do |
+| 2 | 245 | The planet bake: continents, rivers with flow, erosion and biomes at 2 km |
+| 3 | 232 | Water that holds up: lake shores, the river seam and mounts at fords |
+| 4 | 247 | Ground cover: grass and bushes by biome |
+| 5 | 235 | Roads |
+| 6 | 234 | Boats |
+| 7 | 258 | The public wiki and the community channels |
+| 8 | 299 | Many registries: signed entries, gossip and no single owner |
+| 9 | 236 | Changing hair style and colour (parked: picked up only when un-parked) |
+| 10 | 251 | A human playtest: what would make the game fun (a standing checkpoint, when the owner has time) |
 
 Why this order:
 
@@ -60,8 +59,8 @@ Why this order:
 - **226 done.** Several characters per player: the fabric PR (#740) and the runtime PR.
 - **297 done.** Finding servers nearby: ports and IPv6 in the address, a status port, a protocol version and LAN
   discovery on the Join screen.
-- **298: playing with others.** The 2026-11-20 session was the first with a second player. Finding a server on the
-  LAN (297) and from a public list makes that the normal way to play instead of typing an address.
+- **298 done.** The server list: a `--registry` role, `--public` hosts that heartbeat to it, and the Join screen's
+  Public servers tab. With 297 it makes finding a server the normal way to play instead of typing an address.
 - **257 before the big world work.** A rename of the numbered `*_part_N.gd` files is cheap now and makes
   the terrain and net code easier to read for 245 onward.
 - **245 → 232 → 247 → 235 → 234: the world.** Phase 245 replaces Phase 217's river trace, so 232's
@@ -1678,6 +1677,33 @@ public servers.
   with players and ping; one host stops and drops out of the list within 100 s; the client joins the other
   from the list.
 - Suite: every new key exists in both `en` and `pt_BR`.
+
+**Done** (2026-11-24). `--registry [port]` (`BootWiring.start_registry`, default TCP 7700, dual-stack) is a headless
+process holding `RegistryTable` and nothing else. The wire (`src/networking/registry_wire.gd`) is one length-prefixed
+JSON frame each way per connection (`RegistryExchange`): a request at most 1 KiB, a list reply at most 64 KiB and 256
+entries, each exchange on a 5 s deadline; a frame over its cap is never read past its length. The table keys an entry
+by the connection's source IP and the heartbeat's game port (an `ip`/`address`/`host` in the body is never read),
+lists it only after a status query sent back to that IP and the heartbeat's status port is answered from that IP
+naming that game port (a new status port is probed again), drops it 92 s after its last heartbeat (three missed 30 s
+heartbeats plus 2 s), and caps 4 servers and 8 heartbeats per 30 s per address, 4,096 entries, 64 open connections and
+4 per address. A host heartbeats with `--public` (a dedicated server) or "Show in server list" on the Play page (a
+listen host), over TCP to each registry's first IPv6 and first IPv4 address (`RegistryClient.families`), and only with
+its status port open; `--region <tag>` (`sa`, `na`, `eu`, `af`, `as`, `oc`, shown as `menu.region.*`) and `--save-dir`
+(a second server on one machine) came with it. The registries are `--registries a,b`, else the player's list under
+`registries` in `user://settings.json` (edited on the Public servers tab), else `config/registries.json` (empty: no
+public list until a community runs one; exported with the game). The Join page has two tabs; Public servers
+(`src/menu/public_servers.gd`) shows the cached list (`user://server_list.json`, read back through the same decoder)
+at once, fetches every 15 s while open, queries each server's status port itself (16 at a time, 2 s timeout; an answer
+from another IP or naming another game port is ignored), shows one row per host instance (IPv4 when heard on both)
+with world, region, players, ping and version, marks another protocol "Can't join: other version" and disables it,
+sorts by ping or players, filters by name or region and hides full servers; a row fills the address and joins.
+Numbers go through `I18n.number`. Suite `registry_tests.gd` (table rules, wire caps, list codec and truncation, real
+loopback registry on 127.0.0.1 and ::1, the tab, boot flags, registry list, catalog); `tools/registry_harness.sh` (CI
+job `registry-harness`, both loopbacks): a registry, two `--public` servers and a `--menu-public-join` client: both
+listed with players and ping, the stopped one leaves the list 90 s after it stopped, the client joins the other from
+it. Folded in #744: `ServerConnector`'s preload no longer shares a line in `game_root.gd`, and the two-client harness
+already runs under a 480 s CI deadline (a full local run is about 5 min). Two-family dedupe on the client is by the
+status answer's `instance`, as on the LAN list, so a registry may list a host twice.
 
 ## Phase 299 — Many registries: signed entries, gossip and no single owner
 

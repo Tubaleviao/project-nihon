@@ -1,0 +1,4 @@
+{
+  "_comment": "Phase 298 — the server registries a new install asks for the public server list and announces a public host to. Each entry is an address (host, host:port, [v6]:port; no port means 7700). Empty means no public list. A community can run its own registry (`--registry`) and list it here or in the Join screen's Public servers tab.",
+  "registries": []
+}

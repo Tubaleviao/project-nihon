@@ -624,6 +624,51 @@ jobs:
             ${{ runner.temp }}/net-harness-retry
           if-no-files-found: ignore
 
+  registry-harness:
+    name: Server-list harness (registry, two public hosts, menu client, ${{ matrix.address }})
+    # Phase 298 — a registry, two `--public` dedicated servers and a client on the Join page's Public servers tab:
+    # both listed with players and ping, one stopped drops out within 100 s, the client joins the other from the list.
+    needs: changes
+    if: github.event_name != 'workflow_dispatch' && needs.changes.outputs.light != 'true'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        address: ["127.0.0.1", "::1"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download Godot 4.7
+        run: |
+          mkdir -p /tmp/godot
+          curl -fsSL -o /tmp/godot/godot.zip \
+            https://github.com/godotengine/godot/releases/download/4.7-stable/Godot_v4.7-stable_linux.x86_64.zip
+          unzip -o /tmp/godot/godot.zip -d /tmp/godot
+          chmod +x /tmp/godot/Godot_v4.7-stable_linux.x86_64
+
+      - name: Run the server-list harness
+        id: harness
+        env:
+          GODOT: /tmp/godot/Godot_v4.7-stable_linux.x86_64
+          REGISTRY_HARNESS_LOGDIR: ${{ runner.temp }}/registry-harness
+          REGISTRY_HARNESS_ADDRESS: ${{ matrix.address }}
+        # One retry, as the two-client harness: a real regression fails both runs.
+        run: |
+          tools/registry_harness.sh && exit 0
+          echo "retried=true" >> "$GITHUB_OUTPUT"
+          echo "::warning::registry-harness failed once; retrying (a real bug fails twice)"
+          REGISTRY_HARNESS_LOGDIR="$REGISTRY_HARNESS_LOGDIR-retry" tools/registry_harness.sh
+
+      - name: Upload harness logs
+        if: failure() || steps.harness.outputs.retried == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: registry-harness-logs-${{ matrix.address == '::1' && 'ipv6' || 'ipv4' }}
+          path: |
+            ${{ runner.temp }}/registry-harness
+            ${{ runner.temp }}/registry-harness-retry
+          if-no-files-found: ignore
+
   playtest:
     name: Playtest bot (rendered session under xvfb)
     # A manual dispatch skips this job (the manual crowd stress run is in perf.yml).
@@ -806,7 +851,7 @@ jobs:
 
   build:
     name: Linux, Windows and macOS exports
-    needs: [native-linux, native, native-suite, godot-tests, server-boot, host-boot, fabric, net-harness, playtest]
+    needs: [native-linux, native, native-suite, godot-tests, server-boot, host-boot, fabric, net-harness, registry-harness, playtest]
     # Pull requests export all three presets too (under a minute), so a preset only the main build used
     # (the macOS one, Phase 166) cannot break main on merge; only main uploads the builds.
     if: github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/main')

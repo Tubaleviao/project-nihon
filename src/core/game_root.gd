@@ -51,7 +51,7 @@ const WaypointHorizon  := preload("res://src/ui/waypoint_horizon.gd")
 const SpawnFinder      := preload("res://src/world/spawn_finder.gd")
 const ColonizationMap  := preload("res://src/world/colonization_map.gd")
 const WorldClock       := preload("res://src/world/world_clock.gd")
-const BootWiring := preload("res://src/core/boot_wiring.gd"); const ServerConnector := preload("res://src/networking/server_connector.gd")
+const BootWiring := preload("res://src/core/boot_wiring.gd")
 const CombatWiring := preload("res://src/battle/combat_wiring.gd")
 const WorkAnimWiring := preload("res://src/character/work_anim_wiring.gd"); const WeatherWiring := preload("res://src/world/weather_wiring.gd")
 const WaystoneWiring := preload("res://src/world/waystone_wiring.gd")
@@ -279,8 +279,8 @@ func _ready() -> void:
 	# Phase 36 — the role flags are read FIRST, because they decide whether the
 	# automated suite runs on this boot (see should_run_tests).
 	_boot_wiring.parse_network_args()
-	if _boot_wiring.start_stress_bots():
-		return   # Phase 162 — a crowd of stress bots, not a game
+	if _boot_wiring.start_stress_bots() or _boot_wiring.start_registry():
+		return   # Phase 162 — a crowd of stress bots / Phase 298 — a server-list registry, not a game
 	# Phase 131 — saved language, else the OS locale, else English. (Phase 225 options: menu path only.)
 	LocaleSettings.apply_startup()
 	# Phase 42 review pass 3 — and whether this boot quits itself once its world is up
@@ -624,7 +624,7 @@ func _build_and_boot() -> void:
 		return
 	_boot_wiring.prepare_stress_role()
 	_boot_wiring.prepare_playtest_bot()
-	_menu_wiring.apply_world()
+	_menu_wiring.apply_world(); _boot_wiring.apply_save_dir()   # Phase 298 — `--save-dir`
 	_boot_world()
 	_boot_wiring.start_stress_recorder()
 	_boot_wiring.start_playtest_bot()
@@ -1005,7 +1005,7 @@ func _boot_client() -> void:
 	_networking.claimed_player_id = _persistence.load_client_identity()
 	_networking.friend_code = _friend_code_arg
 	_roster_wiring.open_client()   # Phase 226 — a menu join picks a character before it enters
-	var err: Error = await ServerConnector.join(_networking, _host_address, get_tree())   # Phase 297: host:port, IPv6, Happy Eyeballs
+	var err: Error = await preload("res://src/networking/server_connector.gd").join(_networking, _host_address, get_tree())   # Phase 297: host:port, IPv6, Happy Eyeballs
 	if err != OK:
 		Diag.error("[Networking] client failed to connect to %s — %s" % [_host_address, error_string(err)])
 		_snapshot_pending = false

@@ -8,6 +8,11 @@ const MAX_REST_HEAL := 1000.0
 
 const ServerStatus := preload("res://src/networking/server_status.gd")
 const StatusServer := preload("res://src/networking/status_server.gd")
+const RegistryHeartbeat := preload("res://src/networking/registry_heartbeat.gd")
+## Phase 298 — the heartbeat to the registries while a public host plays (a child of the slice), null otherwise.
+var heartbeat: Node = null
+var status_region: String = ""
+var _status_port: int = 0
 ## Phase 297 — the host's status port (a child of the slice while hosting), null otherwise.
 var status_server: Node = null
 ## Phase 297 — what the status answer reports beside the live counts: the world's name, the players this process
@@ -50,8 +55,42 @@ func host(port: int = sl.DEFAULT_PORT, max_clients: int = sl.DEFAULT_MAX_CLIENTS
 	status_world_name = str(opts.get("world_name", status_world_name))
 	status_local_players = int(opts.get("local_players", status_local_players))
 	print("[Server] listening on port %d, max_clients %d" % [port, max_clients])
+	status_region = str(opts.get("region", ""))
 	start_status(int(opts.get("status_port", ServerStatus.default_status_port(port))), bind_address)
+	if bool(opts.get("public", false)):
+		start_heartbeat(opts.get("registries", []) as Array)
 	return OK
+
+## Phase 298 — announce this host to `registries`. A registry lists a host only once it answers on its status port,
+## so a host whose status port is off (or did not open) is not announced.
+func start_heartbeat(registries: Array) -> void:
+	stop_heartbeat()
+	if status_server == null:
+		sl.Diag.warn("NetworkingSlice: --public needs the status port; this host is not announced")
+		return
+	if registries.is_empty():
+		sl.Diag.warn("NetworkingSlice: --public with no registry configured; this host is not announced")
+		return
+	heartbeat = RegistryHeartbeat.new()
+	heartbeat.name = "RegistryHeartbeat"
+	heartbeat.registries = registries
+	heartbeat.info = heartbeat_info
+	sl.add_child(heartbeat)
+	print("[Server] public: announcing to %s" % ", ".join(PackedStringArray(registries)))
+
+func stop_heartbeat() -> void:
+	if heartbeat != null and is_instance_valid(heartbeat):
+		if heartbeat.get_parent() != null:
+			heartbeat.get_parent().remove_child(heartbeat)
+		heartbeat.free()
+	heartbeat = null
+
+## The heartbeat's fields: the status answer's, plus the status port and region.
+func heartbeat_info() -> Dictionary:
+	var info := status_info()
+	info["status_port"] = _status_port
+	info["region"] = status_region
+	return info
 
 ## Phase 297 — open the status port beside the game port (0 = off). A port that will not bind is logged and the
 ## host plays on without it: discovery is a convenience, the game port is the game.
@@ -70,9 +109,11 @@ func start_status(status_port: int, bind_address: String = "*") -> void:
 		status_server = null
 		return
 	sl.add_child(status_server)
+	_status_port = status_server.local_port()
 	print("[Server] status port %d" % status_port)
 
 func stop_status() -> void:
+	stop_heartbeat()
 	if status_server != null and is_instance_valid(status_server):
 		status_server.stop()
 		if status_server.get_parent() != null:
