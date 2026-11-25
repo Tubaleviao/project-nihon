@@ -145,9 +145,7 @@ var _stump_memory: Dictionary = {}
 var _pool: Node = null
 ## Model key -> MultiMesh pool of the trees drawn from that model (`models/trees/<Species>[_v1].glb.raw`).
 var _model_pools: Dictionary = {}
-## Model keys whose mesh failed to load during the current chunk spawn: later trees of the key in the same
-## spawn go straight to the fallback pool, and the next `spawn_for_chunk` retries them (the overlay may mount
-## later). Without it a missing or broken model is reloaded, and warned about, once per tree (#746 review).
+## Model keys that failed to load this chunk spawn (fallback pool until the next `spawn_for_chunk` retries).
 var _model_failed: Dictionary = {}
 ## When false (headless server / `--server`), no pool and no collision bodies are
 ## built: the same records drive a bare authoritative simulation.
@@ -1311,9 +1309,7 @@ func _spawn(species: String, wood: String, chunk_pos: Vector2i, spawn_index: int
 static func _tree_id(chunk_pos: Vector2i, spawn_index: int) -> String:
 	return "tree_%d_%d_%d" % [chunk_pos.x, chunk_pos.y, spawn_index]
 
-## A tree whose stump was still regrowing when its chunk unloaded comes back as a stump
-## with the same deadline; an expired memory just means a standing tree.
-## Phase 282 spec: a stump draws nothing, so a restored one stays hidden with no fall replayed (#709).
+## A stump still regrowing at chunk unload comes back with the same deadline (drawn as nothing, #709).
 func _restore_remembered_stump(tree_id: String) -> void:
 	if not _stump_memory.has(tree_id):
 		return
@@ -1376,9 +1372,7 @@ func scene_offset() -> Vector3:
 
 func _build_pool() -> void:
 	_pool = _make_pool("TreePool", _tree_mesh())
-
-var _sway_on: bool = true
-## Issue #703 — a runtime sway switch (terrain quality low) reaches the live pools (`ProjectSettings.settings_changed`).
+var _sway_on: bool = true   # #703: a runtime sway switch reaches the live pools (`settings_changed`)
 func refresh_sway() -> void:
 	_sway_on = TreeMaterial.refresh_pools([_pool] + _model_pools.values(), _sway_on)
 
