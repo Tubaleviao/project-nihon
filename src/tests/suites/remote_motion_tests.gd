@@ -29,6 +29,7 @@ func register() -> void:
 	_run_test("remote motion: a body whose states come less often is played back later, still smooth", _test_sparse_states_smooth)
 	_run_test("remote motion: a stalled link's backlog arriving within a few ms plays back at walking pace, in no frame above 0.25 m", _test_burst_after_stall)
 	_run_test("remote motion: a playback resync after a long stall eases the body instead of stepping it", _test_resync_eases)
+	_run_test("remote motion: a same-instant burst does not rewrite the segment playback is inside", _test_burst_inside_segment)
 	_run_test("remote motion: the state list stays bounded", _test_bounded_states)
 	_run_test("remote motion: a remote player plays walk, run and idle from its speed and turns at the turn rate", _test_avatar_clips_and_turn)
 	_run_test("remote motion: a remote avatar is not moved by a state, only by its playback", _test_avatar_state_does_not_snap)
@@ -66,6 +67,15 @@ func _test_resync_eases() -> void:
 		t.push(1200.0 + float(k - 11) * 100.0, Vector3(float(k) * 0.45, 0.0, 0.0))
 	t.step(2900.0, FRAME_MS / 1000.0)
 	assert_true(t.position.distance_to(before) <= MAX_STEP_M, "the resync frame moves the body %.3f m (limit %.2f)" % [t.position.distance_to(before), MAX_STEP_M])
+
+func _test_burst_inside_segment() -> void:
+	var t := _track()
+	var drawn := _play(t, _line(0.0, 8, 100.0, 0.45), 800.0)   # states to 700 ms; playback is inside the last segment
+	var before: Vector3 = drawn[drawn.size() - 1]
+	t.push(800.0, Vector3(5.0, 0.0, 0.0))
+	t.push(800.0, Vector3(6.0, 0.0, 0.0))
+	t.step(816.0, FRAME_MS / 1000.0)
+	assert_true(t.position.distance_to(before) <= MAX_STEP_M, "the burst moved the body %.3f m" % t.position.distance_to(before))
 
 func _track() -> RemoteMotion:
 	return RemoteMotion.new(RemoteMotionRules.group("players"))

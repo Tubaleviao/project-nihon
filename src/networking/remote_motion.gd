@@ -127,8 +127,9 @@ func push(now_ms: float, pos: Vector3, state_yaw: float = NAN, air: bool = false
 			_snap_pending = true
 			_offset = Vector3.ZERO
 			snaps += 1 if has_position else 0
-		elif now_ms <= float(last.get("arr", last["t"])):
-			# Two states in one instant (a burst): the later one stands for both.
+		elif now_ms <= float(last.get("arr", last["t"])) and (is_nan(_play_ms) or _states.size() < 2 or _play_ms <= float((_states[_states.size() - 2] as Dictionary)["t"])):
+			# Two states in one instant (a burst) that playback has not reached: the later one stands for both.
+			# (Once playback is inside the segment that ends at the newest state, rewriting it would jump the body.)
 			last["pos"] = pos
 			last["yaw"] = state_yaw
 			last["air"] = air
@@ -139,6 +140,8 @@ func push(now_ms: float, pos: Vector3, state_yaw: float = NAN, air: bool = false
 			# send interval apart on the playback clock, so the backlog plays out at about the pace it was sent.
 			arrived_ms = now_ms
 			now_ms = maxf(now_ms, float(last["t"]) + send_interval_ms * MIN_SPACING)
+			if arrived_ms <= float(last.get("arr", last["t"])):
+				arrived_ms = float(last.get("arr", last["t"])) + 0.001
 			var gap := now_ms - float(last["t"])
 			moved = pos.distance_to(lpos) > SAME_SPOT_M
 			if moved and bool(last.get("moved", false)) and gap <= MAX_GAP_SAMPLE_MS:
