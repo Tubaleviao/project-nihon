@@ -137,20 +137,26 @@ func status_info() -> Dictionary:
 func _send_server_hello(peer_id: int) -> void:
 	if sl._role != sl.Role.HOST or peer_id <= 1:
 		return
-	sl._deliver(peer_id, { "type": "server_hello", "protocol": ServerStatus.PROTOCOL_VERSION })
+	sl._deliver(peer_id, { "type": "server_hello", "protocol": ServerStatus.PROTOCOL_VERSION,
+		"game_version": ServerStatus.game_version() })   # #706
 
 ## Phase 297 — client: the host's protocol (from its hello, or a refusal it sent). A version this client does not
 ## speak ends the join with a reason key; the caller's `join_failed` shows it.
+## #706 — the host's build too: the same protocol on another build ends the join with `menu.join.fail_version`, and
+## every reason carries the host's build and this one's as its args, so the message names both.
 func _check_host_protocol(payload: Dictionary) -> void:
 	var host_protocol: Variant = payload.get("protocol", null)
-	var key := ServerStatus.protocol_refusal(ServerStatus.PROTOCOL_VERSION,
-		int(host_protocol) if host_protocol is int or host_protocol is float else -1)
-	if key == "" and str(payload.get("type", "")) == "protocol_refused":
-		key = "menu.join.fail_protocol_older"   # the host refused ours, whatever it says its own is
-	if key == "":
+	var own_version := ServerStatus.game_version()
+	var refusal := ServerStatus.build_refusal(ServerStatus.PROTOCOL_VERSION, own_version,
+		int(host_protocol) if host_protocol is int or host_protocol is float else -1, payload.get("game_version", null))
+	if refusal.is_empty() and str(payload.get("type", "")) == "protocol_refused":
+		# The host refused ours, whatever it says its own is.
+		refusal = { "key": "menu.join.fail_protocol_older", "args": ["?", own_version] }
+	if refusal.is_empty():
 		return
-	sl.Diag.error("[Networking] host speaks protocol %s, this client %d — leaving (%s)" % [str(host_protocol), ServerStatus.PROTOCOL_VERSION, key])
-	GameBus.join_refused.emit(key)
+	sl.Diag.error("[Networking] host speaks protocol %s, this client %d — leaving (%s)" % [str(host_protocol).left(16),
+		ServerStatus.PROTOCOL_VERSION, refusal["key"]])
+	GameBus.join_refused.emit(str(refusal["key"]), refusal["args"])
 	sl.disconnect_all()
 
 ## Phase 171 — the exact position a `creature_state_changed` packet carries (compact `pk`, else the wire
@@ -532,6 +538,13 @@ func _route_h2c(payload: Dictionary) -> void:
 			var wk := str(payload.get("k", ""))
 			if sl._role == sl.Role.CLIENT and wp > 0 and wk.length() <= sl.COMBAT_KEY_MAX:
 				GameBus.work_anim_changed.emit(wp, wk)
+		"work_mark":
+			# #629 — presentation only; the key and duration are checked by WorkMarks before anything is drawn.
+			var mk: Variant = payload.get("k", null)
+			var md: Variant = payload.get("d", null)
+			if sl._role == sl.Role.CLIENT and mk is String and (mk as String).length() <= sl.COMBAT_KEY_MAX \
+					and (md is float or md is int):
+				GameBus.work_mark_synced.emit(mk, float(md))
 		"remote_player_state":
 			sl._route_remote_player_state(payload)
 		"player_states":
@@ -770,7 +783,7 @@ func send_roster_intent(op: String, id: String = "", confirm: String = "") -> vo
 	if sl._role != sl.Role.CLIENT:
 		return
 	_deliver(1, { "type": "roster_intent", "op": op, "claimed_id": sl.claimed_player_id, "id": id, "confirm": confirm,
-		"protocol": ServerStatus.PROTOCOL_VERSION })
+		"protocol": ServerStatus.PROTOCOL_VERSION, "game_version": ServerStatus.game_version() })
 
 ## Phase 226 — client: the list chose a character; the join goes on with it.
 func choose_character(character_id: String) -> void:

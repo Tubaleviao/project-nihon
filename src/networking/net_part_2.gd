@@ -203,6 +203,13 @@ func send_work_anim(subject_peer: int, kind: String, position: Vector3) -> void:
 		return
 	sl._broadcast_aoi({ "type": "work_anim", "p": subject_peer, "k": kind }, position)
 
+## #629 — host → clients in range of `position` (the worker): the work mark on target `key` started for `duration`
+## seconds, or stopped (0). Presentation only; the viewer validates both fields.
+func send_work_mark(key: String, duration: float, position: Vector3) -> void:
+	if sl._role != sl.Role.HOST:
+		return
+	sl._broadcast_aoi({ "type": "work_mark", "k": key, "d": duration }, position)
+
 ## Phase 159 — host → clients in range of `position`: peer `subject_peer` (the host's own body is peer 1)
 ## started `gesture_id`, or stood up (""). Animation only; the actor's own client is in range of itself.
 ## Phase 196 — `lift` (>= 0) is the seat rise the host resolved for a Sit, so every viewer shows the same one.
@@ -377,20 +384,29 @@ func refuse_attribute_claim(sender: int, now_ms: float = -1.0) -> void:
 ## Phase 297 — a join or character-list intent must name this host's protocol. One that does not (an older or newer
 ## client, or one from before Phase 297 that names none) is answered once with `protocol_refused` and the peer is
 ## dropped shortly after, so the refusal reaches it first. The intent itself is never acted on.
+## #706 — it must also name this host's build (`game_version`, a short String checked by `ServerStatus.valid_version`):
+## another build, or a missing or malformed field, is refused the same way, and the refusal names the host's build so
+## the client can show both. Nothing the client claims is used beyond refusing it.
 const PROTOCOL_DROP_DELAY := 0.5
 var _protocol_refused: Dictionary = {}
+## #706 — every peer refused by the build check since boot (the net harness reads it; never reset).
+var refused_total: int = 0
 func protocol_ok(sender: int, payload: Dictionary) -> bool:
 	var claimed: Variant = payload.get("protocol", null)
 	var own: int = sl._m3.ServerStatus.PROTOCOL_VERSION
-	if (claimed is int or claimed is float) and int(claimed) == own:
+	var own_version: String = sl._m3.ServerStatus.game_version()
+	var claimed_version: String = sl._m3.ServerStatus.valid_version(payload.get("game_version", null))
+	if (claimed is int or claimed is float) and int(claimed) == own and claimed_version == own_version:
 		return true
 	if _protocol_refused.has(sender):
 		return false
 	if _protocol_refused.size() > 256:
 		_protocol_refused.clear()
 	_protocol_refused[sender] = true
-	sl.Diag.warn("NetworkingSlice: peer %d speaks protocol %s, this host %d — refused" % [sender, str(claimed), own])
-	sl._deliver(sender, { "type": "protocol_refused", "protocol": own })
+	refused_total += 1
+	sl.Diag.warn("NetworkingSlice: peer %d speaks protocol %s build '%s', this host %d build '%s' — refused" % [sender,
+		str(claimed).left(16), claimed_version, own, own_version])
+	sl._deliver(sender, { "type": "protocol_refused", "protocol": own, "game_version": own_version })
 	if sl.is_inside_tree() and sl._peer != null:
 		var peer: ENetMultiplayerPeer = sl._peer
 		sl.get_tree().create_timer(PROTOCOL_DROP_DELAY).timeout.connect(func() -> void:

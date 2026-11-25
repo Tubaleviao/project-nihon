@@ -16,6 +16,7 @@ func register() -> void:
 	_run_test("work anim: the body turns to face the work target", _test_p281_face_target)
 	_run_test("work anim: another peer's work plays on its copy", _test_p281_peer_copy)
 	_run_test("work anim: a peer's copy with no rig still plays the kind's own clip", _test_p281_rigless_copy)
+	_run_test("work anim: #714 ending a hold never cuts a combat swing started since", _test_stop_work_keeps_swing)
 
 
 func _fixture() -> Dictionary:
@@ -184,4 +185,26 @@ func _test_p281_face_target() -> void:
 	GameBus.work_started.emit("k", 1.0, "dig", "")
 	var yaw: float = f["ch"].get_character_yaw(f["iid"])
 	assert_true(absf(yaw - atan2(-5.0, 0.0)) < 0.01, "a block to the east turns the face (-Z) east (yaw %.2f)" % yaw)
+	_free_fixture(f)
+
+## #714 — `stop_work` used to call `end_attack()` whatever the pose was, so releasing a hold right after a combat
+## swing cut the swing. It now ends only the work clip it started: a newer swing (or no work at all) plays out.
+func _test_stop_work_keeps_swing() -> void:
+	var f := _fixture()
+	var ch: CharacterSlice = f["ch"]
+	var iid: String = f["iid"]
+	var loco = f["loco"]
+	assert_eq(ch.trigger_work(iid, "chop"), "chop", "the hold plays chop")
+	ch.stop_work(iid)
+	assert_true(loco.get_state() != Locomotion.State.ATTACK, "ending the hold ends its own clip")
+	ch.trigger_work(iid, "mine")
+	loco.trigger_attack("attack", 0.6)   # a combat swing over the work pose
+	ch.stop_work(iid)
+	assert_eq(loco.get_state(), Locomotion.State.ATTACK, "the swing started since is not cut")
+	assert_eq(loco.attack_clip, "attack", "and keeps its own clip")
+	loco.end_attack()
+	loco.trigger_attack("attack", 0.6)
+	ch.stop_work(iid)
+	assert_eq(loco.get_state(), Locomotion.State.ATTACK, "with no work running, a stop leaves a swing alone")
+	ch.stop_work("nobody")   # an unknown instance is a no-op
 	_free_fixture(f)

@@ -36,6 +36,8 @@ var _menu_join_done: bool = false
 var boot_args_override: Variant = null
 ## A catalog key the menu shows on open (a failed join's reason), set by `main.gd`.
 var notice: String = ""
+## #706 — the notice key's params (a build refusal names the host's version and this one's).
+var notice_args: Array = []
 var menu: MainMenu = null
 ## True once the menu started this boot: only then does a failed join return to it.
 var from_menu: bool = false
@@ -71,7 +73,7 @@ func open_if_no_boot_args() -> bool:
 	menu = MainMenu.new()
 	menu.name = "MainMenu"
 	root.add_child(menu)
-	menu.show_notice(notice)
+	menu.show_notice(notice, notice_args)
 	menu.start_requested.connect(start)
 	print("[Menu] main menu open")
 	var join_addr := menu_join_address(boot_user_args())
@@ -244,7 +246,7 @@ func exit_to_menu() -> void:
 	leaving = true
 	print("[Menu] exit to main menu")
 	root.save_before_leave()
-	root.menu_return_requested.emit("")
+	root.menu_return_requested.emit("", [])
 
 ## Phase 224 — Quit game from the Esc menu: the window-close path (save, then quit).
 func quit_game() -> void:
@@ -255,16 +257,25 @@ func quit_game() -> void:
 
 ## A join the menu started failed, or lost its host: back to the menu with `reason_key`. A client
 ## booted with `--client` keeps the old behaviour (it logs and stays).
-func join_failed(reason_key: String) -> void:
+func join_failed(reason_key: String, args: Array = []) -> void:
 	if not from_menu or not root._is_client:
 		return
 	if _menu_join_active:   # the harness's menu client: a lost host after the join is its normal end
 		print("[Menu] menu join ended — %s" % reason_key)
-		root.get_tree().quit(0 if _menu_join_done else 1)
+		root.get_tree().quit(menu_join_exit_code(_menu_join_done, reason_key))
 		return
 	print("[Menu] join failed — %s" % reason_key)
 	from_menu = false
-	root.menu_return_requested.emit(reason_key)
+	root.menu_return_requested.emit(reason_key, args)
+
+## #706 — the harness's menu client's exit code: 0 after a join, MENU_JOIN_BUILD_REFUSED when the host refused this
+## build (another protocol or game version), 1 for any other failure.
+const MENU_JOIN_BUILD_REFUSED := 2
+const BUILD_REFUSAL_KEYS := ["menu.join.fail_version", "menu.join.fail_protocol_newer", "menu.join.fail_protocol_older"]
+static func menu_join_exit_code(joined: bool, reason_key: String) -> int:
+	if joined:
+		return 0
+	return MENU_JOIN_BUILD_REFUSED if BUILD_REFUSAL_KEYS.has(reason_key) else 1
 
 ## Before the root is freed for a fresh menu: drop the connection.
 func close() -> void:

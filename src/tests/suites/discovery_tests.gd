@@ -12,10 +12,11 @@ const BootWiring := preload("res://src/core/boot_wiring.gd")
 const MainMenu := preload("res://src/menu/main_menu.gd")
 const RecentServers := preload("res://src/menu/recent_servers.gd")
 const I18n := preload("res://src/core/i18n.gd")
+const MenuWiring := preload("res://src/menu/menu_wiring.gd")
 
 const KEYS := ["menu.join.fail_protocol_newer", "menu.join.fail_protocol_older", "menu.join.lan", "menu.join.lan_refresh",
 	"menu.join.lan_none", "menu.join.lan_row", "menu.join.lan_unnamed", "menu.join.lan_incompatible", "menu.join.ping",
-	"menu.join.error_address"]
+	"menu.join.error_address", "menu.join.fail_version"]
 
 func register() -> void:
 	_run_test("discovery: the address parser splits host and port for IPv4, names and IPv6, and refuses the malformed", _test_parser)
@@ -25,6 +26,10 @@ func register() -> void:
 	_run_test("discovery: the status port rate-limits per address and in all", _test_rate_limit)
 	_run_test("discovery: a client of protocol N refuses a host of N+1 with a key in both catalogs", _test_protocol_refusal)
 	_run_test("discovery: the host refuses a join or roster intent of another protocol, and the client leaves on one", _test_protocol_wire)
+	_run_test("discovery: #706 a build version is a short String with no control characters", _test_version_field)
+	_run_test("discovery: #706 a client refuses a host of another build and names both versions", _test_build_refusal)
+	_run_test("discovery: #706 the host refuses a join or roster intent of another, missing or malformed build", _test_build_wire)
+	_run_test("discovery: #706 a build refusal returns to the menu with both versions, and the menu client exits 2", _test_build_refusal_menu)
 	_run_test("discovery: LAN rows are one per host, joined on IPv4, and another protocol cannot be joined", _test_lan_rows)
 	_run_test("discovery: Happy Eyeballs asks IPv6 first, IPv4 250 ms later, and keeps the first answer", _test_eyeballs)
 	_run_test("discovery: --port, --bind, --status-port and --world-name set what the host listens on", _test_host_args)
@@ -179,8 +184,10 @@ func _test_protocol_wire() -> void:
 	assert_eq(joins, [], "a join with no protocol or another one is not acted on")
 	assert_eq(rosters, [], "nor a roster intent naming a protocol as text")
 	assert_true(n._m2._protocol_refused.has(5) and n._m2._protocol_refused.has(6), "each refused peer is marked to be dropped")
-	n._route_c2h(8, { "type": "join_intent", "claimed_id": "", "protocol": ServerStatus.PROTOCOL_VERSION })
-	n._route_c2h(8, { "type": "roster_intent", "op": "list", "protocol": ServerStatus.PROTOCOL_VERSION })
+	n._route_c2h(8, { "type": "join_intent", "claimed_id": "", "protocol": ServerStatus.PROTOCOL_VERSION,
+		"game_version": ServerStatus.game_version() })
+	n._route_c2h(8, { "type": "roster_intent", "op": "list", "protocol": ServerStatus.PROTOCOL_VERSION,
+		"game_version": ServerStatus.game_version() })
 	assert_eq(joins, [8], "a join of this protocol goes on")
 	assert_eq(rosters, [8], "and so does its roster intent")
 	n._m2._on_peer_disconnected(5)
@@ -190,9 +197,9 @@ func _test_protocol_wire() -> void:
 	# Client side: a hello of another version ends the join with the key; this one's changes nothing.
 	n._role = NetworkingSlice.Role.CLIENT
 	var refused: Array = []
-	var on_refused := func(key: String) -> void: refused.append(key)
+	var on_refused := func(key: String, _args: Array) -> void: refused.append(key)
 	GameBus.join_refused.connect(on_refused)
-	n._route_h2c({ "type": "server_hello", "protocol": ServerStatus.PROTOCOL_VERSION })
+	n._route_h2c({ "type": "server_hello", "protocol": ServerStatus.PROTOCOL_VERSION, "game_version": ServerStatus.game_version() })
 	assert_eq(refused, [], "a host of the same protocol is kept")
 	n._route_h2c({ "type": "server_hello", "protocol": ServerStatus.PROTOCOL_VERSION + 1 })
 	assert_eq(refused, ["menu.join.fail_protocol_newer"], "a newer host ends the join with the reason")
@@ -407,3 +414,112 @@ func _test_catalog() -> void:
 	for loc in ["en", "pt_BR"]:
 		for k: String in KEYS:
 			assert_true(str((cats.get(loc, {}) as Dictionary).get(k, "")).strip_edges() != "", "%s has %s" % [loc, k])
+
+## #706 — what the host accepts as a build version off the wire.
+func _test_version_field() -> void:
+	assert_eq(ServerStatus.valid_version("0.2.0"), "0.2.0", "a plain version is kept")
+	assert_eq(ServerStatus.valid_version(""), "", "an empty one is refused")
+	assert_eq(ServerStatus.valid_version(null), "", "a missing one is refused")
+	assert_eq(ServerStatus.valid_version(2), "", "a number is refused")
+	assert_eq(ServerStatus.valid_version(["0.2.0"]), "", "an array is refused")
+	assert_eq(ServerStatus.valid_version("1".repeat(ServerStatus.VERSION_MAX_BYTES)), "1".repeat(ServerStatus.VERSION_MAX_BYTES),
+		"a version of exactly the cap is kept")
+	assert_eq(ServerStatus.valid_version("1".repeat(ServerStatus.VERSION_MAX_BYTES + 1)), "", "one byte past the cap is refused")
+	assert_eq(ServerStatus.valid_version("1.0ã"), "", "a letter outside A-Z is refused")
+	assert_eq(ServerStatus.valid_version("1.0\u202e"), "", "a bidi override is refused")
+	assert_eq(ServerStatus.valid_version("1.0\u200b"), "", "a zero-width space is refused")
+	assert_eq(ServerStatus.valid_version("0.3.0-rc.1+b7_x"), "0.3.0-rc.1+b7_x", "dots, dashes, plus and underscores are kept")
+	assert_eq(ServerStatus.valid_version("0.2\n.0"), "", "a control character is refused")
+	assert_eq(ServerStatus.valid_version(" 0.2.0"), "", "outer whitespace is refused")
+	var own := ServerStatus.game_version()
+	assert_eq(own, str(ProjectSettings.get_setting("application/config/version", "")), "this build is the project version")
+	assert_eq(ServerStatus.valid_version(own), own, "and is itself a valid version")
+
+## #706 — the client's verdict on a host's hello: protocol first, then the build, args naming the host's then ours.
+func _test_build_refusal() -> void:
+	var n := ServerStatus.PROTOCOL_VERSION
+	assert_eq(ServerStatus.build_refusal(n, "0.2.0", n, "0.2.0"), {}, "the same protocol and build play")
+	var r := ServerStatus.build_refusal(n, "0.2.0", n, "0.3.0")
+	assert_eq(str(r.get("key", "")), "menu.join.fail_version", "another build on the same protocol is refused")
+	assert_eq(r.get("args", []), ["0.3.0", "0.2.0"], "naming the host's version, then this one's")
+	r = ServerStatus.build_refusal(n, "0.2.0", n + 1, "0.3.0")
+	assert_eq(str(r.get("key", "")), "menu.join.fail_protocol_newer", "another protocol keeps its own key")
+	assert_eq(r.get("args", []), ["0.3.0", "0.2.0"], "and names both versions too")
+	r = ServerStatus.build_refusal(n, "0.2.0", n, null)
+	assert_eq(str(r.get("key", "")), "menu.join.fail_version", "a host that names no build is refused")
+	assert_eq(r.get("args", []), ["?", "0.2.0"], "and shown as ?")
+	assert_eq(ServerStatus.build_refusal(n, "0.2.0", n, "x".repeat(200)).get("args", []), ["?", "0.2.0"],
+		"an oversized host version is never shown")
+	var cats: Dictionary = I18n.parse_csv("res://locale/ui.csv")["catalog"]
+	for loc in ["en", "pt_BR"]:
+		var text := str((cats.get(loc, {}) as Dictionary).get("menu.join.fail_version", ""))
+		assert_true(text.contains("{0}") and text.contains("{1}"), "%s names both versions" % loc)
+	assert_eq(I18n.fill("v{0} / v{1}", ["0.3.0", "0.2.0"]), "v0.3.0 / v0.2.0", "the args fill the message in order")
+
+## #706 — the host's side: an intent of this protocol but another build, or no build, or a build of another type or
+## past the cap, is never acted on and is answered with a refusal that names the host's build.
+func _test_build_wire() -> void:
+	var was_quiet := Diag.quiet
+	Diag.quiet = true
+	var n := NetworkingSlice.new()
+	add_child(n)
+	n._role = NetworkingSlice.Role.HOST
+	var joins: Array = []
+	var on_join := func(peer: int, _claim: String) -> void: joins.append(peer)
+	GameBus.player_join_intent.connect(on_join)
+	var rosters: Array = []
+	var on_roster := func(_op: String, _args: Dictionary, peer: int) -> void: rosters.append(peer)
+	GameBus.character_roster_intent.connect(on_roster)
+	var proto := ServerStatus.PROTOCOL_VERSION
+	var before: int = n._m2.refused_total
+	n._route_c2h(21, { "type": "join_intent", "claimed_id": "", "protocol": proto, "game_version": "0.0.0-forged" })
+	n._route_c2h(22, { "type": "join_intent", "claimed_id": "", "protocol": proto })
+	n._route_c2h(23, { "type": "roster_intent", "op": "list", "protocol": proto, "game_version": 7 })
+	n._route_c2h(24, { "type": "roster_intent", "op": "list", "protocol": proto, "game_version": "x".repeat(10000) })
+	assert_eq(joins, [], "a join of another, or no, build is not acted on")
+	assert_eq(rosters, [], "nor a roster intent of a malformed build")
+	assert_eq(n._m2.refused_total - before, 4, "each refused peer is counted")
+	for p in [21, 22, 23, 24]:
+		assert_true(n._m2._protocol_refused.has(p), "peer %d is marked to be dropped" % p)
+	n._route_c2h(21, { "type": "join_intent", "claimed_id": "", "protocol": proto, "game_version": "0.0.0-forged" })
+	assert_eq(n._m2.refused_total - before, 4, "a repeat from a marked peer is not answered again")
+	n._route_c2h(25, { "type": "join_intent", "claimed_id": "", "protocol": proto, "game_version": ServerStatus.game_version() })
+	assert_eq(joins, [25], "a join of this build goes on")
+	GameBus.player_join_intent.disconnect(on_join)
+	GameBus.character_roster_intent.disconnect(on_roster)
+	# Client side: the host's refusal (or hello) of another build ends the join with both versions.
+	n._role = NetworkingSlice.Role.CLIENT
+	var refused: Array = []
+	var on_refused := func(key: String, args: Array) -> void: refused.append([key, args])
+	GameBus.join_refused.connect(on_refused)
+	n._route_h2c({ "type": "server_hello", "protocol": proto, "game_version": "9.9.9" })
+	assert_eq(refused, [["menu.join.fail_version", ["9.9.9", ServerStatus.game_version()]]], "a hello of another build ends the join")
+	assert_true(n.is_offline(), "and the client leaves")
+	n._role = NetworkingSlice.Role.CLIENT
+	n._route_h2c({ "type": "server_hello", "protocol": proto })
+	assert_eq(refused.size(), 2, "a hello that names no build ends it too")
+	n._role = NetworkingSlice.Role.CLIENT
+	n._route_h2c({ "type": "protocol_refused", "protocol": proto, "game_version": ServerStatus.game_version() })
+	assert_eq(refused[-1][0], "menu.join.fail_protocol_older", "a refusal naming our own build still ends the join")
+	GameBus.join_refused.disconnect(on_refused)
+	remove_child(n)
+	n.free()
+	Diag.quiet = was_quiet
+
+## #706 — the refusal reaches the menu as a key + both versions; the harness's menu client tells a build refusal
+## (exit 2) from any other failure (exit 1) and a join (exit 0).
+func _test_build_refusal_menu() -> void:
+	var menu := MainMenu.new()
+	add_child(menu)
+	menu.show_notice("menu.join.fail_version", ["9.9.9", "0.2.0"])
+	var text := menu.notice_text()
+	assert_true(text.contains("9.9.9") and text.contains("0.2.0"), "the menu line names both versions: %s" % text)
+	assert_false(text.contains("{0}") or text.contains("{1}"), "with no placeholder left")
+	menu.show_notice("")
+	assert_eq(menu.notice_text(), "", "an empty key hides the line")
+	remove_child(menu)
+	menu.free()
+	assert_eq(MenuWiring.menu_join_exit_code(true, ""), 0, "a join exits 0")
+	assert_eq(MenuWiring.menu_join_exit_code(false, "menu.join.fail_version"), MenuWiring.MENU_JOIN_BUILD_REFUSED, "a build refusal exits 2")
+	assert_eq(MenuWiring.menu_join_exit_code(false, "menu.join.fail_protocol_newer"), MenuWiring.MENU_JOIN_BUILD_REFUSED, "so does a protocol one")
+	assert_eq(MenuWiring.menu_join_exit_code(false, "menu.join.fail_unreachable"), 1, "anything else exits 1")

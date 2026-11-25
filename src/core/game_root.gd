@@ -6,7 +6,6 @@ extends Node
 ## and drives the startup sequence (tests → GameData check → terrain boot).
 const WorldPos := preload("res://src/terrain/world_pos.gd")
 const RebaseDriver := preload("res://src/terrain/rebase_driver.gd")
-const EquipmentRules := preload("res://src/character/equipment_rules.gd")
 const Diag := preload("res://src/core/diag.gd")
 const LocaleSettings := preload("res://src/core/locale_settings.gd")
 const TerrainSlice     := preload("res://src/terrain/terrain_slice.gd")
@@ -53,7 +52,9 @@ const ColonizationMap  := preload("res://src/world/colonization_map.gd")
 const WorldClock       := preload("res://src/world/world_clock.gd")
 const BootWiring := preload("res://src/core/boot_wiring.gd")
 const CombatWiring := preload("res://src/battle/combat_wiring.gd")
-const WorkAnimWiring := preload("res://src/character/work_anim_wiring.gd"); const WeatherWiring := preload("res://src/world/weather_wiring.gd")
+const WorkAnimWiring := preload("res://src/character/work_anim_wiring.gd")
+const WorkMarkWiring := preload("res://src/world/work_mark_wiring.gd")   # #629
+const WeatherWiring := preload("res://src/world/weather_wiring.gd")
 const WaystoneWiring := preload("res://src/world/waystone_wiring.gd")
 const BedWiring := preload("res://src/world/bed_wiring.gd")
 const TutorialWiring := preload("res://src/tutorial/tutorial_wiring.gd")
@@ -83,7 +84,9 @@ var _combat_wiring := CombatWiring.new()
 var _weather_wiring := WeatherWiring.new()
 var _waystone_wiring := WaystoneWiring.new()
 var _bed_wiring := BedWiring.new()
-var _work_wiring := WorkWiring.new(); var _work_anim_wiring := WorkAnimWiring.new()   # Phase 259; 281
+var _work_wiring := WorkWiring.new()   # Phase 259
+var _work_anim_wiring := WorkAnimWiring.new()   # Phase 281
+var _work_mark_wiring := WorkMarkWiring.new()   # #629
 var _tutorial_wiring := TutorialWiring.new()
 var _settlement_wiring := SettlementWiring.new()
 var _clan_wiring := ClanWiring.new()
@@ -104,7 +107,7 @@ var _admin_wiring := AdminWiring.new()
 var _menu_wiring := MenuWiring.new()   # Phase 223 — the main menu
 var _audio_wiring := AudioWiring.new()   # Phase 276 — the first sounds wired in
 ## Phase 223 — a join started from the menu failed: `main.gd` swaps in a fresh root whose menu shows why.
-signal menu_return_requested(reason_key: String)
+signal menu_return_requested(reason_key: String, args: Array)   # #706: args are the key's params
 
 var _terrain:     TerrainSlice
 var _voxel:       VoxelSlice
@@ -269,7 +272,7 @@ var _handshake_retries: int = 0
 
 ## Phase 132 — wiring modules know their root from construction (the suite builds roots without `_ready`).
 func _init() -> void:
-	_wirings = [_boot_wiring, _combat_wiring, _weather_wiring, _waystone_wiring, _bed_wiring, _work_wiring, _work_anim_wiring, _tutorial_wiring, _settlement_wiring, _clan_wiring, _structure_wiring, _chest_wiring, _station_wiring, _writing_wiring, _crafting_wiring, _character_wiring, _gesture_wiring, _held_item_wiring, _creation_wiring, _title_wiring, _roster_wiring, _carcass_wiring, _loot_wiring, _mount_wiring, _peer_wiring, _snapshot_wiring, _persistence_wiring, _admin_wiring, _menu_wiring, _audio_wiring]
+	_wirings = [_boot_wiring, _combat_wiring, _weather_wiring, _waystone_wiring, _bed_wiring, _work_wiring, _work_anim_wiring, _work_mark_wiring, _tutorial_wiring, _settlement_wiring, _clan_wiring, _structure_wiring, _chest_wiring, _station_wiring, _writing_wiring, _crafting_wiring, _character_wiring, _gesture_wiring, _held_item_wiring, _creation_wiring, _title_wiring, _roster_wiring, _carcass_wiring, _loot_wiring, _mount_wiring, _peer_wiring, _snapshot_wiring, _persistence_wiring, _admin_wiring, _menu_wiring, _audio_wiring]
 	for w in _wirings:
 		w.root = self
 

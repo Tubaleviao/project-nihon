@@ -145,11 +145,11 @@ func show_page(p: String) -> void:
 		_stop_probe()
 		public_servers.close()
 
-## A line on the home page (a failed join's reason), already a catalog key.
-func show_notice(key: String) -> void:
+## A line on the home page (a failed join's reason), already a catalog key; `args` are its params (#706).
+func show_notice(key: String, args: Array = []) -> void:
 	if _notice == null:
 		return
-	_notice.text = I18n.t(key) if key != "" else ""
+	_notice.text = I18n.t(key, args) if key != "" else ""
 	_notice.visible = key != ""
 
 func notice_text() -> String:

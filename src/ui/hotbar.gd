@@ -179,6 +179,10 @@ static func kind_of(entry: String, materials: Dictionary, equip_slot: String) ->
 static func is_skill(entry: String) -> bool:
 	return entry.begins_with(SKILL_PREFIX)
 
+## #712 — true when pressing a box holding `entry` sends anything: a combat skill (its ability is resolved by the host).
+static func fires(entry: String) -> bool:
+	return is_skill(entry) and GearTiers.is_combat_skill(skill_key(entry))
+
 static func skill_key(entry: String) -> String:
 	return entry.trim_prefix(SKILL_PREFIX)
 
@@ -279,10 +283,12 @@ static func hint_for(entry: String, kind: String, tier: String = "") -> String:
 ## Phase 229 — a skill box's state: { available, ability, tier_needed, reason }. A combat skill fires its highest
 ## ability the skill tier and the weapon both reach (`GearTiers.best_usable`); the box is unavailable when the
 ## skill reaches none, or the weapon reaches none of those it does (`tier_needed` is then the tier the box would
-## need). Any other skill is always available.
+## need). #712 — any other skill has no action to fire yet (nothing resolves it, on the host or a client): its box is
+## unavailable with NO_ACTION_REASON, and pressing it does nothing. It still grows from play.
+const NO_ACTION_REASON := "hotbar.skill_no_action"
 static func skill_box_state(skill: String, tier: String, weapon: Variant) -> Dictionary:
 	if not GearTiers.is_combat_skill(skill):
-		return { "available": true, "ability": "", "tier_needed": "", "reason": "" }
+		return { "available": false, "ability": "", "tier_needed": "", "reason": NO_ACTION_REASON }
 	var ability := GearTiers.best_usable(skill, tier, weapon)
 	if ability == "":
 		var rows: Array = GearTiers.abilities_of(skill)
@@ -338,11 +344,15 @@ func _is_usable(item_id: String) -> bool:
 	return kind_of(item_id, GameData.MATERIALS, _equip_slot(item_id)) != KIND_NONE
 
 ## A click or key on a box: a skill fires, anything else becomes the selection.
+## #712 — only a skill with an action fires (a combat skill: `CombatWiring.on_skill_slot_triggered` sends the host an
+## ability intent); a box of any other skill is drawn dimmed with NO_ACTION_REASON and a press does nothing.
 func activate(index: int) -> void:
 	if index < 0 or index >= SLOT_COUNT:
 		return
 	var entry := str(slots[index])
 	if is_skill(entry):
+		if not fires(entry):
+			return
 		GameBus.skill_slot_triggered.emit(index, skill_key(entry))
 		_flash(index)
 		return

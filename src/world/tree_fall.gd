@@ -39,6 +39,21 @@ func growth_transform(tree_id: String, pos: Vector3) -> Transform3D:
 	var k := clampf(float(_growing[tree_id]) / GROW_SECONDS, 0.0, 1.0)
 	return Transform3D(Basis().scaled(Vector3.ONE * lerpf(SAPLING_SCALE, 1.0, k)), pos)
 
+## #629 — tilt a standing tree's instance by `angle` radians about its foot (the work mark's chop shake); 0 puts it
+## back. The tilt axis is fixed per tree, so each tree sways its own way. False when there is nothing to tilt (no
+## such tree, not standing, no pool slot, or a sapling that is still growing).
+func shake(tree_id: String, angle: float) -> bool:
+	var tree: Dictionary = _s._trees.get(tree_id, {})
+	if tree.is_empty() or str(tree.get("state", "")) != "standing" or int(tree.get("mi", -1)) < 0 or _growing.has(tree_id):
+		return false
+	var pool: Node = _s._tree_pool(tree)
+	if pool == null:
+		return false
+	var base := growth_transform(tree_id, tree["position"])
+	var axis := Vector3.RIGHT.rotated(Vector3.UP, float(posmod(hash(tree_id), 6283)) / 1000.0)
+	pool.set_transform(int(tree["mi"]), Transform3D(Basis(axis, angle) * base.basis, base.origin))
+	return true
+
 ## Seconds a regrown tree has been growing, or -1.0 once it is full size.
 func growth_seconds(tree_id: String) -> float:
 	return float(_growing.get(tree_id, -1.0))

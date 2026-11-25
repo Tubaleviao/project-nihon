@@ -48,11 +48,19 @@ func _connect_all() -> void:
 	if root._quit_after_boot:   # #747: the CI boot asserts the boot tail fires no combat round (#711)
 		connect_bus(GameBus.combat_round_requested, _count_boot_combat_round)
 
-## Combat rounds requested before a `--quit-after-boot` boot quit; game_root logs it so CI can assert none (#711).
+## Player-side combat rounds requested before a `--quit-after-boot` boot quit; game_root logs it so CI can assert
+## none (#711). A creature's own swing (its AI attacking a body that spawned beside it) is not the boot tail's doing
+## and depends on where the random world put creatures, so it is not counted.
 var boot_combat_rounds: int = 0
 
-func _count_boot_combat_round(_attacker_id: String, _defender_id: String) -> void:
+func _count_boot_combat_round(attacker_id: String, _defender_id: String) -> void:
+	if is_creature_attacker(attacker_id, root._creature):
+		return
 	boot_combat_rounds += 1
+
+## True when `attacker_id` names a creature instance (a `CreatureAI` round), not a player body.
+static func is_creature_attacker(attacker_id: String, creature: Node) -> bool:
+	return creature != null and creature.get_instance_state(attacker_id) != ""
 
 ## #726: also drop the hooks `_connect_all` set on the slices, so an unwired module leaves no callables behind.
 func unwire() -> void:

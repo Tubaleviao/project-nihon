@@ -180,7 +180,7 @@ func _test_exit_on_listen_host() -> void:
 	for c in root.menu_return_requested.get_connections():   # no frames: the swap is driven by hand below
 		root.menu_return_requested.disconnect(c["callable"])
 	var asked: Array = []
-	root.menu_return_requested.connect(func(k: String) -> void: asked.append(k))
+	root.menu_return_requested.connect(func(k: String, _a: Array) -> void: asked.append(k))
 	assert_true(root._menu_wiring.menu != null, "the main menu is up")
 	var first_menu: Node = root._menu_wiring.menu
 	root._menu_wiring.start({ "mode": "host", "dir": str(made["dir"]), "seed": int(made["seed"]) })
