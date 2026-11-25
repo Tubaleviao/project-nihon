@@ -42,13 +42,15 @@ work in order.
 | 1 | 257 | Split files named by what they do |
 | 2 | 245 | The planet bake: continents, rivers with flow, erosion and biomes at 2 km |
 | 3 | 232 | Water that holds up: lake shores, the river seam and mounts at fords |
-| 4 | 247 | Ground cover: grass and bushes by biome |
-| 5 | 235 | Roads |
-| 6 | 234 | Boats |
-| 7 | 258 | The public wiki and the community channels |
-| 8 | 299 | Many registries: signed entries, gossip and no single owner |
-| 9 | 236 | Changing hair style and colour (parked: picked up only when un-parked) |
-| 10 | 251 | A human playtest: what would make the game fun (a standing checkpoint, when the owner has time) |
+| 4 | 300 | Digging with a brush: one dig moves a shovelful, not a slab |
+| 5 | 301 | Shaping the ground: fill, flatten and smooth, and a dug surface that shows what it is |
+| 6 | 247 | Ground cover: grass and bushes by biome |
+| 7 | 235 | Roads |
+| 8 | 234 | Boats |
+| 9 | 258 | The public wiki and the community channels |
+| 10 | 299 | Many registries: signed entries, gossip and no single owner |
+| 11 | 236 | Changing hair style and colour (parked: picked up only when un-parked) |
+| 12 | 251 | A human playtest: what would make the game fun (a standing checkpoint, when the owner has time) |
 
 Why this order:
 
@@ -63,9 +65,12 @@ Why this order:
   Public servers tab. With 297 it makes finding a server the normal way to play instead of typing an address.
 - **257 before the big world work.** A rename of the numbered `*_part_N.gd` files is cheap now and makes
   the terrain and net code easier to read for 245 onward.
-- **245 → 232 → 247 → 235 → 234: the world.** Phase 245 replaces Phase 217's river trace, so 232's
-  river-seam fix applies to the baked rivers (its lake-shore and ford work stays as written). Ground
-  cover, roads and boats sit on the baked terrain and water.
+- **245 → 232 → 300 → 301 → 247 → 235 → 234: the world.** Phase 245 replaces Phase 217's river trace, so 232's
+  river-seam fix applies to the baked rivers (its lake-shore and ford work stays as written). Phase 245 also
+  brings the terrain CSG helper (smooth subtract/union of distance shapes) that 232 carves lake basins with
+  and 300–301 dig and shape with. Digging comes before ground cover (2026-11-25: the owner finds digging
+  neither useful nor fun), so 247 knows from the start that a dug surface is bare; roads (235) cut and fill
+  with 301's flatten brush.
 - **258 late.** A public wiki and Discussions matter once there are players to read them.
 - **299 near the end.** It brings the host-key part of parked Phase 228 forward and needs parked Phase
   227 (design-only) first.
@@ -192,6 +197,23 @@ detail and caching (243–244), and later flight (237), the planet bake (245) an
 | 245 | The planet bake: continents, rivers with flow, erosion and biomes at 2 km | Open |
 | 246 | The regional bake: 2 m erosion detail in 4 km regions, on demand around players | Parked |
 | 247 | Ground cover: grass and bushes by biome, culled by distance | Open |
+
+### Arc: digging worth doing (Phases 300–301)
+
+Filed by the owner on 2026-11-25 after reviewing [GDVoxelTerrain](https://github.com/JorisAR/GDVoxelTerrain)
+(MIT, Joris AR), a Godot smooth-voxel plugin whose edits are SDF brushes: a dig or a build is one small
+op (shape, position, radius, boolean or smooth boolean) applied to the field and re-meshed, with the
+edit's material painted onto what it touched. Digging here is the opposite: one mine removes one
+0.5 × 0.5 × 0.125 m slab (0.03 m³) from one column, a 1 m pit is about 64 holds, and on the smooth
+mesher (Phase 240) a slab barely shows. The review kept the brush ops, the smooth boolean maths
+(`sdf_operations.h`), paint-on-edit and the populator's placement filters (into 247); it left the
+octree storage, since the run columns, op logs and stable-world rule already work and the brush can be
+rasterised into them.
+
+| Phase | Title | Status |
+|---|---|---|
+| 300 | Digging with a brush: one dig moves a shovelful, not a slab | Open |
+| 301 | Shaping the ground: fill, flatten and smooth, and a dug surface that shows what it is | Open |
 
 ### Next: foundations, the server's ceiling and a human playtest (Phases 248–251)
 
@@ -528,8 +550,13 @@ water stopping dead at an older recorded chunk) or cost frame time (fresh water 
 thread for every chunk). Mounts still refuse any river, even a stream their own creature fords.
 
 - **Lake shores:** `Hydrology.lake_of_cell` samples the ground with detail noise and massifs, not the
-  shape alone, and the surface is clamped so no ground outside the disc lies below it. A lake whose
-  rim cannot hold the surface is dropped.
+  shape alone, and the surface is clamped so no ground outside the disc lies below it. The basin is
+  then carved with Phase 245's terrain CSG helper (revised 2026-11-25, from GDVoxelTerrain's
+  composable SDF ops): the ground inside the shore is smooth-subtracted by a bowl (a flattened
+  ellipsoid at the lake's depth), and where the rim sits less than a freeboard (fabric, about 0.5 m)
+  above the surface it is smooth-unioned up into a low natural levee, so the water always meets a
+  sloping bank instead of a wall. A lake whose levee would have to rise more than a fabric maximum
+  (about 3 m) is dropped.
 - **River seam:** the river cell wrap period is an exact divisor of the circumference (or rivers are
   traced in seam-wrapped coordinates, `seam_wrap.gd`), so a river crossing the X seam continues on
   the other side. Phase 245 now runs first and replaces the local trace with baked rivers, so check
@@ -551,7 +578,8 @@ thread for every chunk). Mounts still refuse any river, even a stream their own 
 
 **Acceptance criteria**
 - #573 (lake edge): a suite test samples the rim of 50 lakes on the pinned seed and finds no ground
-  sample outside a disc below its surface.
+  sample outside a disc below its surface, and no shore step (adjacent tiles across the waterline)
+  over 0.5 m.
 - #573 (river seam): a suite test traces a river across the X seam and finds its two ends within one
   river width of each other.
 - #573 (frontier): a suite test records an older-version chunk beside a lake and asserts the water
@@ -768,6 +796,16 @@ erosion, and continents come straight from noise.
 - The runtime reads macro height and rivers from the bake (interpolated). The detail noise stays on
   top. Phase 217's river trace is replaced. Lakes keep Phase 217's placement, fed by the baked flow;
   Phase 232, which now comes after this phase, fixes their shores and fords on top of it.
+- **Carving the bake into the ground** (added 2026-11-25, after the GDVoxelTerrain review): rivers
+  are not only painted on the interpolated macro height. The runtime subtracts each baked river from
+  the ground as a chain of capsules along its polyline (radius from flow, depth from width) with a
+  smooth subtraction, so a river runs in a channel with soft banks at any detail-noise height. The
+  maths lives in one terrain CSG helper, `src/terrain/terrain_csg.gd` with a native twin on the
+  Phase 248 base: union, subtraction, intersection and their smooth (polynomial `k`) forms, as in
+  GDVoxelTerrain's `sdf_operations.h` (MIT; notice in the file and a row in `native/THIRD_PARTY.md`),
+  over 2D distance shapes (disc, capsule, polyline, box) for height fields and 3D shapes (sphere,
+  cylinder, box, capsule) for run columns, in fixed point. Phases 232 (lake basins), 300–301 (dig and
+  shape brushes) and 235 (road cut and fill) reuse it.
 - Continents come from Phase 238's mask (open continents only); a closed site bakes as ocean until it
   is opened, and opening one re-bakes the planet under the bumped `WORLDGEN_VERSION`.
 - Built on the Phase 248 native base (fixed-point helpers, parity harness).
@@ -779,6 +817,10 @@ erosion, and continents come straight from noise.
   same bytes from the GDScript reference and the native bake.
 - Suite tests on the baked rivers: every river reaches the sea or a lake, never flows uphill, and its
   width grows with flow.
+- Suite tests on the carve: along 50 baked river segments the ground at the centreline lies below the
+  water surface and no bank step between adjacent tiles exceeds 0.5 m; `terrain_csg` matches reference
+  values for each operation (including `k` → 0 equal to the sharp form), and its GDScript and native
+  results are identical.
 - A suite test: a client with a corrupted bake file (wrong hash) refuses it and bakes or re-downloads.
 - CI publishes the bake for the fabric seed, and the playtest `travel`, `far_peak` and `pole` steps
   pass on it.
@@ -788,7 +830,12 @@ erosion, and continents come straight from noise.
 Trees use `multimesh_pool.gd` and impostors (Phase 23). Natural ground has no grass or bushes.
 
 - Ground cover per biome in the fabric (separate PR): plant kinds, density, and the terrain materials
-  they grow on (grass on grass, none on rock or snow).
+  they grow on (grass on grass, none on rock or snow). Each kind also carries the placement filters of
+  GDVoxelTerrain's `JarTerrainPopulator` (revised 2026-11-25): a slope range (from the mesh normal),
+  an altitude band, a scale range and whether it aligns to the surface normal (grass does, bushes stay
+  upright).
+- A dug, filled or flattened surface (Phases 300–301) shows soil or rock, not the biome's surface
+  material, so nothing grows on it: the material filter reads the drawn vertex's dominant weight.
 - Placement is a pure function of (seed, tile), so every client puts the same tufts in the same places.
   It is client-only, never synced, and absent on the headless server.
 - **On the drawn surface** (Phase 249, ported from godot_voxel's instancer, MIT notice in the file and
@@ -805,8 +852,97 @@ Trees use `multimesh_pool.gd` and impostors (Phase 23). Natural ground has no gr
 - `npm run validate` and `check-drift` pass. A `tools/check_*.js` rejects ground cover on a material
   that is not a terrain material.
 - Suite tests: placement is identical for the same seed and tile, nothing grows on rock, snow, water
-  or a placed block, and density falls with distance.
+  or a placed block, nor on a slope or altitude outside its kind's range, nor in a fresh dig (Phase
+  300), and density falls with distance.
 - The playtest `walk` and `flight` steps meet their budgets with ground cover on.
+
+## Phase 300 — Digging with a brush: one dig moves a shovelful, not a slab
+
+A mine removes one `STEP_HEIGHT` slab of one 0.5 m tile (`VoxelEdit._mine_span`). Digging a cellar, a
+ditch or a cave is hundreds of holds, each yielding one unit, and on the smooth mesher a slab is hard
+to see. GDVoxelTerrain (see the [arc](#arc-digging-worth-doing-phases-300301)) treats a dig as one
+brush op; this phase does the same on top of the run columns.
+
+- **A dig is a brush op:** `{ shape, centre, radius, op, k }`. The shape is a sphere, a vertical
+  cylinder or a box from Phase 245's `terrain_csg`; the centre is the ray hit pushed half a radius into
+  the ground along the hit normal and quantised to the tile and `STEP_HEIGHT` grid; `k` is the smooth
+  blend, so the rim eases out instead of ending in a cliff. A side hit carves sideways, so a cliff
+  face gives a tunnel and a hole in the floor gives a pit.
+- **Rasterised into the runs, nothing new stored:** the host walks every tile the brush bounds touch,
+  intersects the shape with the column and appends the `remove` spans it cuts (quantised to
+  `STEP_HEIGHT`) through `_append_edit`, batched with `_compact_if_long`. The op logs, compaction, the
+  stable-world rule, the chunk-cache revisions, the save format and `settle` (loose ground over a new
+  hole) are unchanged. Placed blocks are never cut: the brush clips to natural spans, and Phase 205's
+  ownership rules still decide any mine of a placed block. Bedrock, closed sites and the newcomer
+  grounds rules clip or refuse as they do for a single slab.
+- **One op on the wire:** the client sends one dig intent; the host resolves it and broadcasts the op
+  (Phase 256's binary format). Every peer rasterises the same op over the same runs, so the logs are
+  identical, and Phase 263's prediction applies the whole brush at once. The rasteriser has a
+  GDScript reference and a native port with a parity test.
+- **Yield by volume:** the removed volume is summed per material: the biome's soil within
+  `topsoilDepth`, host rock below it, and Phase 43's vein material where the ore field has one
+  (depletion recorded per vein as now). Quantity is the volume over the fabric's unit volume per
+  material; the remainder is kept per player and material, so many small digs yield the same as one
+  big one.
+- **Tools decide the brush** (fabric, separate PR): each digging tool has a shape, a radius and the
+  materials it cuts. Bare hands: a small sphere in soil and sand only. A shovel: a larger sphere,
+  soil, sand and gravel, the fastest per m³. A pick: a smaller sphere that also cuts rock and ore. A
+  material the held tool cannot cut stays, so a shovel dig into a rock face stops at the rock.
+  Work time (Phase 259) scales with the volume removed and the Mining skill; skill levels may grow the
+  radius up to a fabric cap.
+- **Trust boundary:** the host recomputes the brush from its own copy of the tool, skill and runs and
+  ignores any shape or radius the client sends; one brush per completed work hold, rate-limited like
+  mines today; the radius is capped in the fabric and by a validator.
+- The old single-slab mine remains as the brush's smallest case (radius under one tile), so a player
+  can still trim one step.
+
+**Acceptance criteria**
+- `npm run validate` and `check-drift` pass. A `tools/check_dig_brush.js` rejects a tool brush over
+  the radius cap and a brush that names a material that is not a terrain material.
+- Suite tests: a sphere dig of radius 1 m on flat ground removes a volume within 5% of a half sphere;
+  no column outside the brush bounds changes; a placed block inside the bounds is untouched; the cut
+  stops at `BEDROCK_DEPTH`; a shovel dig into rock removes no rock; a side dig into a cliff leaves a
+  roof run above the hole.
+- Suite test: yield conservation — 20 small digs and one large dig of the same total volume yield the
+  same quantity per material, and an ore vein's reserve falls by what was yielded.
+- Suite test: the GDScript and native rasterisers produce identical op logs for 200 random brushes on
+  the pinned seed.
+- A `tools/net_harness.sh` step: a client digs with a shovel; the host and the second client hold
+  identical runs for every touched tile.
+- The playtest `mine` step digs a 1 m deep pit 1.5 m wide with a stone shovel in at most 6 holds and
+  meets its budget.
+
+## Phase 301 — Shaping the ground: fill, flatten and smooth, and a dug surface that shows what it is
+
+Phase 300 removes ground; building needs the other half. GDVoxelTerrain also paints the edit's
+material onto what it touched, which is what makes a dig read as a dig.
+
+- **Fill:** smooth union of the brush with the ground, spending the carried loose material (soil,
+  sand, gravel) by volume, at the same unit volume as Phase 300's yield. The added spans are natural-
+  ground spans of that material (not placed blocks), so they mesh smooth and can be dug again.
+- **Flatten:** the first hit sets a target plane; each hold removes ground above it and fills below it
+  within the brush, the fill paid from the inventory as above. Roads (Phase 235) and the tower's
+  levelled ground (Phase 213's step) use it.
+- **Smooth:** each hold relaxes the column tops in the brush toward their neighbours' mean, conserving
+  volume (what one column loses its neighbours gain, so nothing is created).
+- **A dug surface shows what it is:** `terrain_weights` reads, per vertex, how deep the exposed run
+  top lies under the column's natural surface: within `topsoilDepth` it weighs the biome's soil
+  material, below it the host rock, and on a vein its ore tint; a filled span shows its own material.
+  The biome's surface material (grass) shows only on untouched natural ground, so a fresh pit is a
+  brown hole with stone at its bottom. Phase 247 grows nothing on it.
+- All three ops go through Phase 300's rasteriser, wire op, prediction and host checks; the fabric
+  gives each tool the ops it can do (a shovel all three, a pick none of them).
+
+**Acceptance criteria**
+- `npm run validate` and `check-drift` pass, and Phase 300's validator covers the new ops.
+- Suite tests: a fill spends exactly the inventory volume it adds and is refused with too little in
+  the pack; a flatten leaves every column in the brush within one `STEP_HEIGHT` of the target plane;
+  a smooth changes no total volume (sum of column heights) and lowers the largest step in the brush.
+- Suite tests: on a column dug 1 m into a biome with `topsoilDepth` 3 the exposed vertex's dominant
+  weight is the soil material; dug 4 m it is the host rock; an untouched column keeps the surface
+  material; a filled column shows the fill material.
+- A `tools/net_harness.sh` step: a flatten from one client gives identical runs on the host and the
+  other client.
 
 ## Phase 251 — A human playtest: what would make the game fun
 
