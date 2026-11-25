@@ -18,6 +18,7 @@ const HitFeel          := preload("res://src/battle/hit_feel.gd")
 const ComboChain       := preload("res://src/battle/combo_chain.gd")
 const GearTiers        := preload("res://src/character/gear_tiers.gd")
 const I18n             := preload("res://src/core/i18n.gd")
+const Diag             := preload("res://src/core/diag.gd")
 
 func tick(_delta: float) -> void:
 	if root._battle != null:
@@ -46,6 +47,7 @@ func _connect_all() -> void:
 	connect_bus(GameBus.skill_slot_triggered, on_skill_slot_triggered)
 	connect_bus(GameBus.creature_died, on_creature_died)
 	connect_bus(GameBus.gesture_intent, _on_gesture_intent)
+	connect_bus(GameBus.block_place_requested, _on_place_requested)   # #726
 	connect_bus(GameBus.creature_respawned, _on_creature_gone_pending)
 	if root._quit_after_boot:   # #747: the CI boot asserts the boot tail fires no combat round (#711)
 		connect_bus(GameBus.combat_round_requested, _count_boot_combat_round)
@@ -248,12 +250,18 @@ func cancel_pending_swing(player_id: String) -> void:
 func _on_gesture_intent(_gesture_id: String, player_id: String) -> void:
 	cancel_pending_swing(player_id)
 
+## #726 — placing a block is another action, like mining: it cancels the swing's pending hit. The request names the
+## builder (`block_placed` does not), and the host sees it whether or not the placement then goes through.
+func _on_place_requested(_position: Vector3, _normal: Vector3, player_id: String, _material: String, _exact: Dictionary) -> void:
+	cancel_pending_swing(player_id)
+
 ## Drop a departed player's swing clock (called from the peer-left path).
 func forget_swinger(player_id: String) -> void:
 	_last_swing_ms.erase(player_id)
 	_last_ability_ms.erase(player_id)
 	_bodyless_combo.erase(player_id)
 	_last_swing_clip.erase(player_id)
+	_unplaced_swing_warned.erase(player_id)
 	if root._battle != null and root._battle.impact_queue != null:
 		root._battle.impact_queue.cancel(player_id)
 
@@ -275,9 +283,18 @@ func _on_swing_started(attacker_id: String, defender_id: String) -> void:
 		return
 	var a_key := _wire_key(attacker_id)
 	var at: Variant = _event_position(a_key, _wire_key(defender_id))
-	if at != null:
-		# #726: the clip the host's combo chain picked, so every viewer plays the same step.
-		root._networking.send_combat_hit(a_key, _wire_key(defender_id), "swing", at, clip)
+	if at == null:
+		# #726: no body or report places the attacker or the target, so no viewer can be chosen by range; the outcome
+		# path skips the same way. Said once per attacker so a silent gap shows in the log.
+		if not _unplaced_swing_warned.has(attacker_id):
+			_unplaced_swing_warned[attacker_id] = true
+			Diag.warn("CombatWiring: swing of %s at %s not announced (no position for either)" % [a_key, _wire_key(defender_id)])
+		return
+	# #726: the clip the host's combo chain picked, so every viewer plays the same step.
+	root._networking.send_combat_hit(a_key, _wire_key(defender_id), "swing", at, clip)
+
+## Attackers whose unplaced swing was already logged (`_on_swing_started`).
+var _unplaced_swing_warned: Dictionary = {}
 
 func _attacker_character(attacker_id: String) -> String:
 	return _character_for_key(_wire_key(attacker_id))
@@ -382,11 +399,10 @@ func _on_combat_hit_resolved(attacker_id: String, defender_id: String, outcome: 
 
 ## Phase 287 — host: a creature a player's landed (non-killing) hit struck is pushed a short way away from the
 ## attacker, the fabric's `knockbackLight` or (for a stagger) `knockbackHeavy` metres, stopping at ground it can
-## step onto. Returns the metres moved (0 when nothing moved). Only with impact timing on, and only a creature:
-## a player's body is moved by its own client.
+## step onto. Returns the metres moved (0 when nothing moved). Only with impact timing on. A struck player (#726)
+## is pushed the same way by `_push_player`.
 func push_struck(attacker_id: String, defender_id: String, reaction: String) -> float:
-	if root._battle == null or root._battle.impact_queue == null or BattleSlice.is_player_target(defender_id) \
-			or root._creature == null or root._voxel == null:
+	if root._battle == null or root._battle.impact_queue == null or root._voxel == null:
 		return 0.0
 	if attacker_id != "player" and not BattleSlice.is_player_target(attacker_id):
 		return 0.0
@@ -395,7 +411,11 @@ func push_struck(attacker_id: String, defender_id: String, reaction: String) -> 
 		return 0.0
 	var metres := float(res.get("knockbackHeavy" if reaction == "stagger" else "knockbackLight"))
 	var apos: Variant = death_attacker_pos(attacker_id)
-	if not apos is Vector3 or root._creature.get_instance_state(defender_id) in ["", "dead"]:
+	if not apos is Vector3:
+		return 0.0
+	if BattleSlice.is_player_target(defender_id):
+		return _push_player(defender_id, apos, metres)
+	if root._creature == null or root._creature.get_instance_state(defender_id) in ["", "dead"]:
 		return 0.0
 	# #726: a flyer or swimmer holds its own height; the push below snaps y to the ground, so it is not pushed.
 	if root._creature.movement_of(defender_id) != root._creature.MOVE_GROUND:
@@ -417,6 +437,46 @@ func push_struck(attacker_id: String, defender_id: String, reaction: String) -> 
 
 ## How far (0.1 m steps, up to `metres`) `defender_id` standing at `tpos` can be pushed along `dir`.
 ## `ground(Vector3) -> float` is the column top under a spot (unset: the voxel world's).
+## #726 — host: a player struck by another player's landed hit is pushed like a creature, away from the attacker and
+## only over ground a body can step onto (the death-push rule). The host's own body is placed here; a peer's is
+## sent there with a teleport, as the status-effect knockback does. Returns the metres moved.
+func _push_player(defender_id: String, apos: Vector3, metres: float) -> float:
+	var peer := 0
+	var pos: Vector3
+	if defender_id == "player" or defender_id == root._registry.local_player_id:
+		if root._player == null or root._is_client:
+			return 0.0
+		pos = root._player.get_position()
+	else:
+		peer = root._registry.get_peer_id(defender_id)
+		if peer <= 0 or root._networking == null or not root._networking.has_last_known_state(peer):
+			return 0.0   # a peer that never reported has no position to push from (it reads as the origin)
+		pos = root._networking.get_last_known_state(peer)
+	var spot := player_knock_spot(pos, apos, metres, death_walkable)
+	var moved := Vector2(spot.x - pos.x, spot.z - pos.z).length()
+	if moved <= 0.0:
+		return 0.0
+	spot.y = maxf(spot.y, death_ground(spot))
+	if peer == 0:
+		root._player.spawn_at(spot)
+	else:
+		# Added to the peer's exact position, so the push holds far from the origin too.
+		var exact: Dictionary = root._peer_wiring.peer_exact_pos(peer)
+		var local: Vector3 = (exact["local"] as Vector3) + Vector3(spot.x - pos.x, spot.y - pos.y, spot.z - pos.z)
+		root._networking.send_teleport(peer, WorldPos.normalized({ "chunk": exact["chunk"], "local": local }))
+	return moved
+
+## #726 — where a body at `pos` struck from `apos` ends up: up to `metres` away from the attacker in 0.1 m steps,
+## stopping before the first spot `walkable(spot)` refuses. `pos` itself when it cannot move.
+static func player_knock_spot(pos: Vector3, apos: Vector3, metres: float, walkable: Callable) -> Vector3:
+	var dir := PendingHit.knockback_direction(apos, pos)
+	var moved := 0.0
+	while dir != Vector3.ZERO and moved + 0.1 <= metres + 0.0001:
+		if walkable.is_valid() and not bool(walkable.call(pos + dir * (moved + 0.1))):
+			break
+		moved += 0.1
+	return pos + dir * moved
+
 func knock_distance(defender_id: String, tpos: Vector3, dir: Vector3, metres: float, ground: Callable = Callable()) -> float:
 	var moved := 0.0
 	while moved + 0.1 <= metres + 0.0001 and dir != Vector3.ZERO:

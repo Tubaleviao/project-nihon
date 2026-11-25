@@ -409,11 +409,11 @@ func tile_of_pos(pos: Dictionary) -> Vector2i:
 func set_instance_position(instance_id: String, pos: Vector3) -> void:
 	set_instance_pos(instance_id, WorldPos.from_world(pos.x, pos.y, pos.z))
 
-## `set_instance_position` for an exact `{chunk, local}` position.
-func set_instance_pos(instance_id: String, pos: Dictionary) -> void:
+## `set_instance_position` for an exact `{chunk, local}` position; `on_ground` false keeps `pos.y` as given.
+func set_instance_pos(instance_id: String, pos: Dictionary, on_ground: bool = true) -> void:
 	if not _instances.has(instance_id):
 		return
-	if voxel_slice != null:
+	if voxel_slice != null and on_ground:
 		var h := surface_at_tile(tile_of_pos(pos))
 		if not is_nan(h):
 			var l: Vector3 = pos["local"]

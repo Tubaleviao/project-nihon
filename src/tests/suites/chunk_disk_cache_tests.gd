@@ -19,6 +19,7 @@ func register() -> void:
 	_run_test("disk cache: a revisit attaches from disk and matches a fresh build", _test_revisit_from_disk)
 	_run_test("disk cache: an edit makes the entry a miss", _test_edit_invalidates)
 	_run_test("disk cache: the world seed is part of the mesh key", _test_mesh_key_has_seed)
+	_run_test("disk cache: a build is stored under the key of the state it was dispatched from (#679)", _test_key_at_dispatch)
 	_run_test("disk cache: a later session reads the generator's heightmap instead of generating", _test_gen_layer)
 	_run_test("disk cache: the playtest and each save get their own cache folders", _test_cache_dirs)
 
@@ -271,3 +272,40 @@ func _test_cache_dirs() -> void:
 	assert_eq(ChunkPart1.mesh_cache_dir(PackedStringArray(["--playtest-bot"])), "user://playtest/cache/chunks/", "the playtest never clears the player's cache")
 	assert_eq(ChunkPart1.gen_cache_dir("user://saves/server/regions/"), "user://saves/server/cache/gen/", "beside regions/, which /regen world moves aside")
 	assert_eq(ChunkPart1.gen_cache_dir("user://playtest/server/regions/"), "user://playtest/server/cache/gen/", "per save")
+
+## #679 — `disk_note` computed the key at attach. An edit or a new record landing while the worker ran stored the
+## mesh built from the old state under the new state's key, so the next visit attached a stale mesh as current.
+func _test_key_at_dispatch() -> void:
+	var d := _dir()
+	var rig := _make_chunk_build_rig()
+	var cm: ChunkManager = rig["cm"]
+	var voxel: VoxelSlice = rig["voxel"]
+	cm._m1.disk_cache = DiskChunkCache.new(d)
+	var chunk := Vector2i(0, 0)
+	cm.load_chunk(chunk)
+	var entry: Dictionary = cm._builds.values()[0] if not cm._builds.is_empty() else {}
+	var lod := int(entry.get("disk_lod", -1))
+	assert_true(entry.has("disk_key"), "a dispatched build carries its disk key")
+	assert_eq(entry.get("disk_key", null), DiskChunkCache.key_of(cm._m1.disk_signature(chunk, lod)), "the key of the state it read")
+	_wait_for_builds(cm)
+	cm._m1.disk_cache.flush()
+	var fresh: Dictionary = cm.chunk_cache()._entries[cm._chunk_key(chunk)]
+	var before: int = DiskChunkCache.key_of(cm._m1.disk_signature(chunk, lod))
+	var top := voxel.get_voxel_height_at(Vector2(5.25, 5.25))
+	voxel.apply_edits({ VoxelSlice._tile_key(Vector2i(10, 10)): [{ "op": "add", "bottom": top, "top": top + 0.5, "material": "Ferrite" }] })
+	var after: int = DiskChunkCache.key_of(cm._m1.disk_signature(chunk, lod))
+	assert_true(after != before, "the edit changes the key")
+	var layer: String = cm._m1.mesh_layer(lod)
+	# The pre-edit build attaching after the edit: it is stored under the pre-edit key, never the post-edit one.
+	cm._m1.disk_note(chunk, lod, fresh["arrays"], fresh["heightmap"], { "disk_key": before, "disk_lod": lod })
+	cm._m1.disk_cache.flush()
+	assert_false(cm._m1.disk_cache.probe(layer, chunk, after), "the old mesh is not filed under the new state's key")
+	assert_true(cm._m1.disk_cache.probe(layer, chunk, before), "it stays under the key of the state it was built from")
+	var count: int = cm._m1.disk_cache.entry_count()
+	cm._m1.disk_note(chunk, lod, fresh["arrays"], fresh["heightmap"], {})
+	cm._m1.disk_note(chunk, lod, fresh["arrays"], fresh["heightmap"], { "disk_key": after, "disk_lod": lod + 1 })
+	cm._m1.disk_cache.flush()
+	assert_eq(cm._m1.disk_cache.entry_count(), count, "a build with no dispatch key, or back at another level, is not stored")
+	assert_false(cm._m1.disk_cache.probe(layer, chunk, after), "so the new key stays a miss")
+	_free_rig(rig)
+	_rm(d)

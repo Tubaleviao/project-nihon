@@ -18,6 +18,7 @@ func register() -> void:
 	_run_test("body: a contact reports its direction and depth", _test_body_contact)
 	_run_test("body: squash keeps volume and presses along the contact", _test_body_squash_basis)
 	_run_test("body: the squash spring presses in, rebounds and settles", _test_body_spring)
+	_run_test("body: set_instance_pos stands a creature on the ground unless told to keep its height (#727)", _test_body_pos_keeps_height)
 
 ## A slice and an AI with `count` ForestBoars all at `at` (no surface unless `voxel` is given).
 func _make_pack(count: int, at: Vector3, voxel: Node = null) -> Dictionary:
@@ -150,3 +151,22 @@ func _test_body_spring() -> void:
 	assert_true(absf(s.x) < 0.01, "and settles back to rest (%.4f)" % s.x)
 	var big := CreatureBody.spring_step(Vector2.ZERO, 0.3, 2.0)
 	assert_true(absf(big.x) <= 0.6, "a long frame does not blow the spring up")
+
+## #727 — the net harness pins its attack probe at the peer's own height: `on_ground = false` keeps `pos.y`, the
+## default still stands the creature on the surface.
+func _test_body_pos_keeps_height() -> void:
+	var voxel := FakeVoxel.new()
+	voxel.fn = func(_x: int, _z: int) -> float: return 4.0
+	var p := _make_pack(1, Vector3(2.0, 9.0, 2.0), voxel)
+	var c: Node = p["creature"]
+	var iid: String = p["ids"][0]
+	var ground_y: float = (c.get_instance_pos(iid)["local"] as Vector3).y
+	assert_true(absf(ground_y - (4.0 + c.hover_of(iid))) < 0.01, "the default stands it on the surface (y %.2f)" % ground_y)
+	c.set_instance_pos(iid, {"chunk": Vector2i.ZERO, "local": Vector3(2.0, 9.0, 2.0)}, false)
+	var kept: Vector3 = c.get_instance_pos(iid)["local"]
+	assert_true(absf(kept.y - 9.0) < 0.001, "on_ground false keeps the given height (y %.2f)" % kept.y)
+	assert_eq(c.nearest_creature({"chunk": Vector2i.ZERO, "local": Vector3(2.0, 8.0, 2.0)}, 3.0), iid, "and a body beside that height finds it in reach")
+	c.set_instance_pos(iid, {"chunk": Vector2i.ZERO, "local": Vector3(2.0, 9.0, 2.0)})
+	assert_true(absf((c.get_instance_pos(iid)["local"] as Vector3).y - ground_y) < 0.01, "a later default move lands it again")
+	_free_pack(p)
+	voxel.free()
