@@ -1,8 +1,8 @@
 extends Node
-## Voxel slice — builds a visible, walkable terrain mesh from chunk heightmaps, Planned split: the edit API goes to a voxel_edits.gd.
+## Voxel slice — builds a visible, walkable terrain mesh from chunk heightmaps,
 ## and exposes an edit API for mining (carve a solid span → material) and
 ## building (add a solid span → consume material).
-##
+## Planned split: suggested, no phase yet: whatever of the edit API is left goes to the existing voxel_edit.gd.
 ## Plug contract (GameBus signals consumed / emitted):
 ##   IN  : chunk_ready(chunk_pos, heightmap)
 ##         block_mine_requested(position, normal, player_id)

@@ -1,6 +1,6 @@
 extends Node
-## Player slice — CharacterBody3D with a follow camera and keyboard/mouse input. Planned split: movement and mount input go to a player_movement.gd.
-##
+## Player slice — CharacterBody3D with a follow camera and keyboard/mouse input.
+## Planned split: suggested, no phase yet: movement and mount input to a player_movement.gd.
 ## Plug contract (GameBus signals consumed / emitted):
 ##   IN  : (none — input is read directly from Input singleton)
 ##   OUT : player_state_changed(payload)

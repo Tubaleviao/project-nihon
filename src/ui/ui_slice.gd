@@ -1,5 +1,5 @@
 extends Node
-## UI slice — window system exposing inventory, technology, crafting, trade, Planned split: the next window builders go to ui_windows.gd, the next sheet/HUD ones to ui_sheet_hud.gd.
+## UI slice — window system exposing inventory, technology, crafting, trade,
 ## market, and proposals. Each window is a PanelContainer on a shared CanvasLayer,
 ## toggled with Alt + a letter (`WindowShortcuts.TABLE`) or ? (controls)
 ## and closed with ESC or the window's ✕ button. Every window drags by its title
@@ -7,7 +7,7 @@ extends Node
 ## never touches the mouse: the pointer is always free (Phase 85) and only
 ## held-right-click captures it for the camera. A click on a window is consumed
 ## by the window, so no attack/mine slips through an open menu.
-##
+## Planned split: the next window builders go to ui_windows.gd, the next sheet/HUD ones to ui_sheet_hud.gd.
 ## Plug contract (GameBus signals consumed / emitted):
 ##   IN  : inventory_changed, item_picked_up, block_mined, block_placed,
 ##         craft_resolved, research_resolved, technology_unlocked

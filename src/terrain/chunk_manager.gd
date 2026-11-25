@@ -1,6 +1,6 @@
 extends Node
-## ChunkManager — streams terrain chunks around the player (Phase 17). Planned split: queue and disk-cache code goes to chunk_build_queue.gd, ring policy to chunk_stream_policy.gd.
-##
+## ChunkManager — streams terrain chunks around the player (Phase 17).
+## Planned split: queue and disk-cache code goes to chunk_build_queue.gd, ring policy to the existing chunk_stream_policy.gd.
 ## Replaces the fixed single-chunk world with a view-distance window: every
 ## frame (once started) it computes the player's chunk, loads any chunk within
 ## the streamed radius that isn't loaded yet, and unloads chunks that fell out of

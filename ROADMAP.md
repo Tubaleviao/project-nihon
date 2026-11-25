@@ -240,7 +240,7 @@ latest was the stress job finding a largest passing crowd of 0 for `cluster`, `c
 exists but no tag has ever been pushed, so no one but the owner has ever run a build. The working
 tree carried an unignored `.claude/` folder of 600 MB, eight untracked `.uid` files, two lockfiles
 and a submodule pointer rewound three commits. The 1,500-line cap on source files is met by nine
-files named `*_part_1.gd`, `*_part_2.gd`, `*_part_3.gd`, split by line count rather than by what
+files named `*_part_1.gd`, `*_part_2.gd`, `*_part_3.gd`, split by line count rather than by what (renamed in Phase 257)
 they do. The deployed wiki deferred since Phase 9 is still deferred, and the repository has no
 `CONTRIBUTING.md` and no Discussions, although the constitution's `CommunityOwnsTheFuture` principle
 says decisions are proposed publicly.
@@ -266,7 +266,7 @@ and a forge (the tutorial's `first_stations` and `first_tools` chapters). A dig 
 only after the host applies it and the chunk is re-meshed on a worker. Dropping from the inventory
 drops one unit, or the whole stack with Shift (`ui_slice.gd` `finish_world_drop`). The world avatar
 is the `models/player_rig.glb` rig (`attach_default_rig`), while the creation screen and the
-Character window's doll are built by the older procedural body (`character_part_2.gd`
+Character window's doll are built by the older procedural body (`character_body_actions.gd`
 `_make_visual`), which draws hair as one box tinted by the colour and ignores the chosen style; the
 per-style hair meshes (`models/characters/hair/<id>.glb.raw`) are generated but never loaded.
 
@@ -771,7 +771,7 @@ Attached meshes and collision land on the main thread as whole nodes.
 - The playtest `flight` step: ground under the body in at least as many samples as the current floor,
   and the worker ms per crossing no worse than its budget.
 
-**Implemented** (pure policy in `src/terrain/chunk_stream_policy.gd`; wiring in `chunk_part_1.gd`): the
+**Implemented** (pure policy in `src/terrain/chunk_stream_policy.gd`; wiring in `chunk_build_queue.gd`): the
 lead is `ceil(speed × 1.5 s / 32 m)` chunks, capped at 6, queued in a 45° cone along the body's
 velocity; the steady worker cap starts at half the cores and moves once a second inside
 [2, cores − 1]; `apply_finished_builds` stops at `ATTACH_BUDGET_MS` (3 ms) except for the chunk under
@@ -1415,7 +1415,7 @@ and `UISlice` prints that handle in `ui.listing` as it is.
   votes, clan rolls): a check lists the UI strings that format a player field and fails one that prints a handle.
 - The market window shows "(you)" on the viewer's own listings (new key in both locales).
 
-**Done.** `NetPart3.redact_blob` names the players in the copy a client is sent (a listing's `seller_name`, a
+**Done.** `NetSession.redact_blob` names the players in the copy a client is sent (a listing's `seller_name`, a
 proposal's `author_name`, a trade's `names` by party) from `PlayerRegistry.character_name` at send time, then
 redacts ids to handles; the market, governance and trade broadcasts and the join snapshot all go through it, and the
 listen host's own "player" literal crosses as the host's handle (a client used to read the host's listings as its own).

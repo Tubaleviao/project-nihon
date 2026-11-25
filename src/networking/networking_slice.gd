@@ -1,7 +1,7 @@
 extends Node
-## Networking slice — authoritative host/client model (Phase 18), hardened Planned split: new packet senders go to net_packets.gd and host-only session code to net_session.gd.
+## Networking slice — authoritative host/client model (Phase 18), hardened
 ## against real network conditions (Phase 19).
-##
+## Planned split: new packet senders go to net_packets.gd and host-only session code to net_session.gd.
 ## The host runs the authoritative simulation (terrain, creature AI, combat,
 ## voxel edits, loot). Clients send their local input and block-edit intents
 ## to the host, and apply authoritative state deltas the host broadcasts back.

@@ -1,6 +1,6 @@
 extends Node
-## Character slice — data-driven character appearance system (characters.md). Planned split: new skeleton and rig tables go to a character_rigs.gd, new body actions to character_body_actions.gd.
-##
+## Character slice — data-driven character appearance system (characters.md).
+## Planned split: suggested, no phase yet: new skeleton and rig tables to a character_rigs.gd, new body actions to character_body_actions.gd.
 ## Realizes the design doc as a working vertical slice:
 ##   - non-humanoid skeletons (humanoid / quadruped / bird / serpent)
 ##   - bones vs sockets, equipment slots vs sockets, attachment states
