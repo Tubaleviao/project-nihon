@@ -45,6 +45,14 @@ func _connect_all() -> void:
 	connect_bus(GameBus.creature_died, on_creature_died)
 	connect_bus(GameBus.gesture_intent, _on_gesture_intent)
 	connect_bus(GameBus.creature_respawned, _on_creature_gone_pending)
+	if root._quit_after_boot:   # #747: the CI boot asserts the boot tail fires no combat round (#711)
+		connect_bus(GameBus.combat_round_requested, _count_boot_combat_round)
+
+## Combat rounds requested before a `--quit-after-boot` boot quit; game_root logs it so CI can assert none (#711).
+var boot_combat_rounds: int = 0
+
+func _count_boot_combat_round(_attacker_id: String, _defender_id: String) -> void:
+	boot_combat_rounds += 1
 
 ## #726: also drop the hooks `_connect_all` set on the slices, so an unwired module leaves no callables behind.
 func unwire() -> void:
