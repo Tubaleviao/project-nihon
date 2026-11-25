@@ -30,6 +30,43 @@ const NAME_MAX_BYTES := 96
 static func default_status_port(game_port: int) -> int:
 	return game_port + 1 if game_port < 65535 else 0
 
+## #706 — the net harness's forged-build client: `--harness-game-version <v>` makes this process claim build `v`
+## instead of its own, so the harness can prove a host refuses it. A client can only sabotage its own join with it:
+## the host checks the claim against its own build and never trusts it any further.
+const FORGE_VERSION_ARG := "--harness-game-version"
+
+## #706 — this build's identity: `application/config/version` (or the harness's forged one, see FORGE_VERSION_ARG).
+## The join and roster intents, the host's hello and its refusal all carry it beside PROTOCOL_VERSION.
+static func game_version() -> String:
+	var args := OS.get_cmdline_user_args()
+	var i := args.find(FORGE_VERSION_ARG)
+	if i >= 0 and i + 1 < args.size():
+		return valid_version(args[i + 1])
+	return str(ProjectSettings.get_setting("application/config/version", ""))
+
+## #706 — a build version read off the wire: the text when it is a String of 1..VERSION_MAX_BYTES UTF-8 bytes with
+## no control characters, else "" (missing, another type, oversized or carrying control characters).
+static func valid_version(v: Variant) -> String:
+	if not v is String:
+		return ""
+	var s: String = v
+	if s.is_empty() or s.to_utf8_buffer().size() > VERSION_MAX_BYTES or clean_text(s) != s:
+		return ""
+	return s
+
+## #706 — what a client shows when it cannot play on a host: { key, args } (args name the host's version, then this
+## build's), or {} when it can. Another protocol is refused with the protocol keys; the same protocol on another
+## build (or a host that names no valid build) with `menu.join.fail_version`.
+static func build_refusal(own_protocol: int, own_version: String, host_protocol: int, host_version: Variant) -> Dictionary:
+	var theirs := valid_version(host_version)
+	var shown := theirs if theirs != "" else "?"
+	var key := protocol_refusal(own_protocol, host_protocol)
+	if key != "":
+		return { "key": key, "args": [shown, own_version] }
+	if theirs != own_version:
+		return { "key": "menu.join.fail_version", "args": [shown, own_version] }
+	return {}
+
 ## The catalog key a client shows when it cannot play on a host of `host_protocol`; "" when it can.
 static func protocol_refusal(own_protocol: int, host_protocol: int) -> String:
 	if host_protocol == own_protocol:

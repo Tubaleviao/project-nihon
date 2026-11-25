@@ -98,6 +98,7 @@ hotbar.menu_clear,Clear shortcut,Limpar atalho
 hotbar.menu_empty,Empty this box,Esvaziar esta caixa
 hotbar.menu_set,Set shortcut key…,Definir tecla de atalho…
 hotbar.press_key,Binding this box  ·  Esc cancels  ·  Backspace clears,Definindo a tecla desta caixa  ·  Esc cancela  ·  Backspace limpa
+hotbar.skill_no_action,This skill has no action to use yet. It grows as you work.,Esta habilidade ainda não tem uma ação para usar. Ela cresce conforme você trabalha.
 hud.chop,Chop: {0} (axe),Cortar: {0} (machado)
 hud.hp,HP {0} {1}/{2},PV {0} {1}/{2}
 hud.pickup,Pick up: {0},Pegar: {0}
@@ -856,6 +857,7 @@ menu.join.fail_disconnected,The server closed the connection.,O servidor encerro
 menu.join.fail_timeout,The server never sent the world.,O servidor não enviou o mundo.
 menu.join.fail_protocol_newer,The server runs a newer version of the game. Update to join it.,O servidor usa uma versão mais nova do jogo. Atualize para entrar.
 menu.join.fail_protocol_older,The server runs an older version of the game that this one cannot join.,O servidor usa uma versão mais antiga do jogo com a qual esta não consegue jogar.
+menu.join.fail_version,This server runs version {0}; you have {1}. Download the matching version to join it.,Este servidor usa a versão {0}; você tem a {1}. Baixe a versão correspondente para entrar.
 menu.join.lan,On this network,Nesta rede
 menu.join.lan_refresh,Search again,Procurar de novo
 menu.join.lan_none,No servers found on this network.,Nenhum servidor encontrado nesta rede.

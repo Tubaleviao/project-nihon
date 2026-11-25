@@ -1107,7 +1107,7 @@ func _test_hud_hotbar_skills_and_binding() -> void:
 	assert_true(hb._buttons[0].get_parent() == hb._row1 and hb._buttons[9].get_parent() == hb._row2, "numbered row first, extra row second")
 	assert_true(hb.get_child(0) == hb._row1, "the numbered row sits above the extra row")
 	hb.assign(3, "")
-	hb.assign(2, "skill:Alchemy")
+	hb.assign(2, "skill:Swordsmanship")   # #712: only a combat skill box fires
 	var got: Array = []
 	var cb := func(slot: int, skill: String) -> void: got.append([slot, skill])
 	GameBus.skill_slot_triggered.connect(cb)
@@ -1116,7 +1116,7 @@ func _test_hud_hotbar_skills_and_binding() -> void:
 	k3.keycode = KEY_3
 	assert_true(hb.handle_key(k3), "3 fires the third box")
 	GameBus.skill_slot_triggered.disconnect(cb)
-	assert_eq(got, [[2, "Alchemy"]], "a skill box reports the press on the bus")
+	assert_eq(got, [[2, "Swordsmanship"]], "a skill box reports the press on the bus")
 	# Bottom row boxes cannot be rebound; a second-row box can.
 	hb.begin_binding(1)
 	assert_false(hb.is_binding(), "the bottom row is fixed to 1-9")
@@ -1147,7 +1147,7 @@ func _test_hud_hotbar_skills_and_binding() -> void:
 	# Persistence
 	assert_true(FileAccess.file_exists(ui.hotbar.save_path), "the bar saved itself")
 	var again := _HotbarScript.parse_state(FileAccess.get_file_as_string(ui.hotbar.save_path))
-	assert_eq(again["slots"][2], "skill:Alchemy", "contents persisted")
+	assert_eq(again["slots"][2], "skill:Swordsmanship", "contents persisted")
 	assert_eq(again["binds"][11], KEY_F7, "shortcuts persisted")
 	ui.free()
 	DirAccess.remove_absolute(_TEST_HOTBAR_FILE)

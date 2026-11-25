@@ -18,10 +18,17 @@ static func tree_key(tree_id: String) -> String:
 
 ## Starts work. `kind` is "tree" (target `tree_id`) or "block" (position/normal/exact). Returns
 ## `{ ok, key, duration, action, material }`; `ok` is false for a target that cannot be worked.
+## #629 — a session that begins on a new target announces its work mark (`GameBus.work_mark_changed`), and the
+## session it replaced (a retarget) announces its stop; a repeated start on the same target announces nothing.
 func start(player_id: String, kind: String, tree_id: String, pos: Vector3, normal: Vector3, exact: Dictionary, now: float) -> Dictionary:
 	var t := resolve(player_id, kind, tree_id, pos, normal, exact)
+	var before := str(sessions.session(player_id).get("target", ""))
 	if t.is_empty() or not sessions.start(player_id, str(t["key"]), str(t["action"]), float(t["duration"]), now):
 		return { "ok": false }
+	if before != str(t["key"]):
+		if before != "":
+			GameBus.work_mark_changed.emit(player_id, before, 0.0)
+		GameBus.work_mark_changed.emit(player_id, str(t["key"]), float(t["duration"]))
 	t["ok"] = true
 	return t
 
@@ -76,8 +83,17 @@ func resolve(player_id: String, kind: String, tree_id: String, pos: Vector3, nor
 
 ## A completion claim for `key`: true once the host's own timer has run out with the work still held and in reach.
 ## `in_reach` is the caller's own check; a claim is "held" while its session exists (a release cancels it).
+## #629 — a claim that ends the session (completed, or out of reach) announces the mark's stop.
 func claim(player_id: String, key: String, now: float, in_reach: bool = true) -> bool:
-	return sessions.try_complete(player_id, key, now, true, in_reach)
+	var target := str(sessions.session(player_id).get("target", ""))
+	var done := sessions.try_complete(player_id, key, now, true, in_reach)
+	if target != "" and not sessions.has_session(player_id):
+		GameBus.work_mark_changed.emit(player_id, target, 0.0)
+	return done
 
 func cancel(player_id: String) -> bool:
-	return sessions.cancel(player_id)
+	var target := str(sessions.session(player_id).get("target", ""))
+	if not sessions.cancel(player_id):
+		return false
+	GameBus.work_mark_changed.emit(player_id, target, 0.0)   # #629
+	return true

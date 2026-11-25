@@ -300,6 +300,45 @@ func menu_join(h: Node) -> void:
 	h._report("menu_join", h.verdict(exited and code == 0, true),
 		"joined-from-menu" if exited and code == 0 else "spawned%d-exit%d" % [int(pid > 0), code])
 
+## #706 — a client of another build is refused before any sync. The harness client (already off the host since
+## `menu_join`) boots a third process that joins through the main menu like `menu_join`, but claims a forged build
+## (`--harness-game-version`). The host must see that peer connect and leave without ever binding an identity (so
+## no snapshot, chunk or entity sync was sent to it); the third process must exit with
+## `MenuWiring.MENU_JOIN_BUILD_REFUSED`, which it only does when the join ended on a build refusal key.
+const FORGED_VERSION := "0.0.0-forged"
+func version_refused(h: Node) -> void:
+	if h._role == "host":
+		var fresh: Array = []
+		var gone: Array = []
+		var joined: Array = []
+		var on_connected := func(id: int) -> void: fresh.append(id)
+		var on_gone := func(id: int) -> void: gone.append(id)
+		var on_joined := func(id: int, _player: String, _re: bool) -> void: joined.append(id)
+		h._root.multiplayer.peer_connected.connect(on_connected)
+		h._root.multiplayer.peer_disconnected.connect(on_gone)
+		GameBus.player_joined.connect(on_joined)
+		var left: bool = await h._await_until(func():
+			return fresh.any(func(p: int) -> bool: return gone.has(p)), h._step_timeout() * 3.0)
+		h._root.multiplayer.peer_connected.disconnect(on_connected)
+		h._root.multiplayer.peer_disconnected.disconnect(on_gone)
+		GameBus.player_joined.disconnect(on_joined)
+		var bound := fresh.any(func(p: int) -> bool: return joined.has(p))
+		var ok := left and not bound
+		h._report("version_refused", h.verdict(ok, true), "forged-build-refused" if ok else
+			"connected%d-left%d-bound%d-refused%d" % [fresh.size(), int(left), int(bound), int(h._root._networking._m2.refused_total)])
+		return
+	await h._await_settle(1.0 * h._time_scale)
+	var args := PackedStringArray(["--headless", "--path", ProjectSettings.globalize_path("res://"), "--",
+		MenuWiring.MENU_JOIN_ARG, h._root._host_address, ServerStatus.FORGE_VERSION_ARG, FORGED_VERSION])
+	var pid := OS.create_process(OS.get_executable_path(), args)
+	var exited: bool = pid > 0 and await h._await_until(func(): return not OS.is_process_running(pid),
+		h._step_timeout() * 3.0)
+	var code := OS.get_process_exit_code(pid) if exited else -1
+	if pid > 0 and not exited:
+		OS.kill(pid)
+	var ok := exited and code == MenuWiring.MENU_JOIN_BUILD_REFUSED
+	h._report("version_refused", h.verdict(ok, true), "forged-build-refused" if ok else "spawned%d-exit%d" % [int(pid > 0), code])
+
 ## Phase 261 — a client picks up a loose item and the host (and so every peer) sees it gone. Both sides name the same
 ## item (placement is a pure function of the seed and the tile); the client (which stands near the rendezvous, within the host's edit reach of it) asks to pick it up.
 ## The host must see it taken, the client must hold it, and an immediate second pick of it is refused.
@@ -655,20 +694,28 @@ func title_choice(h: Node) -> void:
 	h._report("title_choice", h.verdict(ok, true), DETAIL if ok else ("nameplate_not_seen-%s" % h._root._character.get_nameplate(h._root._character.get_peer_character(host_id)).replace("\n", "/").replace(" ", "_") if not seen \
 		else ("not_unlocked" if not have else ("not_chosen" if not chosen else ("locked_not_refused" if not refused else "choice_changed")))))
 
-## Phase 281 — the host's own body works, and the client's copy of it plays `chop`, then `build` after the host
-## places a block: the host sends a `work_anim` packet to peers in range and the client plays the table's clip.
+## Phase 281 — the host's own body works, and the client's copy of it plays `chop`, then `build`: the host sends a
+## `work_anim` packet to peers in range and the client plays the table's clip. #714 — the host waits for the client
+## to say it reached the step (so the first packet is not sent before it listens), and plays `build` as a
+## `work_anim_changed` of its own instead of placing a real block at the origin to trigger it.
 func work_anim_synced(h: Node) -> void:
 	if h._role == "host":
-		await h._await_settle(1.0)
+		var pid: String = h._root._networking.get_player_id(h._peer_id())
+		if pid == "" or not await h._await_client_ready("work_anim", pid):
+			h._report("work_anim_synced", "fail", "client_never_ready")
+			return
 		GameBus.work_anim_changed.emit(1, "chop")
 		await h._await_settle(1.5)
 		GameBus.work_anim_changed.emit(1, "")
-		GameBus.block_place_requested.emit(Vector3.ZERO, Vector3.UP, "", "Soil", {})
+		GameBus.work_anim_changed.emit(1, "build")
 		await h._await_settle(1.5)
 		h._report("work_anim_synced", h.verdict(true, true), "synced")
 		return
 	var w = h._root._work_anim_wiring
-	var chopped: bool = await h._await_until(func(): return "chop" in w.clip_history.get(1, []), h._step_timeout())
+	var ready_state := {}
+	var chopped: bool = await h._await_until(func():
+		h._announce_ready("work_anim", ready_state)
+		return "chop" in w.clip_history.get(1, []), h._step_timeout() * 4.0)
 	var built: bool = await h._await_until(func(): return w.clip_history.get(1, []).slice(maxi(w.clip_history.get(1, []).rfind("chop"), 0)).has("build"), h._step_timeout())
 	h._report("work_anim_synced", h.verdict(chopped and built, true), "synced" if chopped and built else ("no_chop" if not chopped else "no_build"))
 

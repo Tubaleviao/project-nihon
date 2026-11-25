@@ -1465,7 +1465,7 @@ func request_handshake() -> void:
 		_m3.send_roster_intent("list")
 		return
 	_deliver(1, { "type": "join_intent", "claimed_id": claimed_player_id, "friend_code": friend_code, "character": chosen_character,
-		"protocol": _m3.ServerStatus.PROTOCOL_VERSION })   # Phase 297: a host of another version refuses the join
+		"protocol": _m3.ServerStatus.PROTOCOL_VERSION, "game_version": _m3.ServerStatus.game_version() })   # Phase 297, #706
 
 ## Phase 53 — host side: tell the peer where it was placed when there is something to say (an
 ## unknown friend code fell back to the normal search). The message is a catalog key, short, and

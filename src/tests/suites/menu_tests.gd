@@ -238,7 +238,7 @@ func _test_join_failed_returns() -> void:
 	var root: GameRoot = GameRoot.new()
 	var w: MenuWiring = root._menu_wiring
 	var seen: Array = []
-	root.menu_return_requested.connect(func(k: String) -> void: seen.append(k))
+	root.menu_return_requested.connect(func(k: String, _a: Array) -> void: seen.append(k))
 	root._is_client = true
 	w.join_failed("menu.join.fail_unreachable")
 	assert_eq(seen, [], "a --client boot (not from the menu) stays where it is")

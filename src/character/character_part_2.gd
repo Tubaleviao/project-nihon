@@ -272,6 +272,7 @@ func trigger_work(instance_id: String, kind: String) -> String:
 	var clip: String = WorkAnim.resolve(kind, lengths) if inst.has("swing_lengths") else WorkAnim.clip_of(kind)
 	inst["locomotion"].trigger_attack(clip, float(lengths.get(clip, -1.0)))
 	inst["work_clip"] = clip
+	inst["work_serial"] = int(inst["locomotion"].swing_serial)   # #714: which swing is the work clip
 	return clip
 
 ## Phase 281 — turn the body to face `target` (the work target) at once; the horizontal offset only.
@@ -285,10 +286,16 @@ func face_toward(instance_id: String, target: Vector3) -> bool:
 	(inst["root"] as Node3D).rotation.y = atan2(-d.x, -d.z)   # the face is -Z, as in the movement turn
 	return true
 
-## Phase 281 — the hold ended: back to idle/locomotion.
+## Phase 281 — the hold ended: back to idle/locomotion. #714 — only while the pose is still the work clip: a combat
+## swing started since (a newer `swing_serial`), or no work clip at all, is left to play out.
 func stop_work(instance_id: String) -> void:
-	if sl._instances.has(instance_id):
-		sl._instances[instance_id]["locomotion"].end_attack()
+	if not sl._instances.has(instance_id):
+		return
+	var inst: Dictionary = sl._instances[instance_id]
+	var loco = inst["locomotion"]
+	if str(inst.get("work_clip", "")) != "" and int(inst.get("work_serial", -1)) == int(loco.swing_serial):
+		loco.end_attack()
+	inst["work_clip"] = ""
 
 ## Phase 159 — see `CharacterSlice.trigger_gesture`.
 func trigger_gesture(instance_id: String, clip: String, hold: bool, seat_lift: float = 0.0) -> bool:

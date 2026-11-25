@@ -2081,9 +2081,10 @@ func _test_net_harness_step_table() -> void:
 		names[str(s.get("name", ""))] = true
 	assert_eq(names.size(), steps.size(), "step names are unique — the driver keys on them")
 	assert_eq(str(steps[0].get("name", "")), "handshake", "the scenario starts with the handshake")
-	assert_eq(str(steps[steps.size() - 1].get("name", "")), "menu_join",
-		"and ends with a client re-joining through the main menu's join path (Phase 223)")
+	assert_eq(str(steps[steps.size() - 1].get("name", "")), "version_refused",
+		"and ends with a client of a forged build refused before any sync (#706)")
 	steps = steps.slice(0, steps.size() - 1)
+	assert_eq(str(steps.pop_back().get("name", "")), "menu_join", "after a client re-joining through the main menu's join path (Phase 223)")
 	assert_eq(str(steps.pop_back().get("name", "")), "character_roster", "after a client listing, making and entering its characters (Phase 226)")
 	assert_eq(str(steps.pop_back().get("name", "")), "market_names_seller", "after each side's market naming the other seller (Phase 292)")
 	assert_eq(str(steps.pop_back().get("name", "")), "client_loot_synced", "after ground loot taken and dropped by a client")

@@ -687,11 +687,11 @@ func _on_connection_failed() -> void:
 	root._menu_wiring.join_failed("menu.join.fail_unreachable")   # Phase 223
 
 ## Phase 297 — the host speaks another protocol: the join ends with the reason (`reason_key`, in both catalogs).
-func _on_join_refused(reason_key: String) -> void:
+func _on_join_refused(reason_key: String, args: Array) -> void:
 	if not root._is_client:
 		return
 	root._snapshot_pending = false
-	root._menu_wiring.join_failed(reason_key)
+	root._menu_wiring.join_failed(reason_key, args)
 
 func _on_server_disconnected() -> void:
 	if not root._is_client:

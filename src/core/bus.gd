@@ -85,7 +85,8 @@ signal ability_resolved(result: Dictionary)
 ## Emitted by NetworkingSlice when a remote peer connects.
 signal peer_connected(peer_id: int)
 ## Phase 297 — client: the host speaks a protocol this client does not (`reason_key` is a `menu.join.*` key).
-signal join_refused(reason_key: String)
+## #706 — `args` are the key's params: the host's build version, then this client's.
+signal join_refused(reason_key: String, args: Array)
 
 ## Emitted by NetworkingSlice when a remote peer disconnects.
 signal peer_disconnected(peer_id: int)
@@ -670,6 +671,11 @@ signal work_start_requested(kind: String, tree_id: String, position: Vector3, no
 signal work_cancel_requested(player_id: String)
 ## Host -> the worker alone: the duration the host will wait, the action (`dig` / `mine` / `chop`) and the material.
 signal work_started(key: String, duration: float, action: String, material: String)
+## #629 — host: `player_id`'s work on target `key` (a `WorkHost` key) began, lasting `duration` seconds, or ended
+## (`duration` 0). Drives the crack / shake mark every player in range sees (`WorkMarkWiring`).
+signal work_mark_changed(player_id: String, key: String, duration: float)
+## #629 — client: the host's work mark for target `key` (`duration` 0 = stop). Not yet validated: the wiring is.
+signal work_mark_synced(key: String, duration: float)
 
 ## Emitted by TreeSlice with the authoritative result of a chop. A client applies
 ## this instead of chopping locally.

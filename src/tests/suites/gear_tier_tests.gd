@@ -26,6 +26,7 @@ func register() -> void:
 	_run_test("gear tiers: refusal and tier labels are keys in en and pt_BR", _test_keys_in_both_locales)
 	_run_test("gear tiers: the client's wielded items drop a worn-out weapon, as the host does", _test_wielded_wear)
 	_run_test("gear tiers: hotbar and skill page redraw only on the local player's gear change", _test_gear_change_local_only)
+	_run_test("gear tiers: #712 a skill box with no action is dimmed, says why and sends nothing; a combat one fires", _test_no_action_boxes)
 	_run_test("gear tiers: a reason code travels as a key with refs that render as reason_text", _test_reason_msg)
 
 func _test_table_loads() -> void:
@@ -235,7 +236,9 @@ func _test_projections() -> void:
 	assert_eq(box.modulate, Color.WHITE, "wielding a master sword lights it again on the held-item sync")
 	bar.free()
 	assert_true(bool(Hotbar.skill_box_state("Unarmed", "novice", "")["available"]), "Unarmed needs nothing")
-	assert_true(bool(Hotbar.skill_box_state("Smithing", "novice", "")["available"]), "a non-combat skill is never gear-capped")
+	var smithing := Hotbar.skill_box_state("Smithing", "novice", "")
+	assert_false(bool(smithing["available"]), "a non-combat skill has no action, so its box is unavailable (#712)")
+	assert_eq(str(smithing["reason"]), Hotbar.NO_ACTION_REASON, "with the no-action reason, not a gear tier")
 	# Skill page rows.
 	var rows := GearTiers.ability_rows("Swordsmanship", "master", "FerriteShortSword")
 	assert_eq(rows.size(), 3, "a row per Swordsmanship ability")
@@ -436,3 +439,38 @@ func _free_host_rig(r: Dictionary) -> void:
 	r["n"].free()
 	r["reg"].free()
 	r["root"].free()
+
+## #712 — nothing resolves a non-combat skill, so its hotbar box must not pretend to: it is drawn dimmed with the
+## no-action reason (a key in both catalogs) and a press emits nothing. A combat skill box still fires, and the
+## combat wiring turns it into the ability intent the host resolves (`_test_host_refuses_peer_ability`).
+func _test_no_action_boxes() -> void:
+	var cats: Dictionary = I18n.parse_csv("res://locale/ui.csv")["catalog"]
+	for loc in ["en", "pt_BR"]:
+		assert_true(str((cats.get(loc, {}) as Dictionary).get(Hotbar.NO_ACTION_REASON, "")).strip_edges() != "",
+			"%s has the no-action reason" % loc)
+	assert_eq(I18n.reason_text(Hotbar.NO_ACTION_REASON), I18n.t(Hotbar.NO_ACTION_REASON), "the reason renders as its own key")
+	assert_true(Hotbar.fires("skill:Swordsmanship"), "a combat skill box fires")
+	assert_true(Hotbar.fires("skill:Unarmed"), "so does Unarmed")
+	for s in ["Smithing", "Alchemy", "Foraging"]:
+		assert_false(Hotbar.fires("skill:" + s), "%s has no action to fire" % s)
+	assert_false(Hotbar.fires("StoneKnife"), "an item is not a skill box")
+	var bar := Hotbar.new()
+	bar.tier_provider = func() -> Dictionary: return { "Swordsmanship": "master", "Smithing": "master" }
+	bar.weapon_provider = func() -> String: return "VeilsteelLongsword"
+	bar.build()
+	bar.slots[0] = "skill:Smithing"
+	bar.slots[1] = "skill:Swordsmanship"
+	bar._render()
+	var box: Button = bar._buttons[0]
+	assert_eq(box.modulate, Hotbar.DIMMED, "the Smithing box is dimmed")
+	assert_true(box.tooltip_text.contains(I18n.t(Hotbar.NO_ACTION_REASON)), "and its tooltip says it has no action")
+	assert_eq((bar._buttons[1] as Button).modulate, Color.WHITE, "a reachable combat skill box is lit")
+	var got: Array = []
+	var cb := func(slot: int, skill: String) -> void: got.append([slot, skill])
+	GameBus.skill_slot_triggered.connect(cb)
+	bar.activate(0)
+	assert_eq(got, [], "pressing the Smithing box sends nothing")
+	bar.activate(1)
+	GameBus.skill_slot_triggered.disconnect(cb)
+	assert_eq(got, [[1, "Swordsmanship"]], "pressing the combat box fires its skill")
+	bar.free()
