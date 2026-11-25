@@ -228,14 +228,7 @@ static func build_chunk_arrays_gd(chunk_pos: Vector2i, heightmap: Array, resolve
 					g, rect, origin_x, origin_z, corner_x - origin_x, corner_z - origin_z)
 	# The rare-vein deposit boxes (see the docstring): geometry only, never collision.
 	# Off the resolved list, so this half of the build is the worker's.
-	var deposit_vertices := PackedVector3Array()
-	var deposit_normals  := PackedVector3Array()
-	var deposit_colors   := PackedColorArray()
-	var deposit_indices  := PackedInt32Array()
-	for deposit in deposits:
-		MeshUtil.add_box_arrays(deposit_vertices, deposit_normals, deposit_colors, deposit_indices,
-			deposit["local_position"] if local else deposit["position"], deposit["size"], deposit["color"])
-	return {
+	var out := {
 		"vertices":    vertices,
 		"normals":     normals,
 		"colors":      colors,
@@ -243,12 +236,22 @@ static func build_chunk_arrays_gd(chunk_pos: Vector2i, heightmap: Array, resolve
 		"collision":   collision,
 		"quad_count":  quad_count,
 		"cell_count":  cell_count,
-		"deposit_vertices": deposit_vertices,
-		"deposit_normals":  deposit_normals,
-		"deposit_colors":   deposit_colors,
-		"deposit_indices":  deposit_indices,
-		"local":       local,
 	}
+	out.merge(deposit_arrays(deposits, local))
+	out["local"] = local
+	return out
+
+## The rare-vein deposit boxes of a resolved `deposits` list as `deposit_vertices` / `deposit_normals` /
+## `deposit_colors` / `deposit_indices` (chunk-local positions when `local`). The block mesher and the smooth
+## mesher's no-placed-block path both emit them through here (#612).
+static func deposit_arrays(deposits: Array, local: bool) -> Dictionary:
+	var dv := PackedVector3Array()
+	var dn := PackedVector3Array()
+	var dc := PackedColorArray()
+	var di := PackedInt32Array()
+	for deposit in deposits:
+		MeshUtil.add_box_arrays(dv, dn, dc, di, deposit["local_position"] if local else deposit["position"], deposit["size"], deposit["color"])
+	return { "deposit_vertices": dv, "deposit_normals": dn, "deposit_colors": dc, "deposit_indices": di }
 
 ## Queue this run's exposed side walls against all four neighbours. The NEIGHBOUR
 ## column comes from the same table the builder was handed — an EMPTY list is the
@@ -496,3 +499,8 @@ static func mesh_from_arrays(arrays: Dictionary) -> ArrayMesh:
 	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, surface, [], {}, flags)
 	return mesh
 
+## #614 — resolve, on the calling (main) thread, what the meshers otherwise load lazily: the smooth mesher's
+## reference back to this script. Called before every build dispatch, so a build started without a VoxelSlice
+## (`VoxelSlice._ready` warmed it alone) never reaches the ResourceLoader from a worker.
+static func warm_meshers() -> void:
+	VoxelSmooth.warm()

@@ -19,6 +19,10 @@ func register() -> void:
 	_run_test("work anim: #714 ending a hold never cuts a combat swing started since", _test_stop_work_keeps_swing)
 	_run_test("work anim: #714 a hold whose host session is gone stops instead of refreshing forever", _test_dead_hold_stops)
 	_run_test("work anim: #714 a hold longer than the remote expiry keeps playing on the host and on a viewer", _test_long_hold_refreshed)
+	_run_test("work anim: #714 the dissect loop ends on the pose it starts from (no pop to standing)", _test_dissect_loop_safe)
+	_run_test("work anim: #714 a client drops a work answer for a hold it released or a tree it left", _test_stale_answer_dropped)
+	_run_test("work anim: #714 a peer that leaves mid-hold has its loop stopped for the viewers", _test_leave_stops_loop)
+	_run_test("work anim: #714 the host plays build only for a placement that went through", _test_refused_place_no_build)
 
 
 func _fixture() -> Dictionary:
@@ -112,6 +116,8 @@ func _test_p281_wiring() -> void:
 	GameBus.harvest_resolved.emit("", "c1", "", [])
 	assert_false(w.is_working(1), "a resolved harvest stops the dissect loop")
 	GameBus.block_place_requested.emit(Vector3.ZERO, Vector3.UP, "", "Soil", {})
+	assert_false(w.is_working(1), "a placement the host did not make (no block placed) plays nothing (#714)")
+	_place_on_host()
 	assert_eq(loco.attack_clip, "build", "placing a block plays build")
 	assert_false(w._active[1]["loop"], "and plays once")
 	GameBus.work_cancel_requested.emit("")
@@ -274,6 +280,112 @@ func _test_dead_hold_stops() -> void:
 	w.tick(WorkAnimWiring.LOOP_REFRESH_SECONDS + 1.0)
 	assert_false(w.is_working(7), "no session on the host: the refresh ends the hold")
 	assert_eq(str(w._announced.get(7, "")), "", "and it is not announced again")
+	f["gr"]._networking = null
+	net.free()
+	_free_fixture(f)
+
+## The host's order for an accepted placement: the request, then the VoxelSlice's answer that the block went in.
+func _place_on_host(player_id: String = "", placed: bool = true) -> void:
+	GameBus.block_place_requested.emit(Vector3.ZERO, Vector3.UP, player_id, "Soil", {})
+	GameBus.block_place_resolved.emit(player_id, placed)
+
+## #714 — `build` played on every placement request, even one the host refused. Now the host plays it on the
+## VoxelSlice's answer, and only when the block went in.
+func _test_refused_place_no_build() -> void:
+	var f := _fixture()
+	var heard: Array = []
+	var cb := func(peer: int, kind: String) -> void: heard.append("%d:%s" % [peer, kind])
+	GameBus.work_anim_changed.connect(cb)
+	_place_on_host("", false)
+	assert_eq(heard.size(), 0, "a refused placement announces nothing")
+	_place_on_host()
+	assert_eq(heard, ["1:build"], "an accepted one announces build for its builder")
+	GameBus.block_place_requested.emit(Vector3.ZERO, Vector3.UP, "", "Soil", {})
+	assert_eq(heard.size(), 1, "a request alone (no answer yet) announces nothing on the host")
+	GameBus.work_anim_changed.disconnect(cb)
+	_free_fixture(f)
+
+## #714 — the dissect clip's last key kept the kneel while its first key stood up, so each loop restart popped the
+## body to standing. The first and last frames now match on every bone, with the hips still down.
+func _test_dissect_loop_safe() -> void:
+	var proot := AssetOverlay.load_rig_scene("models/player_rig.glb.raw")
+	add_child(proot)
+	var pp := proot.find_child("AnimationPlayer", true, false) as AnimationPlayer
+	var skel := proot.find_child("Skeleton3D", true, false) as Skeleton3D
+	assert_true(pp != null and skel != null and pp.has_animation("dissect"), "the rig has a dissect clip")
+	if pp == null or skel == null or not pp.has_animation("dissect"):
+		proot.queue_free()
+		return
+	pp.play("dissect")
+	var length := pp.get_animation("dissect").length
+	var poses: Array = []
+	for t in [0.0, length]:
+		pp.seek(t, true)
+		var frame: Array = []
+		for b in skel.get_bone_count():
+			frame.append(skel.get_bone_global_pose(b))
+		poses.append(frame)
+	var worst := 0.0
+	for b in skel.get_bone_count():
+		worst = maxf(worst, (poses[0][b] as Transform3D).origin.distance_to((poses[1][b] as Transform3D).origin))
+	assert_true(worst < 0.005, "the first and last frames match on every bone (worst %.3f m)" % worst)
+	pp.seek(0.0, true)
+	var root_bone := skel.find_bone("Root")
+	var drop := skel.get_bone_rest(root_bone).origin.y - skel.get_bone_pose_position(root_bone).y
+	assert_true(drop >= 0.30, "the loop starts already kneeling (hips %.2f m down)" % drop)
+	proot.queue_free()
+
+## #714 — a client's `work_started` comes back over the wire. One that lands after the hold was released played a
+## loop nothing would stop; one for a tree the player had left played on the new target. Both are dropped now.
+func _test_stale_answer_dropped() -> void:
+	var f := _fixture()
+	var w = f["w"]
+	f["gr"]._is_client = true
+	GameBus.work_started.emit("tree:t1", 1.0, "chop", "")
+	assert_false(w.is_working(1), "an answer with no hold open plays nothing")
+	GameBus.work_start_requested.emit("tree", "t1", Vector3.ZERO, Vector3.UP, {}, "")
+	GameBus.work_cancel_requested.emit("")
+	GameBus.work_started.emit("tree:t1", 1.0, "chop", "")
+	assert_false(w.is_working(1), "an answer landing after the release plays nothing")
+	GameBus.work_start_requested.emit("tree", "t2", Vector3.ZERO, Vector3.UP, {}, "")
+	GameBus.work_started.emit("tree:t1", 1.0, "chop", "")
+	assert_false(w.is_working(1), "an answer for the tree the player left plays nothing")
+	GameBus.work_started.emit("tree:t2", 1.0, "chop", "")
+	assert_true(w.is_working(1), "the answer for the held tree plays")
+	GameBus.work_cancel_requested.emit("")
+	GameBus.work_start_requested.emit("block", "", Vector3.ONE, Vector3.UP, {}, "")
+	GameBus.work_started.emit("block:1:2:3", 1.0, "mine", "")
+	assert_true(w.is_working(1), "a block hold takes the host's key as given")
+	GameBus.work_cancel_requested.emit("")
+	assert_true(WorkAnimWiring.answers_hold("*", "block:1") and not WorkAnimWiring.answers_hold("", "block:1"), "answers_hold: any block for a block hold, none when released")
+	assert_false(WorkAnimWiring.answers_hold("*", "tree:x"), "a block hold never takes a tree answer left behind")
+	assert_false(WorkAnimWiring.answers_hold("tree:x", "block:1"), "a tree hold never takes a block answer")
+	_free_fixture(f)
+
+## #714 — a peer that disconnected mid-hold left its loop running on every viewer until the 30 s remote expiry: the
+## host dropped its state without a stop. It now sends the stop to the peers in range of the last known position.
+func _test_leave_stops_loop() -> void:
+	var f := _fixture()
+	var w = f["w"]
+	var net := NetworkingSlice.new()
+	add_child(net)
+	net._role = NetworkingSlice.Role.HOST
+	var wire := MemoryTransport.new([5, 6])
+	net.set_transport(wire)
+	net.remember_player_state(5, Vector3(2, 0, 2))
+	net.remember_player_state(6, Vector3(4, 0, 4))
+	f["gr"]._networking = net
+	GameBus.work_anim_changed.emit(5, "chop")
+	assert_eq(str(w._announced.get(5, "")), "chop", "the host runs peer 5's chop loop")
+	wire.outbox.clear()
+	w._on_peer_disconnected(5)
+	var stops := wire.outbox.filter(func(e): return e["payload"].get("type", "") == "work_anim" and int(e["payload"].get("p", 0)) == 5 \
+		and str(e["payload"].get("k", "x")) == "")
+	assert_true(stops.size() >= 1 and stops.any(func(e): return int(e["peer_id"]) == 6), "the viewer in range is told the loop stopped")
+	assert_false(w._announced.has(5), "and the departed peer's state is gone")
+	wire.outbox.clear()
+	w._on_peer_disconnected(6)
+	assert_true(wire.outbox.is_empty(), "a peer with no loop running leaves without a stop")
 	f["gr"]._networking = null
 	net.free()
 	_free_fixture(f)

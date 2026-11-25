@@ -298,6 +298,14 @@ func _test_hammer_to_build() -> void:
 	assert_true(v.place_block(Vector3(16.0, 2.0, 16.0), Vector3.UP, "Ashite"), "a hammer in hand: placed")
 	assert_eq(inv.get_item_count("Ashite"), 1, "the block was spent")
 	assert_eq(inv.get_durability("StoneHammer"), dur, "the hammer did not wear")
+	# #714: the host answers each place request on the bus, so the builder's work clip plays only on a placement.
+	var answers: Array = []
+	var on_answer := func(pid: String, placed: bool) -> void: answers.append([pid, placed])
+	GameBus.block_place_resolved.connect(on_answer)
+	v._edit._on_place_requested(Vector3(20.0, 2.0, 20.0), Vector3.UP, "", "Ashite")
+	v._edit._on_place_requested(Vector3(24.0, 2.0, 24.0), Vector3.UP, "", "Ashite")
+	GameBus.block_place_resolved.disconnect(on_answer)
+	assert_eq(answers, [["", true], ["", false]], "a request that placed answers true, one with no block left answers false")
 	v.free()
 	inv.free()
 

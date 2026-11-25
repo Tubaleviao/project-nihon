@@ -17,6 +17,8 @@ func register() -> void:
 	_run_test("animation: a rig with no upper-body bones gets no upper-body attack node (#726)", _test_upper_attack_needs_upper_bones)
 	_run_test("animation: an attacker cancelled earlier in a due batch deals nothing; one state read per lone hit (#726)", _test_battle_impact_batch_cancel)
 	_run_test("animation: a pending hit lands at impact and is cancelled by range, death, stagger or a weapon switch (Phase 287)", _test_pending_hits)
+	_run_test("animation: a struck player is pushed away from the attacker, stopping at ground it cannot step onto (#726)", _test_player_knock_spot)
+	_run_test("animation: placing a block cancels the builder's pending hit, and only theirs (#726)", _test_place_cancels_swing)
 	_run_test("animation: a bodyless peer's swing is timed from the placeholder clip lengths, not a flat guess (Phase 287)", _test_placeholder_lengths)
 	_run_test("animation: repeated attacks inside the window play the combo variants, a pause restarts, a missing variant falls back (Phase 287)", _test_combo_chain)
 	_run_test("gestures: GameData lists every gesture with its clip and chat command", _test_p158_gesture_data)
@@ -463,6 +465,24 @@ func _test_placeholder_lengths() -> void:
 	assert_true(is_equal_approx(ComboChain.placeholder_length("unarmed", 0), 0.4), "an unarmed jab is 0.4 s")
 	for clip in ComboChain.PLACEHOLDER_LENGTHS:
 		assert_true(float(ComboChain.PLACEHOLDER_LENGTHS[clip]) > 0.0, "%s has a length" % clip)
+	# #726: the table is a second copy of the placeholder rig's clip data (`tools/gen_placeholder_glb.py`); tie it
+	# to the rig itself so a regenerated clip cannot leave the bodyless host's impact timing behind.
+	var proot := AssetOverlay.load_rig_scene("models/player_rig.glb.raw")
+	add_child(proot)
+	var pp := proot.find_child("AnimationPlayer", true, false) as AnimationPlayer
+	assert_true(pp != null, "the placeholder player rig has an AnimationPlayer")
+	if pp != null:
+		for clip in ComboChain.PLACEHOLDER_LENGTHS:
+			assert_true(pp.has_animation(clip), "the placeholder rig has %s" % clip)
+			if pp.has_animation(clip):
+				var real := pp.get_animation(clip).length
+				var listed := float(ComboChain.PLACEHOLDER_LENGTHS[clip])
+				assert_true(absf(real - listed) < 0.01, "PLACEHOLDER_LENGTHS.%s (%.2f s) matches the rig's clip (%.2f s)" % [clip, listed, real])
+		for weapon in ["unarmed", "one_hand", "two_hand", "tool"]:
+			for step in 4:
+				var c := ComboChain.clip_for(weapon, step)
+				assert_true(ComboChain.PLACEHOLDER_LENGTHS.has(c), "%s step %d's clip %s has a listed length" % [weapon, step, c])
+	proot.free()
 
 func _test_combo_chain() -> void:
 	var ch := CharacterSlice.new()
@@ -734,3 +754,43 @@ func _test_hit_feel_options() -> void:
 	GameSettings.set_value("camera_shake", before, null, false)
 	cam.free()
 	assert_false(HitFeel.hit_stop(null), "no tree, no hit-stop")
+
+## #726 — a gesture and a mining swing cancelled a pending hit, a block placement did not: the swing still landed
+## after the body had turned to build. The host's place request names the builder, so only that swing goes.
+func _test_place_cancels_swing() -> void:
+	var gr: Node = (load("res://src/core/game_root.gd") as GDScript).new()
+	var ch := CharacterSlice.new()
+	add_child(ch)
+	gr._character = ch
+	gr._registry = PlayerRegistry.new()
+	var b := BattleSliceP.new()
+	add_child(b)
+	gr._battle = b
+	gr._combat_wiring.wire(gr)
+	b.impact_queue = PendingHit.new()
+	b.impact_queue.start("player", "w0", "one_hand", "X", 0, 0.0, 0.5)
+	b.impact_queue.start("player_2_2_2", "w1", "one_hand", "X", 0, 0.0, 0.5)
+	GameBus.block_place_requested.emit(Vector3.ZERO, Vector3.UP, "", "Soil", {})
+	var due: Array = b.impact_queue.resolve_due(5.0, _impact_state())
+	assert_true(due.size() == 1 and str(due[0]["entry"]["attacker"]) == "player_2_2_2", "the local builder's hit is cancelled, the other player's still lands")
+	b.impact_queue.start("player_2_2_2", "w1", "one_hand", "X", 0, 0.0, 0.5)
+	GameBus.block_place_requested.emit(Vector3.ZERO, Vector3.UP, "player_2_2_2", "Soil", {})
+	assert_eq(b.impact_queue.size(), 0, "a remote builder's place request cancels that builder's hit")
+	gr._combat_wiring.unwire()
+	b.free()
+	ch.free()
+	gr._registry.free()
+	gr.free()
+
+## #726 — `push_struck` returned 0 for a player defender, so only creatures were knocked back by a landed blow.
+func _test_player_knock_spot() -> void:
+	const CW := preload("res://src/battle/combat_wiring.gd")
+	var open_ground := func(_spot: Vector3) -> bool: return true
+	var spot: Vector3 = CW.player_knock_spot(Vector3(5, 2, 0), Vector3(4, 2, 0), 0.8, open_ground)
+	assert_true(spot.distance_to(Vector3(5.8, 2, 0)) < 1e-4, "a light push moves the body its full 0.8 m away from the attacker (%s)" % spot)
+	var wall := func(s: Vector3) -> bool: return s.x < 5.45
+	spot = CW.player_knock_spot(Vector3(5, 2, 0), Vector3(4, 2, 0), 2.0, wall)
+	assert_true(absf(spot.x - 5.4) < 1e-4, "it stops before ground it cannot step onto (%s)" % spot)
+	assert_eq(CW.player_knock_spot(Vector3(5, 2, 0), Vector3(5, 2, 0), 2.0, open_ground), Vector3(5, 2, 0), "an attacker on the same spot pushes nowhere")
+	var blocked := func(_s: Vector3) -> bool: return false
+	assert_eq(CW.player_knock_spot(Vector3(5, 2, 0), Vector3(4, 2, 0), 2.0, blocked), Vector3(5, 2, 0), "a body against a wall stays put")

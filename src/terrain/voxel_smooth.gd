@@ -52,7 +52,6 @@ extends RefCounted
 ##   THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED.
 
 const VoxelConsts := preload("res://src/terrain/voxel_consts.gd")
-const MeshUtil := preload("res://src/core/mesh_util.gd")
 const NativeBuilder := preload("res://src/terrain/native_builder.gd")
 const CHUNK_SIZE := VoxelConsts.CHUNK_SIZE
 const TILE_SIZE := VoxelConsts.TILE_SIZE
@@ -75,8 +74,9 @@ const TOP_BAND := 0.3
 ## Offsets a cell's level into a non-negative vertex key (BEDROCK_DEPTH / GRID is -192).
 const LEVEL_OFFSET := 1024
 
-## `voxel_mesh.gd` preloads this script, so it cannot be a `const` here. Resolved once on the main thread
-## (`warm`, from `VoxelSlice._ready`), so the worker hot path never goes back to the ResourceLoader.
+## `voxel_mesh.gd` preloads this script, so it cannot be a `const` here. Resolved on the main thread
+## (`warm`, through `VoxelMesh.warm_meshers` from `VoxelSlice._ready` and every chunk build dispatch), so the
+## worker hot path never goes back to the ResourceLoader.
 static var _voxel_mesh_script: GDScript = null
 
 static func warm() -> void:
@@ -128,19 +128,15 @@ static func _has_placed(resolved: Dictionary) -> bool:
 				return true
 	return false
 
-## The block pass's result for a chunk with no placed run: no faces, only the deposit boxes.
+## The block pass's result for a chunk with no placed run: no faces, only the deposit boxes (#612: emitted by the
+## block mesher's own `deposit_arrays`, not a second copy of its loop).
 static func _deposits_only(resolved: Dictionary, local: bool) -> Dictionary:
-	var dv := PackedVector3Array()
-	var dn := PackedVector3Array()
-	var dc := PackedColorArray()
-	var di := PackedInt32Array()
-	for deposit in resolved.get("deposits", []):
-		MeshUtil.add_box_arrays(dv, dn, dc, di, deposit["local_position"] if local else deposit["position"], deposit["size"], deposit["color"])
-	return {
+	var out := {
 		"vertices": PackedVector3Array(), "normals": PackedVector3Array(), "colors": PackedColorArray(),
 		"indices": PackedInt32Array(), "collision": PackedVector3Array(), "quad_count": 0, "cell_count": 0,
-		"deposit_vertices": dv, "deposit_normals": dn, "deposit_colors": dc, "deposit_indices": di,
 	}
+	out.merge(_voxel_mesh().deposit_arrays(resolved.get("deposits", []), local))
+	return out
 
 ## The smooth half alone: the natural runs' surface. `quad_count` counts sample edges crossed.
 static func build_natural_arrays(chunk_pos: Vector2i, heightmap: Array, resolved: Dictionary, local: bool = false) -> Dictionary:

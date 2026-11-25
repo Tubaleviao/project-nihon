@@ -353,6 +353,7 @@ func _dispatch_build(chunk_pos: Vector2i) -> void:
 	var revision: int = int(sl.voxel_slice.chunk_revision(chunk_pos))
 	var seed_v: int = int(sl.terrain_slice.get_world_seed())
 	TerrainWeights.warm()   # Phase 242: the material table the worker's weights read
+	VoxelMesh.warm_meshers()   # #614: the smooth mesher's back-reference, resolved here, never on a worker
 	var result: Array = [null]
 	var job := func() -> void:
 		if not geometry:
@@ -370,6 +371,8 @@ func _dispatch_build(chunk_pos: Vector2i) -> void:
 		"heightmap": heightmap,
 		"revision":  revision,
 		"result":    result,
+		"disk_key":  dispatch_disk_key(chunk_pos, 1),   # #679
+		"disk_lod":  1,
 	}
 
 ## Phase 191 — a chunk built moments ago and unchanged since attaches from the cache, with no worker task.
@@ -471,12 +474,24 @@ func disk_note(chunk: Vector2i, lod: int, arrays: Dictionary, heightmap: Array, 
 			disk_attaches += 1
 			disk_usec += int((entry["result"] as Array)[2])
 		return
+	# #679: the key of the state the build read, taken at dispatch. Computed here, an edit or a new record landing
+	# while the worker ran stored the old mesh under the new state's key, and the next visit attached it as current.
+	var at_dispatch: Variant = entry.get("disk_key", null)
+	if at_dispatch == null or int(entry.get("disk_lod", lod)) != lod:
+		return   # no key from dispatch (no disk cache then) or the build came back at another level: not stored
 	var raw := DiskChunkCache.encode(arrays, heightmap)
 	if raw.is_empty():
 		return
-	var key := DiskChunkCache.key_of(disk_signature(chunk, lod))
+	var key := int(at_dispatch)
 	var disk := disk_cache
 	disk.run_async(func() -> void: disk.write(mesh_layer(lod), chunk, key, raw))
+
+## #679 — the disk key of `chunk` at `lod` for the state a build dispatched now reads (null without a disk cache).
+## `disk_note` stores the finished mesh under it, never under the state found at attach.
+func dispatch_disk_key(chunk: Vector2i, lod: int) -> Variant:
+	if disk_cache == null or not sl.keeps_render() or sl.skips_geometry():
+		return null
+	return DiskChunkCache.key_of(disk_signature(chunk, lod))
 
 ## Phase 244 — a chunk built in an earlier visit or session comes back from the disk cache: a worker decodes
 ## it (no meshing) and it attaches like any finished build. A damaged entry is dropped and the chunk builds.
@@ -592,6 +607,8 @@ func dispatch_worker_noise_build(chunk_pos: Vector2i, key: String) -> void:
 		"heightmap": [],
 		"revision":  b["revision"],
 		"result":    b["result"],
+		"disk_key":  dispatch_disk_key(chunk_pos, int(b["lod"])),   # #679
+		"disk_lod":  int(b["lod"]),
 	}
 
 ## Phase 244 — the generator's heightmap for `chunk` from the host's gen layer, or [] on a miss or a bad entry.
@@ -607,6 +624,7 @@ static func _gen_read(gen: Variant, chunk: Vector2i, key: int) -> Array:
 func noise_build_job(chunk_pos: Vector2i, known: Array = []) -> Dictionary:   # `known`: the chunk's own built map, reused
 	TerrainSliceScript.warm_polar_caches()   # the static caches the generator reads, filled here on the main thread
 	TerrainWeights.warm()   # Phase 242: the material table the worker's weights read
+	VoxelMesh.warm_meshers()   # #614: the smooth mesher's back-reference, resolved here, never on a worker
 	var voxel: Node = sl.voxel_slice
 	var cached: Array = known if not known.is_empty() else voxel.take_cached_heightmap(chunk_pos)
 	# #437 — a dedicated server attaches no geometry, so its task only generates the map: no gather,

@@ -418,7 +418,7 @@ func _ready() -> void:
 	# is WRITTEN here, before the tree streams anything, and read-only afterwards. The bands come
 	# off the generated fabric resources (`depthBand`, `leyGated`), so this cannot be a `const`.
 	OreField.warm()
-	VoxelMesh.VoxelSmooth.warm()   # Phase 240: resolved here, so no worker reaches the ResourceLoader
+	VoxelMesh.warm_meshers()   # Phase 240: resolved here, so no worker reaches the ResourceLoader (#614: not through the private preload)
 	native_runs_cfg()   # Phase 168: snapshot the native build_runs tables on the main thread
 	WorldShape.warm()
 	_world_floor = StaticBody3D.new()

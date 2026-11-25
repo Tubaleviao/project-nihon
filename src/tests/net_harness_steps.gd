@@ -762,9 +762,15 @@ func client_attack_lands(h: Node) -> void:
 				h._root._creature.apply_creature_state(ATTACK_PROBE_ID, "ForestBoar", "idle", WorldPos.to_scene(at, Vector2i.ZERO))
 			# Re-pinned every frame, not once per lap: the host's AI reacts to a player this close (a flee runs
 			# 4.5 m/s), so a probe pinned twice a second spent most of the lap out of the client's 3 m reach.
+			# #727 — pinned at the peer's reported height, not snapped to the host's ground: a client standing or
+			# hanging where the host's surface differs (an unbuilt chunk, a predicted block) saw the probe more than
+			# the 3 m reach below or above it and never swung at it. The position is re-read each frame too, so a
+			# report that lands mid-lap moves the probe at once.
 			var lap_end: int = Time.get_ticks_msec() + 500
 			while Time.get_ticks_msec() < lap_end and int(rounds["n"]) == 0:
-				h._root._creature.set_instance_pos(ATTACK_PROBE_ID, at)
+				at = h._root._peer_wiring.peer_exact_pos(peer)
+				at = { "chunk": at["chunk"], "local": (at["local"] as Vector3) + Vector3(0.75, 0.0, 0.0) }
+				h._root._creature.set_instance_pos(ATTACK_PROBE_ID, at, false)
 				await h.get_tree().process_frame
 			landed = int(rounds["n"]) > 0
 		GameBus.combat_hit_resolved.disconnect(on_hit)
@@ -810,6 +816,7 @@ func client_attack_lands(h: Node) -> void:
 			swung["n"] = int(swung["n"]) + 1
 			var target: String = h._root._creature.nearest_creature(h._root._player.get_world_pos(), PlayerSlice.ATTACK_RANGE)
 			swung["target"] = "probe" if target == ATTACK_PROBE_ID else ("none" if target == "" else "other")
+			swung["gap"] = probe_gap(h)
 			h._root._player._try_attack()
 		return false, h._step_timeout() * 3.0)
 	GameBus.combat_hit_synced.disconnect(on_synced)
@@ -822,8 +829,18 @@ func client_attack_lands(h: Node) -> void:
 		killed = await h._await_until(func() -> bool: return bool(seen.get("killed", false)), h._step_timeout())
 	GameBus.tutorial_event.disconnect(on_tut)
 	h._report("client_attack_lands", h.verdict(got and killed, true), "host_resolved" if got and killed else (
-		"no_synced_swing-after-%d-target_%s-probe%d-carrying%d" % [int(swung["n"]), str(swung.get("target", "none")),
-		int(h._root._creature._instances.has(ATTACK_PROBE_ID)), int(h._root._player.carrying)] if not got else "kill_notice_missing"))
+		"no_synced_swing-after-%d-target_%s-probe%d-carrying%d-gap_%s" % [int(swung["n"]), str(swung.get("target", "none")),
+		int(h._root._creature._instances.has(ATTACK_PROBE_ID)), int(h._root._player.carrying), str(swung.get("gap", "none"))]
+		if not got else "kill_notice_missing"))
+
+## #727 — the client's offset from its own body to its copy of the attack probe, as "<horizontal>h<vertical>v" in
+## whole decimetres ("none" while it has no copy), so a failed step says whether the probe was out of reach and how.
+static func probe_gap(h: Node) -> String:
+	var creature: Node = h._root._creature
+	if not creature._instances.has(ATTACK_PROBE_ID):
+		return "none"
+	var off: Vector3 = WorldPos.offset_between(h._root._player.get_world_pos(), creature._instances[ATTACK_PROBE_ID]["pos"])
+	return "%dh%dv" % [roundi(Vector2(off.x, off.z).length() * 10.0), roundi(off.y * 10.0)]
 
 ## Ground loot across the wire. The host lays a pickup beside the peer; the client must see it, take it through
 ## the player's pickup request (the host checks reach and the bag, the pickup leaves both sides and the client's

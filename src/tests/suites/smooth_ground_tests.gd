@@ -13,6 +13,7 @@ const STONE := Color(0.5, 0.5, 0.5)
 
 func register() -> void:
 	_run_test("smooth ground: a flat column gives a flat surface at the run's top", _test_flat)
+	_run_test("smooth ground: VoxelMesh.warm_meshers resolves the smooth mesher's back-reference (#614)", _test_warm_meshers)
 	_run_test("smooth ground: a 45 degree ramp of runs gives normals within 5 degrees of the ramp", _test_ramp_normals)
 	_run_test("smooth ground: an overhang and a one-tile tunnel give a closed surface", _test_closed)
 	_run_test("smooth ground: two neighbouring chunks share their border vertices exactly", _test_seam, true)
@@ -470,3 +471,16 @@ func _test_diagonal_step() -> void:
 	assert_false(StepUpGate.allowed(edited, pos, Vector3(-1, 0, 1).normalized(), Vector3.ZERO, 4.0, PlayerSlice.STEP_UP_HEIGHT), "natural ground ahead: no step-up")
 	assert_eq(edited.reads, 0, "and no column's runs were built for it")
 	edited.free()
+
+## #614 — only `VoxelSlice._ready` warmed the smooth mesher, so a build dispatched with no VoxelSlice ready could
+## load `voxel_mesh.gd` from a worker. The chunk dispatch now warms it through `VoxelMesh.warm_meshers`.
+func _test_warm_meshers() -> void:
+	var smooth: GDScript = load("res://src/terrain/voxel_smooth.gd")
+	var mesh: GDScript = load("res://src/terrain/voxel_mesh.gd")
+	var kept: Variant = smooth._voxel_mesh_script
+	smooth._voxel_mesh_script = null
+	mesh.warm_meshers()
+	assert_eq(smooth._voxel_mesh_script, mesh, "the back-reference is the block mesher's script after warming")
+	smooth._voxel_mesh_script = kept if kept != null else mesh
+	var src := FileAccess.get_file_as_string("res://src/terrain/chunk_part_1.gd")
+	assert_eq(src.count("VoxelMesh.warm_meshers()"), 2, "both chunk build dispatches warm the meshers on the main thread")

@@ -26,6 +26,7 @@ func _connect_all() -> void:
 	connect_bus(GameBus.tree_chop_requested, _on_completion_tree)
 	connect_bus(GameBus.block_mine_requested, _on_completion_block)
 	connect_bus(GameBus.block_place_requested, _on_place)
+	connect_bus(GameBus.block_place_resolved, _on_place_resolved)
 	connect_bus(GameBus.station_placed_by_me, _on_station_placed_by_me)
 	connect_bus(GameBus.work_anim_changed, _on_anim_changed)
 	connect_bus(GameBus.harvest_started, _on_harvest_started)
@@ -33,7 +34,11 @@ func _connect_all() -> void:
 	connect_bus(GameBus.peer_disconnected, _on_peer_disconnected)
 
 ## A peer that left takes its per-peer state with it (peer ids are not reused, so the maps would only grow).
+## #714 — host: a loop it was still running is stopped for the viewers in range (its last position is kept past
+## the disconnect), instead of playing on each viewer's copy until the remote expiry.
 func _on_peer_disconnected(peer: int) -> void:
+	if not root._is_client and str(_announced.get(peer, "")) != "":
+		_send(peer, "")
 	for m: Dictionary in [_active, last_clip, clip_history, _announced, strikes, _since_sent]:
 		m.erase(peer)
 
@@ -71,18 +76,39 @@ var _face_target: Variant = null
 func _on_start_requested(kind: String, tree_id: String, position: Vector3, _normal: Vector3, _exact: Dictionary, player_id: String) -> void:
 	if player_id != "" and player_id != "player":
 		return
+	_hold_key = ("tree:" + tree_id) if kind == "tree" else ANY_TARGET
 	_face_target = null
 	if kind == "tree" and root._tree != null and root._tree._trees.has(tree_id):
 		_face_target = root._tree._trees[tree_id]["position"]
 	elif kind == "block":
 		_face_target = position
 
+## #714 — client: the local hold the host's next `work_started` answers: "" when none is open (released, or never
+## pressed), `tree:<id>` for a tree, ANY_TARGET for a block (its key is the host's to name).
+var _hold_key := ""
+const ANY_TARGET := "*"
+
 ## The local player's hold was answered: its work kind is the action (dig / mine / chop).
-func _on_own_work_started(_key: String, _duration: float, action: String, _material: String) -> void:
+func _on_own_work_started(key: String, _duration: float, action: String, _material: String) -> void:
+	# #714: on a client the answer crosses the wire, so it can land after the hold was released (the loop then
+	# played on with no hold to stop it) or after a retarget to another tree. WorkHold drops those answers the
+	# same way. A host answers its own request inside the request, so it has nothing stale to drop.
+	if root._is_client and not answers_hold(_hold_key, key):
+		_face_target = null
+		return
 	_announce(_local_peer(), action)
+
+## #714 — whether a `work_started` for `key` answers the open hold `hold_key` (see `_hold_key`).
+static func answers_hold(hold_key: String, key: String) -> bool:
+	if hold_key == "":
+		return false
+	if hold_key == ANY_TARGET:
+		return not key.begins_with("tree:")   # a block hold: any block key, never a tree left behind
+	return key == hold_key
 
 func _on_own_cancel(player_id: String) -> void:
 	if player_id == "":
+		_hold_key = ""
 		_announce(_local_peer(), "")
 
 ## A completed hold ends the loop; a chained next target restarts it with its own `work_started`.
@@ -94,10 +120,15 @@ func _on_completion_block(_pos: Vector3, _normal: Vector3, player_id: String, _e
 	if player_id == "":
 		_announce(_local_peer(), "")
 
+## A client plays its own placement at once, as a prediction (the host answers a refusal with the block itself).
 func _on_place(_pos: Vector3, _normal: Vector3, player_id: String, _material: String, _exact: Dictionary) -> void:
-	if root._is_client:
-		if player_id == "" or player_id == "player":
-			_play(_local_peer(), "build")
+	if root._is_client and (player_id == "" or player_id == "player"):
+		_play(_local_peer(), "build")
+
+## #714 — host: the VoxelSlice's answer to a place request. A placement it refused (no hammer, no block in the pack,
+## out of reach, someone else's claim) plays nothing; before, every request played `build` for everyone in range.
+func _on_place_resolved(player_id: String, placed: bool) -> void:
+	if root._is_client or not placed:
 		return
 	var peer := 1
 	if player_id != "" and player_id != "player" and player_id != root._registry.local_player_id:

@@ -605,6 +605,11 @@ signal block_mined(material: String, quantity: int, position: Vector3)
 ## Emitted by VoxelSlice when a block is placed.
 signal block_placed(material: String, position: Vector3)
 
+## #714 — host: the answer to one `block_place_requested`, emitted by VoxelSlice right after it tried the placement.
+## player_id : String — the request's actor, as the request named it ("" = the local player)
+## placed    : bool   — whether the block went in (false: refused — no hammer, no block, out of reach, a claim)
+signal block_place_resolved(player_id: String, placed: bool)
+
 ## Phase 205 — the host: a hit on someone else's structure block left it standing at `fraction` of its base
 ## durability. Networking carries it to the peers in range of `position`.
 signal block_damaged(position: Vector3, fraction: float)

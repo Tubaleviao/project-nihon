@@ -919,7 +919,8 @@ func _on_place_requested(position: Vector3, normal: Vector3, player_id: String, 
 	if s.is_authoritative:
 		# `material` as received: `place_block` decides whether "" may fall back to this
 		# machine's own selection (only for the local actor, never for a remote one).
-		s.place_block(position, normal, material, player_id, exact)
+		var placed: bool = s.place_block(position, normal, material, player_id, exact)
+		GameBus.block_place_resolved.emit(player_id, placed)   # #714: the builder's work clip plays only on a placement
 	else:
 		var chosen = material if material != "" else s._place_material
 		var seq: int = s._predict.predict("place", position, normal, chosen) if _holds(chosen) else 0
