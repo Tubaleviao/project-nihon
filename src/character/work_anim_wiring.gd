@@ -202,6 +202,14 @@ func _refresh_loops(delta: float) -> void:
 		if kind == "":
 			_since_sent.erase(peer)
 			continue
+		if not _hold_alive(peer, kind):
+			# The host's work session is gone without a stop reaching here (death, abandoned hold): end the clip
+			# for everyone instead of refreshing it forever.
+			_announced[peer] = ""
+			_since_sent.erase(peer)
+			_play(peer, "")
+			_send(peer, "")
+			continue
 		if _active.has(peer):
 			_active[peer]["age"] = 0.0   # the host knows the hold still runs: its own copy does not expire
 		var t := float(_since_sent.get(peer, 0.0)) + delta
@@ -209,6 +217,16 @@ func _refresh_loops(delta: float) -> void:
 			t = 0.0
 			_send(peer, kind)
 		_since_sent[peer] = t
+
+## Host: does a running `kind` loop of `peer` still have a live work session? A tree/block hold lives in the
+## WorkHost session; other loops (a dissect) and a host without an enforcing WorkHost have no session to check.
+func _hold_alive(peer: int, kind: String) -> bool:
+	if kind == "dissect" or peer == 1 or root._networking == null or not root._networking.has_meta("work_host"):
+		return true
+	var host: Variant = root._networking.get_meta("work_host")
+	if host == null or not bool(host.enforce):
+		return true
+	return bool(host.sessions.has_session(str(root._networking.get_player_id(peer))))
 
 func tick(delta: float) -> void:
 	_refresh_loops(delta)

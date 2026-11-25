@@ -17,6 +17,7 @@ func register() -> void:
 	_run_test("work anim: another peer's work plays on its copy", _test_p281_peer_copy)
 	_run_test("work anim: a peer's copy with no rig still plays the kind's own clip", _test_p281_rigless_copy)
 	_run_test("work anim: #714 ending a hold never cuts a combat swing started since", _test_stop_work_keeps_swing)
+	_run_test("work anim: #714 a hold whose host session is gone stops instead of refreshing forever", _test_dead_hold_stops)
 	_run_test("work anim: #714 a hold longer than the remote expiry keeps playing on the host and on a viewer", _test_long_hold_refreshed)
 
 
@@ -252,4 +253,27 @@ func _test_long_hold_refreshed() -> void:
 	for i in int((WorkAnimWiring.REMOTE_LOOP_MAX_SECONDS + 1.0) / 0.5):
 		w.tick(0.5)
 	assert_false(w.is_working(7), "an unrefreshed remote loop expires")
+	_free_fixture(f)
+
+
+## A hold whose WorkHost session vanished without a stop (death, abandoned hold) is ended for everyone at the next
+## refresh instead of being re-announced forever.
+func _test_dead_hold_stops() -> void:
+	var f := _fixture()
+	var w = f["w"]
+	var ch: CharacterSlice = f["ch"]
+	var peer_iid: String = ch.create_character_from_recipe({"skeleton": "HumanoidSkeleton"}, Vector3.ZERO)
+	assert_true(ch.attach_rig(peer_iid, "models/player_rig.glb.raw"), "the peer's copy has the rig")
+	ch.bind_peer_character(7, peer_iid)
+	var host = (load("res://src/core/work_host.gd") as GDScript).new()
+	var net := NetworkingSlice.new()
+	net.set_meta("work_host", host)
+	f["gr"]._networking = net
+	GameBus.work_anim_changed.emit(7, "chop")
+	assert_true(w.is_working(7), "the host plays peer 7's chop")
+	w.tick(WorkAnimWiring.LOOP_REFRESH_SECONDS + 1.0)
+	assert_false(w.is_working(7), "no session on the host: the refresh ends the hold")
+	assert_eq(str(w._announced.get(7, "")), "", "and it is not announced again")
+	f["gr"]._networking = null
+	net.free()
 	_free_fixture(f)
