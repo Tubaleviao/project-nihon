@@ -11,6 +11,12 @@ const FALLBACK_CLIP := "attack"
 static func _res() -> Resource:
 	return GameData.WORLD_SYSTEMS.get("CombatCombos", null)
 
+## #726 — true when `clip` is one of the fabric's rig-contract attack clips (`CombatCombos.attackClips`).
+static func is_contract_clip(clip: String) -> bool:
+	var res := _res()
+	var clips: Variant = res.get("attackClips") if res != null else null
+	return clips is Array and (clips as Array).has(clip)
+
 static func _chains() -> Dictionary:
 	var res := _res()
 	var v: Variant = res.get("chains") if res != null else null

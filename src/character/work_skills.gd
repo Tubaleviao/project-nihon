@@ -16,9 +16,7 @@ const SkillFocus := preload("res://src/character/skill_focus.gd")
 const SINGLE_KINDS := ["build", "dismantle", "repair", "lockpick"]
 ## Rows of the table with no grant site yet, and why. The suite fails on any other row with no grant site
 ## and on an entry here that gained one, so wiring a row means removing it from this list.
-const UNWIRED := {
-	"gather.plant": "no runtime forage action exists yet",
-}
+const UNWIRED := {}
 
 static func _res() -> Resource:
 	return GameData.WORLD_SYSTEMS.get("WorkSkills", null)
@@ -76,6 +74,24 @@ static func bonus_factor(skill: String, tier: String) -> float:
 		return 1.0
 	var v: Variant = (row.get("byTier", {}) as Dictionary).get(tier, 1.0)
 	return float(v) if (v is float or v is int) and float(v) > 0.0 else 1.0
+
+## #646 — the units a gather of `base` units gives with a yield `factor`: the whole part always, and one more
+## unit with the chance of the fraction (`roll` in [0, 1), from the host's own seeded hash). 1.15 on 1 unit gives
+## 2 units 15% of the time, so the expected yield is `base * factor`.
+static func yield_units(base: int, factor: float, roll: float) -> int:
+	var want := float(maxi(base, 0)) * maxf(factor, 1.0)
+	var whole := floori(want)
+	return whole + (1 if roll < want - float(whole) else 0)
+
+## #646 — host: the units `player_id` ("" = this machine's player) takes from one plant gathered by hand: the
+## Foraging tier's `yield` factor (`bonuses`) over `base`, rolled with `roll`. Novice (or no registry) gives `base`.
+static func forage_units(registry: Object, player_id: String, base: int, roll: float) -> int:
+	var skill := bonus_skill("forage", "yield")
+	var pid := _worker(registry, player_id, { "skill": skill })
+	var tier := ""
+	if skill != "" and pid != "" and registry.has_method("get_skill_tier"):
+		tier = str(registry.get_skill_tier(pid, skill))
+	return yield_units(base, bonus_factor(skill, tier) if skill != "" else 1.0, roll)
 
 ## `{ tier: cumulative XP }` from the fabric's `tiers` ({} when absent).
 static func tiers() -> Dictionary:

@@ -1060,8 +1060,8 @@ func _on_carcass_drop_intent(_player_id: String) -> void:
 	if _role == Role.CLIENT:
 		_broadcast({ "type": "carcass_drop_intent" })
 
-func send_combat_hit(attacker_key: String, defender_key: String, outcome: String, position: Vector3) -> void:
-	_m2.send_combat_hit(attacker_key, defender_key, outcome, position)
+func send_combat_hit(attacker_key: String, defender_key: String, outcome: String, position: Vector3, clip: String = "") -> void:
+	_m2.send_combat_hit(attacker_key, defender_key, outcome, position, clip)
 
 func send_creature_killed(peer_id: int, creature_id: String) -> void: _m2.send_creature_killed(peer_id, creature_id)
 func send_player_damaged(peer_id: int, damage: float, attacker_id: String) -> void: _m2.send_player_damaged(peer_id, damage, attacker_id)

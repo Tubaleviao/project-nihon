@@ -207,8 +207,13 @@ static func build_tree(player: AnimationPlayer) -> AnimationTree:
 			continue
 		var shot := AnimationNodeOneShot.new()
 		if spec[0] == UPPER_NODE:
+			# #726: a rig whose bones match none of `UPPER_BONES` would get an empty filter, so the moving swing
+			# would play nothing; without the node the swing falls back to the full-body Attack state.
+			var paths := upper_body_paths(player)
+			if paths.is_empty():
+				continue
 			shot.filter_enabled = true
-			for path in upper_body_paths(player):
+			for path in paths:
 				shot.set_filter_path(path, true)
 		shot.fadein_time = 0.05
 		shot.fadeout_time = 0.1

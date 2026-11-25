@@ -185,16 +185,19 @@ func send_player_damaged(peer_id: int, damage: float, attacker_id: String) -> vo
 ## attacker and the target. Keys are "p:<peer id>" (a player; the host's own body is peer 1) or
 ## "c:<creature id>"; nothing else rides along, so no identity or health leaves the host. Animation
 ## only: a client never reads damage or outcome from it as game state.
-func send_combat_hit(attacker_key: String, defender_key: String, outcome: String, position: Vector3) -> void:
+func send_combat_hit(attacker_key: String, defender_key: String, outcome: String, position: Vector3, clip: String = "") -> void:
 	if sl._role != sl.Role.HOST:
 		sl.Diag.warn("NetworkingSlice: send_combat_hit called on non-host — dropped")
 		return
-	sl._broadcast_aoi({
+	var msg := {
 		"type": "combat_hit",
 		"a":    attacker_key,
 		"d":    defender_key,
 		"o":    outcome,
-	}, position)
+	}
+	if clip != "":
+		msg["c"] = clip   # #726: the combo clip of a "swing", so viewers play the host's step
+	sl._broadcast_aoi(msg, position)
 
 ## Phase 281 — host → clients in range of `position`: peer `subject_peer` (the host's own body is peer 1) started
 ## working (`kind` is a work kind) or stopped (""). Animation only.

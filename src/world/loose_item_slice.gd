@@ -21,6 +21,9 @@ const TILE := 4.0
 const DRAW_RADIUS := 48.0
 const MAX_TILE := 20000000   # an id naming a tile past the planet is refused
 const KINDS := [StoneTools.BRANCH, StoneTools.LOOSE_STONE]
+## #646 — loose items gathered by hand as plants: picking one is foraging (Foraging XP, the tier's yield bonus).
+const FORAGED_KINDS := [StoneTools.BRANCH]
+const WorkSkills := preload("res://src/character/work_skills.gd")
 ## Phase 279 — picking up is the `pick_up` input action (E by default; bare, Alt+letter is a window).
 const InputLabels := preload("res://src/ui/input_labels.gd")
 ## A remote pick is checked against the peer's last reported position, which trails the body by a report
@@ -209,17 +212,32 @@ func pick(id: String, player_id: String = "") -> Dictionary:
 		if Vector2(p.x, p.z).distance_to(it["xz"]) > float(NewcomerGrounds.rule()["pickReachMetres"]) + 1.0:
 			return { "success": false, "reason": "out_of_reach" }
 	var inv := inventory_for(player_id)
-	if inv == null or not inv.has_method("add_item") or not inv.add_item(str(it["kind"]), 1):
-		return { "success": false, "reason": "no_inventory" }
+	var kind := str(it["kind"])
+	var foraged := is_foraged(kind)
 	var regrow_at := _now() + float(NewcomerGrounds.rule()["looseRegrowSeconds"])
+	# #646: a plant gathered by hand gives the Foraging tier's yield (rolled from the host's own seeded hash).
+	var units := WorkSkills.forage_units(player_registry, player_id, 1, forage_roll(id, regrow_at)) if foraged else 1
+	if inv == null or not inv.has_method("add_item") or not inv.add_item(kind, units):
+		return { "success": false, "reason": "no_inventory" }
 	_taken[id] = regrow_at
 	_last_pick[player_id] = _now()
+	if foraged:
+		WorkSkills.grant(player_registry, player_id, WorkSkills.gather_row("plant"))   # #646 — foraging grows Foraging
 	_push_inventory(player_id, inv)
 	GameBus.loose_picked.emit(id, regrow_at)
 	_broadcast_state({ "type": "loose_picked", "id": id, "regrow_at": regrow_at })
 	if render_visuals:
 		redraw()
-	return { "success": true, "reason": "", "item": it["kind"] }
+	return { "success": true, "reason": "", "item": it["kind"], "units": units }
+
+## #646 — true for a loose item gathered by hand as a plant (a pick is a forage).
+static func is_foraged(kind: String) -> bool:
+	return FORAGED_KINDS.has(kind)
+
+## #646 — the yield roll of one forage, in [0, 1): a pure function of the item and the pick's regrow time, so the
+## host decides it and nothing a client sends moves it.
+static func forage_roll(id: String, regrow_at: float) -> float:
+	return float(posmod(hash([id, regrow_at, "forage"]), 10000)) / 10000.0
 
 func _push_inventory(player_id: String, inv: Node) -> void:
 	if player_id == "":

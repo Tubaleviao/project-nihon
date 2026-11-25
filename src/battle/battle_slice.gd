@@ -271,22 +271,28 @@ func _on_combat_round_requested(attacker_id: String, defender_id: String) -> voi
 	resolve_round(attacker_id, defender_id, held)
 
 ## Phase 287 — resolve the hits whose impact time has come. A hit the re-check refuses deals nothing and sends no sync.
-## Returns the number of rounds resolved (a missed roll counts: it passed the re-check and sent its outcome).
+## Returns the number of rounds resolved: hits that passed the re-check and rolled, so a missed roll counts (it sent
+## its "miss" outcome); refused hits do not.
 func tick_impacts() -> int:
 	if impact_queue == null or not impact_state_fn.is_valid():
 		return 0
 	var resolved := 0
 	var killed := {}
+	impact_queue.begin_batch()
 	for r in impact_queue.resolve_due(_now(), impact_state_fn):
 		if str(r["reason"]) != "":
 			continue
 		var e: Dictionary = r["entry"]
+		var attacker := str(e["attacker"])
 		# resolve_due popped the whole batch and checked it up front: an earlier hit of this same tick may have
-		# killed the target or staggered the attacker since, so each hit is re-checked right before it lands.
-		if killed.has(str(e["target"])) or PendingHit.refusal(e, impact_state_fn.call(e)) != "":
+		# killed the target, staggered (cancelled) the attacker or changed the state since. The first landing hit
+		# needs no second state read (#726); later ones are re-checked right before they land.
+		if killed.has(str(e["target"])) or impact_queue.cancelled_in_batch(attacker):
+			continue
+		if resolved > 0 and PendingHit.refusal(e, impact_state_fn.call(e)) != "":
 			continue
 		_damage_mult = float(e["damage_multiplier"])
-		var res := resolve_round(str(e["attacker"]), str(e["target"]), str(e.get("item", "")))
+		var res := resolve_round(attacker, str(e["target"]), str(e.get("item", "")))
 		_damage_mult = 1.0
 		if str(res.get("outcome", "")) == "kill":
 			killed[str(e["target"])] = true

@@ -8,6 +8,9 @@ const ComboChain := preload("res://src/battle/combo_chain.gd")
 
 ## attacker id -> { attacker, target, weapon, item, step, due, damage_multiplier }
 var _pending: Dictionary = {}
+## #726: attackers cancelled while a due batch is being resolved (their entry was already popped by
+## `resolve_due`, so `cancel` alone would not stop it). Cleared by `begin_batch`.
+var _cancelled_in_batch: Dictionary = {}
 
 func size() -> int:
 	return _pending.size()
@@ -28,7 +31,17 @@ func start(attacker_id: String, target_id: String, weapon: String, item: String,
 
 ## Cancel an attacker's pending hit (it died, was staggered, started another action): nothing is dealt.
 func cancel(attacker_id: String) -> bool:
+	_cancelled_in_batch[attacker_id] = true
 	return _pending.erase(attacker_id)
+
+## #726: start resolving a due batch; cancels from here on are remembered until the next batch.
+func begin_batch() -> void:
+	_cancelled_in_batch.clear()
+
+## #726: true when `attacker_id` was cancelled (staggered, died, started another action) since `begin_batch`,
+## e.g. by an earlier hit of the same batch, so its popped entry must not land.
+func cancelled_in_batch(attacker_id: String) -> bool:
+	return _cancelled_in_batch.has(attacker_id)
 
 ## Drop every pending hit aimed at a target (it died or respawned under the same id).
 func cancel_target(target_id: String) -> int:

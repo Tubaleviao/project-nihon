@@ -22,6 +22,8 @@ func register() -> void:
 	_run_test("newcomer grounds: a spawn skips structure circles and falls back to the protected centre", _test_spawn_skips_structures)
 	_run_test("newcomer grounds: loose items are jittered over both axes of their tile", _test_loose_jitter)
 	_run_test("newcomer grounds: picks are rate limited; a join snapshot and the world record carry the taken items", _test_pick_rate_and_join)
+	_run_test("foraging: picking a branch by hand grows Foraging, a stone does not, and a forager specialty rises from play (#646)", _test_forage_grows_foraging)
+	_run_test("foraging: a Foraging tier's yield factor gives more units per plant, rolled on the host (#646)", _test_forage_yield)
 
 ## A terrain at SEED and the grounds primed for it.
 func _world() -> Dictionary:
@@ -326,3 +328,117 @@ func _test_pick_rate_and_join() -> void:
 	late.free()
 	again.free()
 	inv.free()
+
+
+const WorkSkills := preload("res://src/character/work_skills.gd")
+const SpecialtyRules := preload("res://src/settlement/specialty_rules.gd")
+
+## The nearest loose items of each kind around a spawn: { kind: [item, …] }, nearest first.
+func _items_by_kind(l: Node, p: Vector3, radius: float = 200.0) -> Dictionary:
+	var out := {}
+	for it in l.items_near(Vector2(p.x, p.z), radius):
+		var k := str(it["kind"])
+		if not out.has(k):
+			out[k] = []
+		(out[k] as Array).append(it)
+	return out
+
+## Picks `it` as `pid` from where it lies, past the pick cooldown.
+func _pick_at(l: Node, it: Dictionary, pid: String, now: Array) -> Dictionary:
+	var xz: Vector2 = it["xz"]
+	l.local_position = func() -> Vector3: return Vector3(xz.x, 0.0, xz.y)
+	now[0] += 1.0
+	return l.pick(str(it["id"]), pid)
+
+## #646 — picking a loose branch is foraging: the host grants the WorkSkills `plant` row (Foraging) to the picker,
+## a stone grants nothing, and enough foraging raises the Foraging tier and with it the forager specialty score.
+func _test_forage_grows_foraging() -> void:
+	var w := _world()
+	var host := _loose(w)
+	var inv := InventorySlice.new()
+	add_child(inv)
+	host.inventory_slice = inv
+	var reg := PlayerRegistry.new()
+	add_child(reg)
+	reg.set_local_player("host")
+	host.player_registry = reg
+	var now := [1000.0]
+	host.clock = func() -> float: return now[0]
+	assert_true(LooseItemSlice.is_foraged(StoneTools.BRANCH), "a branch is gathered by hand as a plant")
+	assert_false(LooseItemSlice.is_foraged(StoneTools.LOOSE_STONE), "a stone is not")
+	assert_false(WorkSkills.UNWIRED.has("gather.plant"), "the plant row has a grant site now")
+	var p: Vector3 = SpawnFinderScript.find_start(SEED, "forage", null, w["height_fn"])
+	var kinds := _items_by_kind(host, p)
+	assert_true(kinds.has(StoneTools.BRANCH) and kinds.has(StoneTools.LOOSE_STONE), "branches and stones lie near the spawn")
+	var row := WorkSkills.gather_row("plant")
+	assert_eq(str(row.get("skill", "")), "Foraging", "the plant row grows Foraging")
+	var stone: Dictionary = kinds[StoneTools.LOOSE_STONE][0]
+	assert_true(bool(_pick_at(host, stone, "", now)["success"]), "a stone is picked")
+	assert_eq(reg.get_skill_xp("host", "Foraging"), 0, "and grows no Foraging")
+	var branch: Dictionary = kinds[StoneTools.BRANCH][0]
+	var res := _pick_at(host, branch, "", now)
+	assert_true(bool(res["success"]), "a branch is picked (%s)" % str(res.get("reason", "")))
+	assert_eq(int(res["units"]), 1, "a novice forager takes one unit")
+	var one := reg.get_skill_xp("host", "Foraging")
+	assert_true(one >= int(row["xp"]), "the picker gains at least the row's Foraging XP (%d)" % one)
+	# The forager specialty weighs Foraging: before any tier it scores only on perception, after it more.
+	var tbl := SpecialtyRules.table()
+	var forager: Dictionary = tbl["specialties"]["forager"]
+	var attrs := {}
+	var before := SpecialtyRules.score(forager, {}, attrs)
+	var branches: Array = kinds[StoneTools.BRANCH]
+	var tier_xp := int(WorkSkills.tiers().get("apprentice", 0))
+	assert_true(tier_xp > 0, "the fabric names the apprentice threshold")
+	var picks := 1
+	# Branches regrow; walk the near ones and come back after the regrow delay until the apprentice tier is reached.
+	var guard := 0
+	while reg.get_skill_xp("host", "Foraging") < tier_xp and guard < 2000:
+		guard += 1
+		var it: Dictionary = branches[guard % branches.size()]
+		if host.is_taken(str(it["id"])):
+			now[0] += float(NewcomerGrounds.rule()["looseRegrowSeconds"])
+			host.tick()
+		if bool(_pick_at(host, it, "", now)["success"]):
+			picks += 1
+	assert_true(reg.get_skill_xp("host", "Foraging") >= tier_xp, "foraging alone reaches the apprentice tier (%d picks)" % picks)
+	assert_eq(reg.get_skill_tier("host", "Foraging"), "apprentice", "and records it")
+	var after := SpecialtyRules.score(forager, { "Foraging": reg.get_skill_tier("host", "Foraging") }, attrs)
+	assert_true(after > before, "so the forager specialty score rises from play (%f -> %f)" % [before, after])
+	# A client's pick grants nothing on the client.
+	var client := _loose(w)
+	client.is_authoritative = false
+	client.player_registry = reg
+	var xp := reg.get_skill_xp("host", "Foraging")
+	assert_false(bool(client.pick(str(branch["id"]), "")["success"]), "a client resolves no pick")
+	assert_eq(reg.get_skill_xp("host", "Foraging"), xp, "and grants no XP")
+	client.free()
+	host.free()
+	inv.free()
+	reg.free()
+
+## #646 — the Foraging tier's `yield` factor from the fabric's bonuses, applied to the units of a forage.
+func _test_forage_yield() -> void:
+	assert_eq(WorkSkills.bonus_skill("forage", "yield"), "Foraging", "Foraging's tiers give the forage yield")
+	assert_eq(WorkSkills.yield_units(1, 1.0, 0.0), 1, "a factor of 1 gives the base")
+	assert_eq(WorkSkills.yield_units(1, 1.5, 0.49), 2, "a roll under the fraction adds a unit")
+	assert_eq(WorkSkills.yield_units(1, 1.5, 0.5), 1, "a roll at or over the fraction does not")
+	assert_eq(WorkSkills.yield_units(2, 1.75, 0.99), 3, "2 x 1.75 = 3.5: three units, four on a low roll")
+	assert_eq(WorkSkills.yield_units(2, 1.75, 0.1), 4, "four on a low roll")
+	assert_eq(WorkSkills.yield_units(1, 0.5, 0.0), 1, "a factor under 1 never takes away")
+	var reg := PlayerRegistry.new()
+	add_child(reg)
+	reg.set_local_player("host")
+	reg.ensure_player("p1")
+	assert_eq(WorkSkills.forage_units(reg, "p1", 1, 0.0), 1, "a novice takes the base")
+	reg.record_skill("p1", "Foraging", "master")
+	var master := WorkSkills.bonus_factor("Foraging", "master")
+	assert_true(master > 1.0, "the master tier has a yield factor (%f)" % master)
+	var total := 0
+	for i in 100:
+		total += WorkSkills.forage_units(reg, "p1", 1, float(i) / 100.0)
+	assert_eq(total, roundi(100.0 * master), "over evenly spread rolls the yield averages the factor (%d)" % total)
+	assert_eq(WorkSkills.forage_units(null, "", 1, 0.0), 1, "no registry: the base")
+	var r := LooseItemSlice.forage_roll("12:34", 1180.0)
+	assert_true(r >= 0.0 and r < 1.0, "the roll is in [0, 1)")
+	assert_eq(r, LooseItemSlice.forage_roll("12:34", 1180.0), "and a pure function of the item and the pick")
+	reg.free()
