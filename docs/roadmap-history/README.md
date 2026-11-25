@@ -100,6 +100,7 @@ Completed phases moved out of [ROADMAP.md](../../ROADMAP.md) to keep it short. T
 | 254 | [phases-254.md](phases-254.md) |
 | 255 | [phases-255.md](phases-255.md) |
 | 256 | [phases-256.md](phases-256.md) |
+| 257 | [phases-257.md](phases-257.md) |
 
 Phases with no section of their own were merged into another phase:
 
