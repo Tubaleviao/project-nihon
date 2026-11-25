@@ -44,8 +44,10 @@ function combosProblems(d) {
     if (n < 1) p.push(`chains.${name}: needs at least one clip`)
     for (const clip of c.clips || []) if (!contract.has(clip)) p.push(`chains.${name}: clip "${clip}" is outside the rig contract`)
     if (!(c.windowSeconds > 0)) p.push(`chains.${name}.windowSeconds must be > 0`)
-    if ((c.damageMultipliers || []).length !== n || !c.damageMultipliers.every((m) => m > 0)) p.push(`chains.${name}.damageMultipliers needs a multiplier > 0 per clip`)
-    if ((c.impact || []).length !== n || !c.impact.every((t) => typeof t === 'number' && t >= 0 && t <= 1)) p.push(`chains.${name}.impact needs a time in 0..1 per clip`)
+    const mults = Array.isArray(c.damageMultipliers) ? c.damageMultipliers : []
+    const impact = Array.isArray(c.impact) ? c.impact : []
+    if (!Array.isArray(c.damageMultipliers) || mults.length !== n || !mults.every((m) => m > 0)) p.push(`chains.${name}.damageMultipliers needs a multiplier > 0 per clip`)
+    if (!Array.isArray(c.impact) || impact.length !== n || !impact.every((t) => typeof t === 'number' && t >= 0 && t <= 1)) p.push(`chains.${name}.impact needs a time in 0..1 per clip`)
   }
   for (const need of ['unarmed', 'one_hand', 'two_hand', 'tool']) if (!(d.chains || {})[need]) p.push(`chains.${need} is missing`)
   return p

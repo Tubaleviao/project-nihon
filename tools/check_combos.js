@@ -18,6 +18,8 @@ expect('a clip outside the rig contract fails', (d) => { d.chains.one_hand.clips
 expect('an impact time above 1 fails', (d) => { d.chains.one_hand.impact[0] = 1.2; }, /impact needs a time in 0..1/);
 expect('an impact time below 0 fails', (d) => { d.chains.unarmed.impact[1] = -0.1; }, /impact needs a time in 0..1/);
 expect('a missing impact time fails', (d) => { d.chains.two_hand.impact.pop(); }, /impact needs a time/);
+expect('a chain with no clips and no multipliers or impact reports, not throws', (d) => { d.chains.tool = { windowSeconds: 1 }; }, /tool.damageMultipliers needs/);
+expect('a chain with no impact list reports it', (d) => { d.chains.tool = { windowSeconds: 1 }; }, /tool.impact needs/);
 expect('a missing multiplier fails', (d) => { d.chains.unarmed.damageMultipliers.pop(); }, /damageMultipliers needs/);
 expect('a zero window fails', (d) => { d.chains.tool.windowSeconds = 0; }, /windowSeconds must be > 0/);
 expect('a stagger share of 1 fails', (d) => { d.staggerShare = 1; }, /staggerShare must be in \(0, 1\)/);

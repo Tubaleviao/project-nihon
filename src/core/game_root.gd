@@ -821,6 +821,7 @@ static func host_boot_may_proceed(ring_ready: bool, elapsed: float) -> bool:
 func _quit_after_boot_if_asked(role: String) -> void:
 	if not _quit_after_boot:
 		return
+	print("[World] combat rounds during boot: %d" % _combat_wiring.boot_combat_rounds)
 	print("[World] %s boot complete — quitting (%s)" % [role, QUIT_AFTER_BOOT_ARG])
 	get_tree().quit()
 

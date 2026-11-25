@@ -1681,9 +1681,12 @@ func _step_fight() -> Array:
 	var at: Dictionary = WorldPos.normalized({"chunk": body["chunk"], "local": (body["local"] as Vector3) + Vector3(FIGHT_RANGE_M, 0.0, 0.0)})
 	_root._creature.set_instance_pos(iid, at)   # stood on the surface there by the slice
 	var rounds := 0
-	var ok := false; var clips: Array = []   # Phase 287: the combo's clips
+	var ok := false
+	var clips: Array = []   # Phase 287: the combo's clips
 	while rounds < 20 and not ok:
-		GameBus.admin_healed.emit(); GameBus.combat_round_requested.emit("player", iid); rounds += 1   # healed: a downed body respawns at chunk (0, 0), off the ground
+		GameBus.admin_healed.emit()   # healed: a downed body respawns at chunk (0, 0), off the ground
+		GameBus.combat_round_requested.emit("player", iid)
+		rounds += 1
 		clips.append(str(_root._character._instances[_root._character.get_player_character()]["locomotion"].attack_clip))
 		await _until(func(): return false, 0.7)   # a click during a swing in flight is ignored, so wait for the impact
 		var left: float = _root._battle.get_hp(iid)

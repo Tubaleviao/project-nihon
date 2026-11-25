@@ -45,6 +45,27 @@ func _connect_all() -> void:
 	connect_bus(GameBus.creature_died, on_creature_died)
 	connect_bus(GameBus.gesture_intent, _on_gesture_intent)
 	connect_bus(GameBus.creature_respawned, _on_creature_gone_pending)
+	if root._quit_after_boot:   # #747: the CI boot asserts the boot tail fires no combat round (#711)
+		connect_bus(GameBus.combat_round_requested, _count_boot_combat_round)
+
+## Combat rounds requested before a `--quit-after-boot` boot quit; game_root logs it so CI can assert none (#711).
+var boot_combat_rounds: int = 0
+
+func _count_boot_combat_round(_attacker_id: String, _defender_id: String) -> void:
+	boot_combat_rounds += 1
+
+## #726: also drop the hooks `_connect_all` set on the slices, so an unwired module leaves no callables behind.
+func unwire() -> void:
+	if root != null and root._battle != null:
+		root._battle.impact_queue = null
+		root._battle.impact_info_fn = Callable()
+		root._battle.impact_state_fn = Callable()
+		root._battle.swing_started_fn = Callable()
+		root._battle.player_stat_fn = Callable()
+		root._battle.armour_fn = Callable()
+	if root != null and root._creature != null:
+		root._creature.player_points = Callable()
+	super.unwire()
 
 ## Host: how far past `PlayerSlice.ATTACK_RANGE` a peer's swing may land, measured from the host's last record
 ## of that peer — covers the creature and the peer moving between the peer's aim and the packet.
@@ -256,7 +277,7 @@ func _main_hand(iid: String) -> String:
 
 ## The swing an attacker just started: plays its clip (advancing the combo) and reports weapon, step and the length
 ## of the clip that actually played. An attacker with no body here (a dedicated host draws none for a peer) takes
-## its weapon from the registry's equipment and starts its chain at step 0.
+## its weapon from the registry's equipment and advances its own chain in `_bodyless_combo`.
 func impact_info(attacker_id: String) -> Dictionary:
 	var iid := _attacker_character(attacker_id)
 	if iid == "":
@@ -315,12 +336,12 @@ func local_body_points() -> Array:
 
 ## Phase 156 — one swing resolved on the host (a miss too): animate the attacker and the target here and
 ## tell the clients in range. Ids become wire keys first, so both sides run the same animation path.
-func _on_combat_hit_resolved(attacker_id: String, defender_id: String, outcome: String, _damage: float) -> void:
+func _on_combat_hit_resolved(attacker_id: String, defender_id: String, outcome: String, damage: float) -> void:
 	if root._is_client:
 		return
 	var a_key := _wire_key(attacker_id)
 	var d_key := _wire_key(defender_id)
-	var reaction := reaction_for(defender_id, _damage)
+	var reaction := reaction_for(defender_id, damage)
 	_animate_hit(a_key, d_key, outcome, reaction)
 	if outcome != "miss" and (attacker_id == "player" or attacker_id == root._registry.local_player_id):
 		_hit_feel()
@@ -416,7 +437,7 @@ func _hit_feel() -> void:
 	if root._player != null:
 		HitFeel.shake(root._player._camera)
 	var iid: String = root._character.get_player_character()
-	if iid != "":
+	if iid != "" and root._character._instances.has(iid):
 		HitFeel.hit_stop(root._character._instances[iid].get("anim_tree", null))
 
 ## Phase 287 — "stagger" for a hit past the fabric's share of the defender's max health, else "hit".
