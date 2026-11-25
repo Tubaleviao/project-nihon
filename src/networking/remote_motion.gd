@@ -39,13 +39,13 @@ const GAP_MARGIN := 1.25
 const MAX_GAP_SAMPLE_MS := 1000.0
 ## Metres under which two states are the same spot (a keepalive).
 ## Least spacing of two states on the playback clock, as a share of the send interval.
-const MIN_SPACING := 0.75
+const MIN_SPACING := 1.0
 const SAME_SPOT_M := 0.001
 ## The correction offset eases out at this rate (1/s), and at least OFFSET_MIN_SPEED m/s.
 const OFFSET_RATE := 5.0
 const OFFSET_MIN_SPEED := 0.2
 ## ...and never faster than this (m/s): a gap of metres (a resync after a stall) eases out over about a second.
-const OFFSET_MAX_SPEED := 8.0
+const OFFSET_MAX_SPEED := 4.0
 ## A body whose states carry no air flag (the player relay sends positions only) reads as in the air when it
 ## drops at least this fast (m/s, `Locomotion.FALL_SPEED`) and more steeply than STEEP_DROP (vertical over
 ## horizontal speed: steeper than any slope a body walks down), so a walk downhill never plays `fall`.
