@@ -234,10 +234,15 @@ func _test_model_retry() -> void:
 		TreeMaterial._model_meshes[k] = null
 	var t2 := _make_tree_slice()
 	t2.spawn_for_chunk(Vector2i(0, 0))
+	TreeMaterial._model_meshes = saved   # restored before any assert, so nothing below can leak the nulls
 	assert_eq(str(t2.get_tree_record(tid)["pool_key"]), "", "a failed load draws the fallback")
 	assert_false(t2._model_pools.has(key), "and leaves no pool entry for the key")
-	assert_true(t2._model_failed.has(key), "the failed key is remembered for the rest of the spawn, not reloaded per tree")
-	TreeMaterial._model_meshes = saved
+	assert_true(int(t2._model_failed.get(key, 0)) > Time.get_ticks_msec(),
+		"the failed key backs off for MODEL_RETRY_MS, not reloaded per tree or per chunk")
+	t2.despawn_for_chunk(Vector2i(0, 0))
+	t2.spawn_for_chunk(Vector2i(0, 0))
+	assert_eq(str(t2.get_tree_record(tid)["pool_key"]), "", "a respawn inside the backoff keeps the fallback")
+	t2._model_failed[key] = 0   # the backoff has run out
 	t2.despawn_for_chunk(Vector2i(0, 0))
 	t2.spawn_for_chunk(Vector2i(0, 0))
 	assert_eq(str(t2.get_tree_record(tid)["pool_key"]), key, "once the model loads, a respawned tree uses it")

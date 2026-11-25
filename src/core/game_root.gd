@@ -286,6 +286,8 @@ func _ready() -> void:
 	# Phase 42 review pass 3 — and whether this boot quits itself once its world is up
 	# (`--quit-after-boot`; see QUIT_AFTER_BOOT_ARG).
 	_quit_after_boot = should_quit_after_boot(OS.get_cmdline_user_args())
+	if _quit_after_boot:   # #747: the CI boot asserts the boot tail fires no combat round (#711)
+		GameBus.combat_round_requested.connect(func(_a: String, _d: String) -> void: _boot_combat_rounds += 1)
 
 	# Run the automated tests before any production slice enters the tree — when
 	# this boot runs them at all. The suite emits signals on the shared GameBus
@@ -648,6 +650,8 @@ const QUIT_AFTER_BOOT_ARG := "--quit-after-boot"
 
 ## Phase 42 review pass 3 — see QUIT_AFTER_BOOT_ARG. Read in `_ready()`.
 var _quit_after_boot: bool = false
+## Combat rounds requested before a `--quit-after-boot` boot quit; logged so CI can assert none (#711).
+var _boot_combat_rounds: int = 0
 
 ## Phase 36 — should THIS boot run the automated suite?
 ##
@@ -821,6 +825,7 @@ static func host_boot_may_proceed(ring_ready: bool, elapsed: float) -> bool:
 func _quit_after_boot_if_asked(role: String) -> void:
 	if not _quit_after_boot:
 		return
+	print("[World] combat rounds during boot: %d" % _boot_combat_rounds)
 	print("[World] %s boot complete — quitting (%s)" % [role, QUIT_AFTER_BOOT_ARG])
 	get_tree().quit()
 

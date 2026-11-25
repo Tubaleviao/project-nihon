@@ -6,10 +6,12 @@ extends RefCounted
 ## rebase shifts every tree's phase at once (a sub-0.1 m effect). Placeholder models stand about 3.8 m tall.
 
 const Diag := preload("res://src/core/diag.gd")
+const MeshUtil := preload("res://src/core/mesh_util.gd")
 const SWAY_SETTING := "nihon/graphics/tree_sway"
 ## Metres of crown sway at the top of a tree; the weight rises from `SWAY_FROM` to `SWAY_TO` (the placeholder
 ## models' height, 3.8 m; `tools/gen_tree_models.py`). The procedural fallback tree is shorter (3.35 m,
-## `TreeSlice.TRUNK_HEIGHT + CANOPY_HEIGHT`), so its crown top reaches about 0.84 of the full sway.
+## `TreeSlice.TRUNK_HEIGHT + CANOPY_HEIGHT`), so its crown top reaches about 0.87 of the full sway
+## (smoothstep(1.8, 3.8, 3.35)).
 const SWAY_AMPLITUDE := 0.06
 const SWAY_FROM := 1.8
 const SWAY_TO := 3.8
@@ -135,3 +137,13 @@ static func model_mesh(key: String) -> Mesh:
 		return null   # not cached: the overlay may mount later
 	_model_meshes[key] = mesh
 	return mesh
+
+## The procedural fallback tree: a trunk and a crown, both closed boxes wound for Godot's front face
+## (`MeshUtil`). Sizes come from `TreeSlice` (trunk height/radius, canopy height/radius).
+static func fallback_mesh(trunk_h: float, trunk_r: float, canopy_h: float, canopy_r: float) -> Mesh:
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	MeshUtil.add_box(st, Vector3(0.0, trunk_h * 0.5, 0.0), Vector3(trunk_r * 2.0, trunk_h, trunk_r * 2.0), Color.WHITE)
+	MeshUtil.add_box(st, Vector3(0.0, trunk_h + canopy_h * 0.5, 0.0),
+		Vector3(canopy_r * 2.0, canopy_h, canopy_r * 2.0), Color(0.45, 0.95, 0.42))
+	return st.commit()

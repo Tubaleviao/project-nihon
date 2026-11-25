@@ -368,6 +368,11 @@ jobs:
             echo "::error::the host boot only completed through the first-ring timeout"
             exit 1
           fi
+          # #711/#747: the boot tail requests no combat round (it once hit a creature as "player").
+          if ! grep -q "\[World\] combat rounds during boot: 0$" /tmp/godot-host.log; then
+            echo "::error::the host boot requested a combat round (see '[World] combat rounds during boot')"
+            exit 1
+          fi
           if grep -qE "SCRIPT ERROR|Parse Error|Compile Error" /tmp/godot-host.log; then
             echo "::error::script/parse/compile errors present in the host boot log"
             exit 1
@@ -527,6 +532,7 @@ jobs:
 
       - name: Check the combo-table validation rejects bad tables
         run: node tools/check_combos.js
+
       - name: Check the work-clip validation rejects bad tables
         run: node tools/check_work_clips.js
 

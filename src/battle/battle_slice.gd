@@ -271,11 +271,11 @@ func _on_combat_round_requested(attacker_id: String, defender_id: String) -> voi
 	resolve_round(attacker_id, defender_id, held)
 
 ## Phase 287 — resolve the hits whose impact time has come. A hit the re-check refuses deals nothing and sends no sync.
-## Returns the number that landed.
+## Returns the number of rounds resolved (a missed roll counts: it passed the re-check and sent its outcome).
 func tick_impacts() -> int:
 	if impact_queue == null or not impact_state_fn.is_valid():
 		return 0
-	var landed := 0
+	var resolved := 0
 	var killed := {}
 	for r in impact_queue.resolve_due(_now(), impact_state_fn):
 		if str(r["reason"]) != "":
@@ -290,8 +290,8 @@ func tick_impacts() -> int:
 		_damage_mult = 1.0
 		if str(res.get("outcome", "")) == "kill":
 			killed[str(e["target"])] = true
-		landed += 1
-	return landed
+		resolved += 1
+	return resolved
 
 ## Clear tracked HP when a creature respawns so it doesn't re-enter combat with
 ## a stale 0 HP (which would cause an instant re-kill on the next round).

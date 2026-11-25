@@ -36,7 +36,6 @@ const WorkSkills := preload("res://src/character/work_skills.gd")
 const StoneTools := preload("res://src/world/stone_tools.gd")
 
 const MultimeshPool := preload("res://src/core/multimesh_pool.gd")
-const MeshUtil      := preload("res://src/core/mesh_util.gd")
 const TreeFall := preload("res://src/world/tree_fall.gd")
 const TreeMaterial  := preload("res://src/world/tree_material.gd")
 
@@ -145,8 +144,12 @@ var _stump_memory: Dictionary = {}
 var _pool: Node = null
 ## Model key -> MultiMesh pool of the trees drawn from that model (`models/trees/<Species>[_v1].glb.raw`).
 var _model_pools: Dictionary = {}
-## Model keys that failed to load this chunk spawn (fallback pool until the next `spawn_for_chunk` retries).
+## Model key -> `Time.get_ticks_msec()` before which a failed load is not retried (fallback pool until then).
 var _model_failed: Dictionary = {}
+## Milliseconds a model key that failed to load waits before the next tree tries it again (#747).
+const MODEL_RETRY_MS := 30000
+## #703: the live sway switch; `refresh_sway` applies a runtime change to the pools (`settings_changed`).
+var _sway_on: bool = true
 ## When false (headless server / `--server`), no pool and no collision bodies are
 ## built: the same records drive a bare authoritative simulation.
 var render_visuals: bool = true
@@ -233,7 +236,12 @@ func _ready() -> void:
 	if render_visuals:
 		_sway_on = TreeMaterial.sway_enabled()
 		_build_pool()
-		ProjectSettings.settings_changed.connect(refresh_sway)
+		if not ProjectSettings.settings_changed.is_connected(refresh_sway):
+			ProjectSettings.settings_changed.connect(refresh_sway)
+
+func _exit_tree() -> void:
+	if ProjectSettings.settings_changed.is_connected(refresh_sway):
+		ProjectSettings.settings_changed.disconnect(refresh_sway)
 
 func _process(delta: float) -> void:
 	step_visuals(delta)
@@ -249,7 +257,6 @@ func _process(delta: float) -> void:
 ## and ids are deterministic, so a reload restores the same trees; surviving trees
 ## are counted first so a chunk reload never exceeds the budget.
 func spawn_for_chunk(chunk_pos: Vector2i) -> void:
-	_model_failed.clear()
 	if not _spawned_chunks.has(chunk_pos):
 		_spawned_chunks[chunk_pos] = true
 		_bucket_add(chunk_pos)
@@ -1372,9 +1379,11 @@ func scene_offset() -> Vector3:
 
 func _build_pool() -> void:
 	_pool = _make_pool("TreePool", _tree_mesh())
-var _sway_on: bool = true   # #703: a runtime sway switch reaches the live pools (`settings_changed`)
+
+## Re-read the sway setting and swap the live pools' material when it changed.
 func refresh_sway() -> void:
 	_sway_on = TreeMaterial.refresh_pools([_pool] + _model_pools.values(), _sway_on)
+
 
 func _make_pool(pool_name: String, mesh: Mesh) -> Node:
 	var pool := MultimeshPool.new()
@@ -1386,20 +1395,9 @@ func _make_pool(pool_name: String, mesh: Mesh) -> Node:
 		pool.shift_scene(_origin.value)
 	return pool
 
-## The procedural fallback mesh: a tapered trunk and a crown, both closed boxes wound for Godot's front
-## face (`MeshUtil`), used when a species' model key does not load.
+## The procedural fallback mesh (`TreeMaterial.fallback_mesh`), used when a species' model key does not load.
 func _tree_mesh() -> Mesh:
-	var st := SurfaceTool.new()
-	st.begin(Mesh.PRIMITIVE_TRIANGLES)
-	MeshUtil.add_box(st,
-		Vector3(0.0, TRUNK_HEIGHT * 0.5, 0.0),
-		Vector3(TRUNK_RADIUS * 2.0, TRUNK_HEIGHT, TRUNK_RADIUS * 2.0),
-		Color.WHITE)
-	MeshUtil.add_box(st,
-		Vector3(0.0, TRUNK_HEIGHT + CANOPY_HEIGHT * 0.5, 0.0),
-		Vector3(CANOPY_RADIUS * 2.0, CANOPY_HEIGHT, CANOPY_RADIUS * 2.0),
-		Color(0.45, 0.95, 0.42))
-	return st.commit()
+	return TreeMaterial.fallback_mesh(TRUNK_HEIGHT, TRUNK_RADIUS, CANOPY_HEIGHT, CANOPY_RADIUS)
 
 ## The pool a tree's instance lives in: its model's pool, or the fallback pool; null headless.
 func _tree_pool(tree: Dictionary) -> Node:
@@ -1422,13 +1420,14 @@ func _alloc_visual(species: String, pos: Vector3, tree_id: String) -> Dictionary
 	var key := TreeMaterial.model_key_for(species, tree_id)
 	var pool: Node = _pool
 	if key != "":
-		if not _model_pools.has(key) and not _model_failed.has(key):
+		if not _model_pools.has(key) and Time.get_ticks_msec() >= int(_model_failed.get(key, 0)):
 			var mesh := TreeMaterial.model_mesh(key)
 			if mesh != null:
 				_model_pools[key] = _make_pool("TreePool_" + key.get_file().get_basename().get_basename(), mesh)
+				_model_failed.erase(key)
 			else:
-				_model_failed[key] = true
-		pool = _model_pools.get(key, _pool)   # #703: a failed load is not cached, so a later tree retries
+				_model_failed[key] = Time.get_ticks_msec() + MODEL_RETRY_MS
+		pool = _model_pools.get(key, _pool)   # #703/#747: a failed load is retried after MODEL_RETRY_MS
 		key = key if _model_pools.has(key) else ""
 	var idx: int = pool.alloc()
 	pool.set_color(idx, Color.WHITE if key != "" else _species_color(species))
