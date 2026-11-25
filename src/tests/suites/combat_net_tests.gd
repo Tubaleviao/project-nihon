@@ -11,6 +11,7 @@ func register() -> void:
 	_run_test("combat net: the host binds a forwarded swing to the sending connection", _test_host_binds_attacker)
 	_run_test("combat net: the host resolves a peer's swing in reach and refuses the rest", _test_host_checks_swing)
 	_run_test("combat net: a peer's kill reaches only that peer's tutorial", _test_peer_kill_reaches_tutorial)
+	_run_test("combat net: the boot round counter skips a creature's own swing", _test_boot_counter_skips_creature_rounds)
 
 func _test_client_forwards_swing() -> void:
 	var b := BattleSlice.new()
@@ -184,3 +185,24 @@ func _test_peer_kill_reaches_tutorial() -> void:
 		assert_eq(got[0], ["creature_killed", { "creature": species, "tags": ["creature"] }], "with the species")
 		assert_eq(str(got[1][1]["creature"]), "", "an unknown species is not passed on")
 	n.free()
+
+## The `--quit-after-boot` CI gate (#711/#747) counts player-side rounds only: a creature that spawned beside the
+## fresh body and swung at it depends on the random world, not on the boot tail.
+func _test_boot_counter_skips_creature_rounds() -> void:
+	var r := _host_rig()
+	var c: CreatureSlice = r["c"]
+	var w: CombatWiring = r["w"]
+	var ids: Array = c._instances.keys()
+	assert_true(ids.size() >= 1, "the rig has a creature")
+	if ids.is_empty():
+		_free_host_rig(r)
+		return
+	var iid: String = ids[0]
+	w.boot_combat_rounds = 0
+	w._count_boot_combat_round(iid, "player")
+	assert_eq(w.boot_combat_rounds, 0, "a creature's swing at the player is not counted")
+	w._count_boot_combat_round("player", iid)
+	w._count_boot_combat_round("p5", iid)
+	assert_eq(w.boot_combat_rounds, 2, "the local body's and a peer's swings are")
+	assert_false(CombatWiring.is_creature_attacker("player", null), "no creature slice: nothing is a creature")
+	_free_host_rig(r)
