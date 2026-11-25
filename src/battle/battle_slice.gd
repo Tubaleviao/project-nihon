@@ -297,6 +297,7 @@ func tick_impacts() -> int:
 		if str(res.get("outcome", "")) == "kill":
 			killed[str(e["target"])] = true
 		resolved += 1
+	impact_queue.end_batch()
 	return resolved
 
 ## Clear tracked HP when a creature respawns so it doesn't re-enter combat with

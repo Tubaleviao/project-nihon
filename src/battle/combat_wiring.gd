@@ -436,9 +436,26 @@ func knock_walkable(defender_id: String, probe: Vector3, ground: Callable = Call
 	var swims: bool = res != null and res.get("canSwim") != null and bool(res.get("canSwim"))
 	return swims or top >= WorldShape.sea_level()
 
-## Client: wire keys of players whose announced swing has not had its outcome yet (#726), bounded.
+## Client: wire key -> msec of a player's announced swing that has not had its outcome yet (#726), bounded.
+## A refused hit sends no outcome and a peer that left sends nothing more, so an entry only counts for
+## SWUNG_KEY_TTL_MS (longer than any clip's impact plus jitter) and stale ones are pruned when the map is full.
 var _swung_keys: Dictionary = {}
 const MAX_SWUNG_KEYS := 256
+const SWUNG_KEY_TTL_MS := 3000
+
+func _note_swung(key: String, now_ms: int) -> void:
+	if not _swung_keys.has(key) and _swung_keys.size() >= MAX_SWUNG_KEYS:
+		for k in _swung_keys.keys():
+			if now_ms - int(_swung_keys[k]) > SWUNG_KEY_TTL_MS:
+				_swung_keys.erase(k)
+	if _swung_keys.has(key) or _swung_keys.size() < MAX_SWUNG_KEYS:
+		_swung_keys[key] = now_ms
+
+## True (and consumed) when `key` announced a swing within SWUNG_KEY_TTL_MS.
+func _take_swung(key: String, now_ms: int) -> bool:
+	var at: Variant = _swung_keys.get(key, null)
+	_swung_keys.erase(key)
+	return at != null and now_ms - int(at) <= SWUNG_KEY_TTL_MS
 
 ## Client: the host's swing, animated on whatever bodies this client draws.
 func _on_combat_hit_synced(attacker_key: String, defender_key: String, outcome: String) -> void:
@@ -446,15 +463,14 @@ func _on_combat_hit_synced(attacker_key: String, defender_key: String, outcome: 
 		return
 	if outcome == "swing":
 		_swing(attacker_key)
-		if _swung_keys.size() < MAX_SWUNG_KEYS:
-			_swung_keys[attacker_key] = true
+		_note_swung(attacker_key, Time.get_ticks_msec())
 		return
 	# A player's swing played when the host announced it, at the click; only a creature's plays with its hit.
 	# #726: a peer whose "swing" packet never reached this client (lost, or it came into range mid-swing) swings
 	# with its first outcome instead, so a hit is never seen without the blow.
 	var swing := attacker_key.begins_with("c:")
 	if attacker_key.begins_with("p:"):
-		swing = not _swung_keys.erase(attacker_key) and _character_for_key(attacker_key) != root._character.get_player_character()
+		swing = not _take_swung(attacker_key, Time.get_ticks_msec()) and _character_for_key(attacker_key) != root._character.get_player_character()
 	var reaction := "stagger" if outcome == "stagger" else "hit"
 	_animate_hit(attacker_key, defender_key, outcome, reaction, swing)
 	if outcome != "miss" and attacker_key.begins_with("p:") and _character_for_key(attacker_key) == root._character.get_player_character() \

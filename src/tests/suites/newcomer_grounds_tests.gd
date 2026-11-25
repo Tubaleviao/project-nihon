@@ -404,6 +404,27 @@ func _test_forage_grows_foraging() -> void:
 	assert_eq(reg.get_skill_tier("host", "Foraging"), "apprentice", "and records it")
 	var after := SpecialtyRules.score(forager, { "Foraging": reg.get_skill_tier("host", "Foraging") }, attrs)
 	assert_true(after > before, "so the forager specialty score rises from play (%f -> %f)" % [before, after])
+	# A bonus unit that does not fit must not cost the pick: with room for one, the forager takes the base unit.
+	reg.record_skill("host", "Foraging", "master")
+	var tight := OneUnitInventory.new()
+	add_child(tight)
+	host.inventory_slice = tight
+	var regrow := float(NewcomerGrounds.rule()["looseRegrowSeconds"])
+	now[0] += regrow
+	host.tick()
+	var bonus_pick := {}
+	for it: Dictionary in branches:
+		# _pick_at moves the clock 1 s on before it picks; a roll under 0.75 gives a master forager two units.
+		if not host.is_taken(str(it["id"])) and LooseItemSlice.forage_roll(str(it["id"]), now[0] + 1.0 + regrow) < 0.75:
+			bonus_pick = it
+			break
+	assert_false(bonus_pick.is_empty(), "a branch whose roll gives a master forager a bonus unit lies near the spawn")
+	var tight_res := _pick_at(host, bonus_pick, "", now)
+	assert_true(bool(tight_res["success"]), "a pick whose bonus unit does not fit still succeeds (%s)" % str(tight_res.get("reason", "")))
+	assert_eq(int(tight_res["units"]), 1, "with the base unit only")
+	assert_eq(tight.taken, 1, "and the inventory holds that one unit")
+	host.inventory_slice = inv
+	tight.free()
 	# A client's pick grants nothing on the client.
 	var client := _loose(w)
 	client.is_authoritative = false
@@ -442,3 +463,12 @@ func _test_forage_yield() -> void:
 	assert_true(r >= 0.0 and r < 1.0, "the roll is in [0, 1)")
 	assert_eq(r, LooseItemSlice.forage_roll("12:34", 1180.0), "and a pure function of the item and the pick")
 	reg.free()
+
+## An inventory with room for one more unit at a time (#646: a forage bonus that does not fit).
+class OneUnitInventory extends Node:
+	var taken := 0
+	func add_item(_item_id: String, quantity: int, _durabilities: Array = [], _quality: String = "") -> bool:
+		if quantity > 1:
+			return false
+		taken += quantity
+		return true

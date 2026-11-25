@@ -100,10 +100,23 @@ func _test_synced_swing_animates_peer() -> void:
 	GameBus.combat_hit_synced.emit("p:5", "c:w0", "miss")
 	assert_eq(int(f["ch"]._instances[peer_iid]["locomotion"].swing_serial), 3, "an announced swing's miss does not swing again")
 	assert_true(f["gr"]._combat_wiring._swung_keys.is_empty(), "and the announced swing is consumed")
+	# A swing whose hit was refused sends no outcome: its stale entry must not swallow a later fallback swing.
+	var cw = f["gr"]._combat_wiring
+	cw._swung_keys["p:5"] = Time.get_ticks_msec() - CombatWiringScript.SWUNG_KEY_TTL_MS - 1000
+	GameBus.combat_hit_synced.emit("p:5", "c:w0", "hit")
+	assert_eq(int(f["ch"]._instances[peer_iid]["locomotion"].swing_serial), 4, "a stale announced swing does not hide a lost one")
+	# Keys of refused hits and departed peers do not fill the map for good: stale ones are pruned when it is full.
+	var old_ms := Time.get_ticks_msec() - CombatWiringScript.SWUNG_KEY_TTL_MS - 1000
+	for i in CombatWiringScript.MAX_SWUNG_KEYS:
+		cw._swung_keys["p:%d" % (1000 + i)] = old_ms
+	cw._note_swung("p:77", Time.get_ticks_msec())
+	assert_true(cw._swung_keys.has("p:77"), "a full map of stale keys still records a new swing")
+	assert_eq(cw._swung_keys.size(), 1, "after pruning the stale ones")
+	cw._swung_keys.clear()
 	# A host never plays a packet's animation twice: the synced signal only acts on a client.
 	f["gr"]._is_client = false
 	GameBus.combat_hit_synced.emit("p:5", "c:w0", "swing")
-	assert_eq(int(f["ch"]._instances[peer_iid]["locomotion"].swing_serial), 3, "a host ignores the synced signal")
+	assert_eq(int(f["ch"]._instances[peer_iid]["locomotion"].swing_serial), 4, "a host ignores the synced signal")
 	_free_fixture(f)
 
 
@@ -114,6 +127,11 @@ func _test_swing_clip_synced() -> void:
 	assert_true(ComboChain.is_contract_clip("attack_1h_3"), "attack_1h_3 is a rig-contract clip")
 	assert_false(ComboChain.is_contract_clip("attack_flurry"), "a made-up clip is not")
 	assert_false(ComboChain.is_contract_clip(""), "nor is an empty one")
+	# A viewer's rig that lacks the host's step falls back the way `clip_for` does on the host.
+	assert_eq(ComboChain.resolve_clip("attack_1h_3", {"attack_1h_3": 0.6}), "attack_1h_3", "a clip the rig has plays as is")
+	assert_eq(ComboChain.resolve_clip("attack_1h_3", {"attack_1h": 0.5}), ComboChain.clip_for("one_hand", 2, {"attack_1h": 0.5}),
+		"a missing step plays its chain's base clip, like the host's own fallback")
+	assert_eq(ComboChain.resolve_clip("attack_1h_3", {}), ComboChain.FALLBACK_CLIP, "a rig with no chain clip plays attack")
 	# Host: the swing a body starts records the step's clip, and the swing announce consumes it once.
 	cw.impact_info("player")
 	var clip := str(cw._last_swing_clip.get("player", ""))
@@ -625,6 +643,11 @@ func _test_battle_impact_batch_cancel() -> void:
 	q.cancel("a")
 	q.begin_batch()
 	assert_false(q.cancelled_in_batch("a"), "a cancel before the batch is forgotten when the batch starts")
+	q.cancel("b")
+	assert_true(q.cancelled_in_batch("b"), "a cancel inside the batch is remembered")
+	q.end_batch()
+	q.cancel("c")
+	assert_true(q._cancelled_in_batch.is_empty(), "cancels outside a batch are not kept (a queue never ticked does not grow)")
 	b.free()
 
 func _test_creature_hit_clip_param() -> void:

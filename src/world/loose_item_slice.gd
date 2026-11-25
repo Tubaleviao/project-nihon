@@ -217,8 +217,13 @@ func pick(id: String, player_id: String = "") -> Dictionary:
 	var regrow_at := _now() + float(NewcomerGrounds.rule()["looseRegrowSeconds"])
 	# #646: a plant gathered by hand gives the Foraging tier's yield (rolled from the host's own seeded hash).
 	var units := WorkSkills.forage_units(player_registry, player_id, 1, forage_roll(id, regrow_at)) if foraged else 1
-	if inv == null or not inv.has_method("add_item") or not inv.add_item(kind, units):
+	if inv == null or not inv.has_method("add_item"):
 		return { "success": false, "reason": "no_inventory" }
+	if not inv.add_item(kind, units):
+		# A bonus unit that does not fit must not cost the pick: take the base unit when only it fits.
+		if units <= 1 or not inv.add_item(kind, 1):
+			return { "success": false, "reason": "no_inventory" }
+		units = 1
 	_taken[id] = regrow_at
 	_last_pick[player_id] = _now()
 	if foraged:

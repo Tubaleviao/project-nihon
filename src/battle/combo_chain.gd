@@ -17,6 +17,18 @@ static func is_contract_clip(clip: String) -> bool:
 	var clips: Variant = res.get("attackClips") if res != null else null
 	return clips is Array and (clips as Array).has(clip)
 
+## #726 — what a rig with `available` clips plays for a named combo `clip` (the host's step, sent to viewers): the
+## clip itself, else the base clip of the chain it belongs to, else `attack` — the same fallback as `clip_for`.
+static func resolve_clip(clip: String, available: Variant) -> String:
+	if available == null or clip in available:
+		return clip
+	var chains := _chains()
+	for weapon: String in chains:
+		var clips: Array = chain(weapon).get("clips", [])
+		if clips.has(clip):
+			return str(clips[0]) if str(clips[0]) in available else FALLBACK_CLIP
+	return FALLBACK_CLIP
+
 static func _chains() -> Dictionary:
 	var res := _res()
 	var v: Variant = res.get("chains") if res != null else null
