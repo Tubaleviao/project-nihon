@@ -1,5 +1,5 @@
 extends Node
-## Character slice — data-driven character appearance system (characters.md).
+## Character slice — data-driven character appearance system (characters.md). Planned split: new skeleton and rig tables go to a character_rigs.gd, new body actions to character_body_actions.gd.
 ##
 ## Realizes the design doc as a working vertical slice:
 ##   - non-humanoid skeletons (humanoid / quadruped / bird / serpent)
@@ -112,14 +112,14 @@ const BODY_PROP_BOUNDS: Dictionary = {
 ## grid, so adjacent parts meet without an extent/position seam.
 const PROPORTION_STEP := 0.05
 
-const CharacterPart1 := preload("res://src/character/character_part_1.gd")
-const CharacterPart2 := preload("res://src/character/character_part_2.gd")
+const CharacterAppearance := preload("res://src/character/character_appearance.gd")
+const CharacterBodyActions := preload("res://src/character/character_body_actions.gd")
 const HeldItem := preload("res://src/character/held_item.gd")
-var _m2 := CharacterPart2.new(self)
-var _m1 := CharacterPart1.new(self)
+var _m2 := CharacterBodyActions.new(self)
+var _m1 := CharacterAppearance.new(self)
 var _held := HeldItem.new(self)
-const CharacterPart3 := preload("res://src/character/character_part_3.gd")
-var _m3 := CharacterPart3.new(self)
+const CharacterAvatar := preload("res://src/character/character_avatar.gd")
+var _m3 := CharacterAvatar.new(self)
 
 ## Instance record: { "appearance", "position", "root", "parts" }.
 
@@ -580,7 +580,7 @@ func get_peer_character(peer_id: int) -> String:
 func peer_character_ids() -> Array:
 	return _peer_characters.values()
 
-## Phase 196 — the gesture API the gesture wiring drives (see `character_part_2`).
+## Phase 196 — the gesture API the gesture wiring drives (see `character_body_actions`).
 func trigger_gesture(instance_id: String, clip: String, hold: bool, seat_lift: float = 0.0) -> bool:
 	return _m2.trigger_gesture(instance_id, clip, hold, seat_lift)
 

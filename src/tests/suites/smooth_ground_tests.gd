@@ -482,5 +482,5 @@ func _test_warm_meshers() -> void:
 	mesh.warm_meshers()
 	assert_eq(smooth._voxel_mesh_script, mesh, "the back-reference is the block mesher's script after warming")
 	smooth._voxel_mesh_script = kept if kept != null else mesh
-	var src := FileAccess.get_file_as_string("res://src/terrain/chunk_part_1.gd")
+	var src := FileAccess.get_file_as_string("res://src/terrain/chunk_build_queue.gd")
 	assert_eq(src.count("VoxelMesh.warm_meshers()"), 2, "both chunk build dispatches warm the meshers on the main thread")

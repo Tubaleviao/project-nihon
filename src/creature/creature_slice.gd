@@ -1,5 +1,5 @@
 extends Node
-## Creature slice — spawns and manages creature instances in the world.
+## Creature slice — spawns and manages creature instances in the world. Planned split: spawn rules go to a creature_spawns.gd.
 ##
 ## Stats (baseHp, baseDamage) come exclusively from GameData.CREATURES so the
 ## fabric is the single source of truth. Only ForestBoar is spawned in the

@@ -4,7 +4,7 @@ extends "res://src/tests/test_support.gd"
 const Hydrology := preload("res://src/terrain/hydrology.gd")
 const ChunkRecords := preload("res://src/terrain/chunk_records.gd")
 const FreshWaterMesh := preload("res://src/terrain/fresh_water_mesh.gd")
-const ChunkPart1 := preload("res://src/terrain/chunk_part_1.gd")
+const ChunkBuildQueue := preload("res://src/terrain/chunk_build_queue.gd")
 const CreaturePath := preload("res://src/creature/creature_path.gd")
 const SEED := 42
 ## A pinned 64×64-chunk window (2 km square) on seed 42 that holds both a lake and a river.
@@ -258,7 +258,7 @@ func _test_fresh_water_worker_arrays() -> void:
 	var out: Array = [null]
 	var task := WorkerThreadPool.add_task(func() -> void:
 		var built := { "local": true }
-		ChunkPart1._add_fresh_water(built, chunk, SEED, true)
+		ChunkBuildQueue._add_fresh_water(built, chunk, SEED, true)
 		out[0] = built)
 	WorkerThreadPool.wait_for_task_completion(task)
 	var built: Dictionary = out[0]
@@ -266,7 +266,7 @@ func _test_fresh_water_worker_arrays() -> void:
 	assert_eq((built["fresh_water"] as Array)[Mesh.ARRAY_VERTEX], main_side[Mesh.ARRAY_VERTEX], "the same surface as a main-thread build")
 	assert_true(FreshWaterMesh.mesh_from(built["fresh_water"]) != null, "attach only wraps them in a mesh")
 	var headless := { "local": true }
-	ChunkPart1._add_fresh_water(headless, chunk, SEED, false)
+	ChunkBuildQueue._add_fresh_water(headless, chunk, SEED, false)
 	assert_false(headless.has("fresh_water"), "a build that keeps no render arrays carries none")
 	assert_true(FreshWaterMesh.mesh_from([]) == null, "a dry chunk's empty arrays make no mesh")
 

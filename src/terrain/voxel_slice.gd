@@ -1,5 +1,5 @@
 extends Node
-## Voxel slice — builds a visible, walkable terrain mesh from chunk heightmaps,
+## Voxel slice — builds a visible, walkable terrain mesh from chunk heightmaps, Planned split: the edit API goes to a voxel_edits.gd.
 ## and exposes an edit API for mining (carve a solid span → material) and
 ## building (add a solid span → consume material).
 ##

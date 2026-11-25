@@ -1,5 +1,5 @@
 extends Node
-## ChunkManager — streams terrain chunks around the player (Phase 17).
+## ChunkManager — streams terrain chunks around the player (Phase 17). Planned split: queue and disk-cache code goes to chunk_build_queue.gd, ring policy to chunk_stream_policy.gd.
 ##
 ## Replaces the fixed single-chunk world with a view-distance window: every
 ## frame (once started) it computes the player's chunk, loads any chunk within
@@ -182,8 +182,8 @@ const FLUSH_MAX_ROUNDS := 16
 ## every frame. Overridable for tuning/tests.
 const DEFAULT_SELF_HEAL_INTERVAL := 5.0
 
-const ChunkPart1 := preload("res://src/terrain/chunk_part_1.gd")
-var _m1 := ChunkPart1.new(self)
+const ChunkBuildQueue := preload("res://src/terrain/chunk_build_queue.gd")
+var _m1 := ChunkBuildQueue.new(self)
 ## Phase 189 — collision and contents only near a body (see `near_ring.gd`).
 const NearRing := preload("res://src/terrain/near_ring.gd")
 var _near := NearRing.new(self)
@@ -252,7 +252,7 @@ var unloads_per_frame: int = DEFAULT_UNLOADS_PER_FRAME
 ## Worker builds allowed in flight at once (see DEFAULT_MAX_BUILDS_IN_FLIGHT).
 var max_builds_in_flight: int = ChunkStreamPolicy.starting_builds(OS.get_processor_count())
 
-## Phase 239 — false pins the steady cap; true lets `ChunkPart1.adapt_workers` move it.
+## Phase 239 — false pins the steady cap; true lets `ChunkBuildQueue.adapt_workers` move it.
 var adaptive_workers := true
 var _idle_since_msec: int = -1
 var _last_adapt_msec: int = -1; var _lead_extra: int = 0; var _lead_bucket: int = -1   # lead depth / heading bucket (`ChunkStreamPolicy.heading_bucket`) the desired set was computed for
@@ -604,7 +604,7 @@ func stream_radius() -> int:
 	return view_distance + prefetch_distance
 
 ## Dispatch up to `loads_per_frame` queued chunks this frame (the catch-up burst after a fold or while moving fast),
-## rebuilds first, in queue order, under the in-flight cap and the pump budget (see `ChunkPart1.drain_load_queue`).
+## rebuilds first, in queue order, under the in-flight cap and the pump budget (see `ChunkBuildQueue.drain_load_queue`).
 func _drain_load_queue() -> void:
 	_m1.drain_load_queue()
 
@@ -897,7 +897,7 @@ func keeps_render() -> bool:
 	var flag = voxel_slice.get("attach_geometry") if voxel_slice != null else null
 	return not (flag is bool and not flag)
 
-## Phase 141 — the dispatch with the noise on the worker too (moved to `chunk_part_1.gd` by Phase 190).
+## Phase 141 — the dispatch with the noise on the worker too (moved to `chunk_build_queue.gd` by Phase 190).
 func _dispatch_worker_noise_build(chunk_pos: Vector2i, key: String) -> void:
 	_m1.dispatch_worker_noise_build(chunk_pos, key)
 
@@ -1157,7 +1157,7 @@ func flush_records_final() -> void:
 func _apply_finished_builds() -> void:
 	_m1.apply_finished_builds()
 
-## Phase 187 — the order finished builds attach in (see `ChunkPart1.apply_order`).
+## Phase 187 — the order finished builds attach in (see `ChunkBuildQueue.apply_order`).
 func _apply_order(done: Array) -> Array:
 	return _m1.apply_order(done)
 
@@ -1458,13 +1458,13 @@ func _desired_chunks(center: Vector2i, radius: int) -> Array:
 ## and only the chunk in the body's row has to be there when it arrives), nearest ahead first, the rest after.
 ## Phase 194 (#512) — the body's chunk goes first and a peer's chunks rank by their ring from it; the rest keep the
 ## Phase 191 order (ahead, then beside and behind: ranked by their ring, that backlog starved the lane on a slow
-## runner, 0–43% flight cover at 270 m/s). A body that slows re-sorts by distance (`ChunkPart1.resort_queue`).
+## runner, 0–43% flight cover at 270 m/s). A body that slows re-sorts by distance (`ChunkBuildQueue.resort_queue`).
 static func queue_priority(centers: Array, heading: Vector2, chunk: Vector2i, lane: bool = false) -> float:
 	if lane and not centers.is_empty() and heading != Vector2.ZERO:
 		var rel := Vector2(chunk - (centers[0] as Vector2i))
 		var lead := rel.dot(heading)
 		var own := 0.0 if rel == Vector2.ZERO else (absf(rel.cross(heading)) * 3.0 + lead if lead >= 1.0 else 50.0 - lead)
-		return minf(own, float(ChunkPart1.nearest_ring(centers.slice(1), chunk)) + 0.5)
+		return minf(own, float(ChunkBuildQueue.nearest_ring(centers.slice(1), chunk)) + 0.5)
 	var best := 1 << 60
 	for c: Vector2i in centers:
 		var dx := chunk.x - c.x

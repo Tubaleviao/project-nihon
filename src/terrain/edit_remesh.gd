@@ -37,7 +37,7 @@ const OPEN_TTL_USEC := 10_000_000
 const NO_CHUNK := Vector2i(1 << 30, 1 << 30)
 
 var sl: Node   # the ChunkManager
-var m1: RefCounted   # its ChunkPart1
+var m1: RefCounted   # its ChunkBuildQueue
 ## Main-thread builds for a PRIMARY chunk. `sync_without_native` lets a test run them on the GDScript builder.
 var sync_enabled := true
 var sync_without_native := false

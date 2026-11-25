@@ -533,7 +533,7 @@ func _test_damage_wire() -> void:
 ## chat line (`/buildas`, `/repair`, `/respawn`) or a settlement/clan intent: owner, clan, durability and skill
 ## come from the host's records. Scans the client → host routing for any of those keys read off a payload.
 func _test_audit_client_values() -> void:
-	var src := FileAccess.get_file_as_string("res://src/networking/net_part_2.gd")
+	var src := FileAccess.get_file_as_string("res://src/networking/net_packets.gd")
 	assert_true(src.length() > 0, "the client → host routing is readable")
 	for field: String in ["owner", "clan", "durability", "skill", "kind", "fraction", "wear", "damage", "level"]:
 		assert_false(src.contains("payload.get(\"%s\"" % field), "no client payload's \"%s\" is read" % field)
@@ -1102,7 +1102,7 @@ func _test_tier_audit() -> void:
 	client.set_score("clan_1", 1.0e9)
 	assert_eq(client.score_of("clan_1"), score, "a client never sets a score")
 	client.free()
-	var sources := ["res://src/networking/net_part_1.gd", "res://src/networking/net_part_2.gd", "res://src/networking/net_part_3.gd",
+	var sources := ["res://src/networking/net_relay.gd", "res://src/networking/net_packets.gd", "res://src/networking/net_session.gd",
 		"res://src/networking/peer_wiring.gd", "res://src/networking/networking_slice.gd"]
 	for path: String in sources:
 		var src := FileAccess.get_file_as_string(path)

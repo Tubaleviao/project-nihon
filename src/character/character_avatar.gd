@@ -1,7 +1,5 @@
 extends RefCounted
-## Methods moved out of `character_slice.gd` (Phase 181): the avatar's per-frame sync and the creation looks
-## and nameplates. `sl` is the owning slice; each method keeps a forwarder there.
-
+## The avatar: per-frame player sync, creation looks, `dress_peer`, `build_player_body` and the nameplates. Methods moved out of `character_slice.gd` (Phase 181, renamed Phase 257). `sl` is the owning slice; each method keeps a forwarder there. Does not hold: appearance recipes (`character_appearance.gd`) or body actions (`character_body_actions.gd`).
 var sl: Node
 
 ## Metres above an avatar's feet its nameplate floats when it has no rig to measure (the procedural body).

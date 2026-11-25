@@ -118,7 +118,7 @@ func _test_audit() -> void:
 			windows_row = r
 	assert_eq(str(windows_row.get("keys", "")), WindowShortcuts.all_labels(), "the controls row is built from the table")
 	# no window letter matched in the key handlers
-	for path in ["res://src/ui/ui_slice.gd", "res://src/ui/window_dock.gd", "res://src/ui/ui_part_1.gd", "res://src/ui/ui_part_2.gd"]:
+	for path in ["res://src/ui/ui_slice.gd", "res://src/ui/window_dock.gd", "res://src/ui/ui_sheet_hud.gd", "res://src/ui/ui_windows.gd"]:
 		var src := FileAccess.get_file_as_string(path)
 		for row: Dictionary in UiSlice.WINDOW_SHORTCUTS:
 			var name := "KEY_" + OS.get_keycode_string(int(row["keycode"]))

@@ -536,7 +536,7 @@ func _test_phase130_status_authority() -> void:
 	assert_true(absf(n.get_last_known_state(5).x - (held_at.x + 12.0)) < 0.01, "a catch-up report after a stall stands")
 	n._m2.speed_ledger[5]["msec"] -= 10000
 	n._route_c2h(5, { "type": "player_moved", "position": [held_at.x + 100.0, 2.0, 3.0] })
-	assert_true(n.get_last_known_state(5).x <= held_at.x + 12.0 + 6.0 * NetworkingSlice.NetPart2.SPEED_STALL_SECONDS + 0.5, "a long stall earns at most SPEED_STALL_SECONDS of travel")
+	assert_true(n.get_last_known_state(5).x <= held_at.x + 12.0 + 6.0 * NetworkingSlice.NetPackets.SPEED_STALL_SECONDS + 0.5, "a long stall earns at most SPEED_STALL_SECONDS of travel")
 	cap[0] = 0.0
 	n._route_c2h(5, { "type": "player_moved", "position": [150.0, 2.0, 3.0] })
 	assert_eq(n.get_last_known_state(5), Vector3(150.0, 2.0, 3.0), "without a cap the report stands")

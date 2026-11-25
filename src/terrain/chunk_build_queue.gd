@@ -1,5 +1,5 @@
 extends RefCounted
-## Methods moved verbatim out of `chunk_manager.gd` (Phase 154). `sl` is the owning slice; each moved method keeps a forwarder there.
+## Chunk building: the load queue and its order, dispatch to the workers (block and noise builds), finished-build attach, worker adaptation, and the disk caches for meshes and generated regions. Methods moved verbatim out of `chunk_manager.gd` (Phase 154, renamed Phase 257). `sl` is the owning slice; each moved method keeps a forwarder there.
 
 ## A worker task must not hold a Node, so the lambda below names the script constant, not `sl`.
 const VoxelBuilder := preload("res://src/terrain/voxel_slice.gd")

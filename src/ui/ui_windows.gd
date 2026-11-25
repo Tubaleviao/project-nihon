@@ -1,5 +1,5 @@
 extends RefCounted
-## Methods moved verbatim out of `ui_slice.gd` (Phase 154). `sl` is the owning slice; each moved method keeps a forwarder there.
+## The inventory, technology (tree and detail), crafting, trade, map, controls, creation and pause windows, and the escape order. Methods moved verbatim out of `ui_slice.gd` (Phase 154, renamed Phase 257). `sl` is the owning slice; each moved method keeps a forwarder there. Does not hold: the HUD, the Character window or drops (`ui_sheet_hud.gd`).
 
 var sl: Node
 var trade_box: VBoxContainer = null

@@ -484,8 +484,8 @@ func _test_stream_builds_high_priority() -> void:
 	cm._catchup = true
 	assert_true(cm.build_high_priority(Vector2i(40, 0)), "a fold's catch-up is high everywhere")
 	cm.free()
-	# Both dispatches live in chunk_part_1.gd since Phase 190 moved the worker-noise one there.
-	var src := FileAccess.get_file_as_string("res://src/terrain/chunk_part_1.gd")
+	# Both dispatches live in chunk_build_queue.gd since Phase 190 moved the worker-noise one there.
+	var src := FileAccess.get_file_as_string("res://src/terrain/chunk_build_queue.gd")
 	assert_eq(src.count("add_task(job, sl.build_high_priority(chunk_pos)"), 2, "both dispatches ask build_high_priority")
 	assert_false(FileAccess.get_file_as_string("res://src/terrain/chunk_manager.gd").contains("add_task("), "chunk_manager.gd adds no task of its own")
 

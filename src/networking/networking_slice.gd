@@ -1,5 +1,5 @@
 extends Node
-## Networking slice — authoritative host/client model (Phase 18), hardened
+## Networking slice — authoritative host/client model (Phase 18), hardened Planned split: new packet senders go to net_packets.gd and host-only session code to net_session.gd.
 ## against real network conditions (Phase 19).
 ##
 ## The host runs the authoritative simulation (terrain, creature AI, combat,
@@ -160,12 +160,12 @@ const IDENTIFIED_STATE_KEYS: PackedStringArray = ["market", "governance", "trade
 ## Phase 36 — the public handle THIS client was told to call itself (see
 ## `identity_assigned`). A client is shown its own handle back as the literal
 ## "player", so its local view keeps the convention it has always had.
-const NetPart1 := preload("res://src/networking/net_part_1.gd")
-const NetPart2 := preload("res://src/networking/net_part_2.gd")
-const NetPart3 := preload("res://src/networking/net_part_3.gd")
-var _m3 := NetPart3.new(self)
-var _m2 := NetPart2.new(self)
-var _m1 := NetPart1.new(self)
+const NetRelay := preload("res://src/networking/net_relay.gd")
+const NetPackets := preload("res://src/networking/net_packets.gd")
+const NetSession := preload("res://src/networking/net_session.gd")
+var _m3 := NetSession.new(self)
+var _m2 := NetPackets.new(self)
+var _m1 := NetRelay.new(self)
 
 var claimed_handle: String = ""
 ## Phase 53 — a friend's handle to spawn beside on a first join ("" = none). Set before connecting.
@@ -530,7 +530,7 @@ func aoi_region(position: Vector3) -> Vector2i:
 func aoi_recipients(position: Vector3, connected: Variant) -> Array:
 	return _m1.aoi_recipients(position, connected)
 
-## Phase 163 — host: send the frame's queued relays, one `player_states` packet per recipient (net_part_1).
+## Phase 163 — host: send the frame's queued relays, one `player_states` packet per recipient (net_relay).
 func flush_relays(paced: bool = false) -> int:
 	return _m1.flush_relays(paced)
 
@@ -1008,7 +1008,7 @@ func _on_gesture_intent(gesture_id: String, _player_id: String) -> void:
 		return
 	_broadcast({ "type": "gesture_intent", "g": gesture_id })
 
-## Phase 181 — creation and looks (bodies in net_part_1): a client forwards its creation intent and asks for a
+## Phase 181 — creation and looks (bodies in net_relay): a client forwards its creation intent and asks for a
 ## peer's look when that peer's avatar appears; the host answers inside the AOI and pushes a changed look.
 func _on_character_creation_intent(action: String, creation: Dictionary, _player_id: String) -> void:
 	_m1.forward_creation_intent(action, creation)

@@ -470,7 +470,7 @@ func _test_chat_no_direct_damage_door() -> void:
 		if dir.begins_with("res://src/tests"):
 			continue
 		for f in DirAccess.get_files_at(dir):
-			if not f.ends_with(".gd") or f in ["game_root.gd", "combat_wiring.gd", "networking_slice.gd"] or f.begins_with("net_part_"):
+			if not f.ends_with(".gd") or f in ["game_root.gd", "combat_wiring.gd", "networking_slice.gd"] or f in ["net_relay.gd", "net_packets.gd", "net_session.gd"]:
 				continue
 			if FileAccess.get_file_as_string(dir + "/" + f).contains("send_player_damaged("):
 				offenders.append(f)
@@ -2577,8 +2577,8 @@ func _free_worn_fixture(f: Dictionary) -> void:
 	f["ch"].free()
 
 func _test_ui_worn_hidden_from_bag() -> void:
-	assert_eq(UiSlice.UiPart2.without_worn({ "A": 2, "B": 1 }, { "Head": "A", "Feet": "B" }), { "A": 1 }, "one copy per worn slot leaves the grid")
-	assert_eq(UiSlice.UiPart2.without_worn({ "A": 1 }, { "Head": "C" }), { "A": 1 }, "worn ids the bag lacks change nothing")
+	assert_eq(UiSlice.UiWindows.without_worn({ "A": 2, "B": 1 }, { "Head": "A", "Feet": "B" }), { "A": 1 }, "one copy per worn slot leaves the grid")
+	assert_eq(UiSlice.UiWindows.without_worn({ "A": 1 }, { "Head": "C" }), { "A": 1 }, "worn ids the bag lacks change nothing")
 	var f := _worn_fixture()
 	var ui = f["ui"]
 	f["bag"].add_item("FerriteHelmet", 1)
@@ -2595,9 +2595,9 @@ func _test_ui_worn_hidden_from_bag() -> void:
 	_free_worn_fixture(f)
 
 func _test_ui_double_click_primary() -> void:
-	assert_eq(UiSlice.UiPart2.primary_action([{ "action": "repair" }, { "action": "equip" }]), "equip", "equip beats repair")
-	assert_eq(UiSlice.UiPart2.primary_action([{ "action": "read" }]), "read", "a book is read")
-	assert_eq(UiSlice.UiPart2.primary_action([{ "action": "repair" }]), "", "repair alone is not a double-click action")
+	assert_eq(UiSlice.UiWindows.primary_action([{ "action": "repair" }, { "action": "equip" }]), "equip", "equip beats repair")
+	assert_eq(UiSlice.UiWindows.primary_action([{ "action": "read" }]), "read", "a book is read")
+	assert_eq(UiSlice.UiWindows.primary_action([{ "action": "repair" }]), "", "repair alone is not a double-click action")
 	var f := _worn_fixture()
 	var ui = f["ui"]
 	f["bag"].add_item("FerriteHelmet", 1)

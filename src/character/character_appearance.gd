@@ -1,5 +1,5 @@
 extends RefCounted
-## Methods moved verbatim out of `character_slice.gd` (Phase 154). `sl` is the owning slice; each moved method keeps a forwarder there.
+## Appearance recipes and their level of detail: `apply_appearance`, `_apply_lod`, the far impostor. Methods moved verbatim out of `character_slice.gd` (Phase 154, renamed Phase 257). `sl` is the owning slice; each moved method keeps a forwarder there. Does not hold: equipment or animation (`character_body_actions.gd`) or the player avatar and nameplates (`character_avatar.gd`).
 
 var sl: Node
 

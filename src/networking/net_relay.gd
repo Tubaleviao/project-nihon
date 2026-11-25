@@ -1,5 +1,5 @@
 extends RefCounted
-## Methods moved verbatim out of `networking_slice.gd` (Phase 154). `sl` is the owning slice; each moved method keeps a forwarder there.
+## Player state relay and look/equipment sharing: remembering and relaying player states, the area of interest, equipment pairs, creation intents and look tokens. Methods moved verbatim out of `networking_slice.gd` (Phase 154, renamed Phase 257). `sl` is the owning slice; each moved method keeps a forwarder there. Does not hold: the packet senders and client-to-host router (`net_packets.gd`) or the host session and snapshots (`net_session.gd`).
 
 var sl: Node
 

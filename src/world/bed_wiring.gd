@@ -114,6 +114,6 @@ func apply_own_view(data: Dictionary) -> void:
 
 # --- client: placement intent ----------------------------------------------------------------------------
 
-## A client forwards its intent to the host, which binds the identity (net_part_2) and BedSlice checks the rest.
+## A client forwards its intent to the host, which binds the identity (net_packets) and BedSlice checks the rest.
 func _forward_intent(offset: Vector3, _player_id: String) -> void:
 	root._networking._broadcast({ "type": "bed_place_intent", "offset": [offset.x, offset.y, offset.z] })

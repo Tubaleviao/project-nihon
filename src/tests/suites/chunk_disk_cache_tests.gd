@@ -6,7 +6,7 @@ extends "res://src/tests/test_support.gd"
 const RegionLayerFile := preload("res://src/persistence/region_layer_file.gd")
 const DiskChunkCache := preload("res://src/terrain/disk_chunk_cache.gd")
 const VoxelMesh := preload("res://src/terrain/voxel_mesh.gd")
-const ChunkPart1 := preload("res://src/terrain/chunk_part_1.gd")
+const ChunkBuildQueue := preload("res://src/terrain/chunk_build_queue.gd")
 
 func register() -> void:
 	_run_test("disk cache: region file round trip, wrong key is a miss", _test_file_roundtrip)
@@ -268,10 +268,10 @@ func _gen_once(dir: String, chunk: Vector2i) -> Array:
 	return [hm, hits]
 
 func _test_cache_dirs() -> void:
-	assert_eq(ChunkPart1.mesh_cache_dir(PackedStringArray()), "user://cache/chunks/", "the player's mesh cache")
-	assert_eq(ChunkPart1.mesh_cache_dir(PackedStringArray(["--playtest-bot"])), "user://playtest/cache/chunks/", "the playtest never clears the player's cache")
-	assert_eq(ChunkPart1.gen_cache_dir("user://saves/server/regions/"), "user://saves/server/cache/gen/", "beside regions/, which /regen world moves aside")
-	assert_eq(ChunkPart1.gen_cache_dir("user://playtest/server/regions/"), "user://playtest/server/cache/gen/", "per save")
+	assert_eq(ChunkBuildQueue.mesh_cache_dir(PackedStringArray()), "user://cache/chunks/", "the player's mesh cache")
+	assert_eq(ChunkBuildQueue.mesh_cache_dir(PackedStringArray(["--playtest-bot"])), "user://playtest/cache/chunks/", "the playtest never clears the player's cache")
+	assert_eq(ChunkBuildQueue.gen_cache_dir("user://saves/server/regions/"), "user://saves/server/cache/gen/", "beside regions/, which /regen world moves aside")
+	assert_eq(ChunkBuildQueue.gen_cache_dir("user://playtest/server/regions/"), "user://playtest/server/cache/gen/", "per save")
 
 ## #679 — `disk_note` computed the key at attach. An edit or a new record landing while the worker ran stored the
 ## mesh built from the old state under the new state's key, so the next visit attached a stale mesh as current.

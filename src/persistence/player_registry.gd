@@ -1,5 +1,5 @@
 extends Node
-## Player registry — player identity and per-player records (Phase 33).
+## Player registry — player identity and per-player records (Phase 33). Planned split: per-player record codecs go to a player_records.gd.
 ##
 ## The registry is the single owner of the `peer_id → player_id` transport map
 ## and of every player-scoped record. `peer_id` is ENet's, and ENet reassigns it

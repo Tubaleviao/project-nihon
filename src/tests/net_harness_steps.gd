@@ -999,7 +999,7 @@ func _market_text_verdict(h: Node, other: String) -> String:
 		return "other_not_named"
 	return "names-seen-no-handle" if text.contains(you) else "own_not_marked"
 
-## Host side: the market blob a client is sent (`NetPart3.redact_blob`), each listing rendered as a client would
+## Host side: the market blob a client is sent (`NetSession.redact_blob`), each listing rendered as a client would
 ## (`PartyLabel.listing_line`): DETAIL when both sellers are named and no handle or player id is printed.
 func _sent_market_verdict(h: Node) -> String:
 	var sent: Variant = h._root._networking._m3.redact_blob("market", h._root._market.get_market_data())

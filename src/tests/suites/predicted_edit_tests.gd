@@ -4,7 +4,7 @@ extends "res://src/tests/test_support.gd"
 
 const EditRemesh := preload("res://src/terrain/edit_remesh.gd")
 const EditPrediction := preload("res://src/terrain/edit_prediction.gd")
-const NetPart2 := preload("res://src/networking/net_part_2.gd")
+const NetPackets := preload("res://src/networking/net_packets.gd")
 
 const Bot := preload("res://src/tests/playtest_bot.gd")
 const VoxelMesh := preload("res://src/terrain/voxel_mesh.gd")
@@ -344,11 +344,11 @@ func _test_predict_place() -> void:
 	_free_client(c)
 
 func _test_host_answers_seq() -> void:
-	assert_eq(NetPart2.edit_seq_of({ "edit_seq": 7 }), 7, "a number")
-	assert_eq(NetPart2.edit_seq_of({ "edit_seq": 7.0 }), 7, "as JSON carries it")
+	assert_eq(NetPackets.edit_seq_of({ "edit_seq": 7 }), 7, "a number")
+	assert_eq(NetPackets.edit_seq_of({ "edit_seq": 7.0 }), 7, "as JSON carries it")
 	for bad: Variant in [0, -3, 7.5, "7", 1 << 40, INF, null]:
-		assert_eq(NetPart2.edit_seq_of({ "edit_seq": bad }), 0, "%s is no prediction number" % str(bad))
-	assert_eq(NetPart2.edit_seq_of({}), 0, "none")
+		assert_eq(NetPackets.edit_seq_of({ "edit_seq": bad }), 0, "%s is no prediction number" % str(bad))
+	assert_eq(NetPackets.edit_seq_of({}), 0, "none")
 	var n := NetworkingSlice.new()
 	add_child(n)
 	n._role = NetworkingSlice.Role.HOST
@@ -368,10 +368,10 @@ func _test_host_answers_seq() -> void:
 	assert_true(changed.size() >= 1, "the edit went out")
 	assert_eq([int(changed[0]["payload"].get("edit_seq", 0)), int(changed[0]["payload"].get("by", 0))], [4, 7], "tagged with the asker's number")
 	assert_eq(changed.filter(func(e: Dictionary) -> bool: return (e["payload"] as Dictionary).has("edit_seq")).size(), 1, "the tag rides that one edit only")
-	assert_false(NetPart2.edit_span_of(changed[0]["payload"]).is_empty(), "with the span the host resolved")
-	assert_eq(NetPart2.edit_span_of({ "edit_span": [6, 6, 1.5, 2.0] }), { "tile": Vector2i(6, 6), "bottom": 1.5, "top": 2.0 }, "read back")
+	assert_false(NetPackets.edit_span_of(changed[0]["payload"]).is_empty(), "with the span the host resolved")
+	assert_eq(NetPackets.edit_span_of({ "edit_span": [6, 6, 1.5, 2.0] }), { "tile": Vector2i(6, 6), "bottom": 1.5, "top": 2.0 }, "read back")
 	for bad: Variant in [null, [1, 2, 3], [0.5, 0, 1.0, 2.0], [0, 0, 2.0, 1.0], [0, 0, NAN, 1.0], "0,0,1,2"]:
-		assert_eq(NetPart2.edit_span_of({ "edit_span": bad }), {}, "%s is no span" % str(bad))
+		assert_eq(NetPackets.edit_span_of({ "edit_span": bad }), {}, "%s is no span" % str(bad))
 	# Refused: the host's work timer never ran for it, and one far away is out of reach.
 	n.get_meta("work_host").enforce = true
 	transport.outbox.clear()
