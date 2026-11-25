@@ -182,6 +182,10 @@ func _test_view_block() -> void:
 	assert_true(v.apply(key, 0.0), "the host's stop is taken")
 	assert_eq(v.overlay(key), null, "and drops the overlay")
 	assert_eq(v.get_child_count(), 0, "with nothing left in the scene")
+	for i in WorkMarks.MAX_MARKS + 3:
+		v.apply("block:%d,0,0.50" % i, 5.0)
+	assert_eq(v.get_child_count(), WorkMarks.MAX_MARKS, "a mark evicted from a full store takes its overlay with it")
+	v.clear()
 	v.apply("block:1,1,0.50", 1.0)
 	now[0] = 102.0 + 1.0 + WorkMarks.GRACE_SECONDS + 0.1
 	v.step()

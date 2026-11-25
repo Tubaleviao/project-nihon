@@ -43,6 +43,13 @@ func step() -> void:
 	var now: float = clock.call()
 	for k in marks.expire(now):
 		_drop(str(k))
+	# A mark the store evicted when full never comes back from `expire`: drop what it left drawn.
+	for k in _overlays.keys():
+		if not marks.has(str(k)):
+			_drop(str(k))
+	for tid in _shaken.keys():
+		if not marks.has("tree:" + str(tid)):
+			_drop("tree:" + str(tid))
 	for k in marks.keys():
 		var key := str(k)
 		var target := WorkMarks.parse_key(key)

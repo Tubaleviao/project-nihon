@@ -425,7 +425,10 @@ func _test_version_field() -> void:
 	assert_eq(ServerStatus.valid_version("1".repeat(ServerStatus.VERSION_MAX_BYTES)), "1".repeat(ServerStatus.VERSION_MAX_BYTES),
 		"a version of exactly the cap is kept")
 	assert_eq(ServerStatus.valid_version("1".repeat(ServerStatus.VERSION_MAX_BYTES + 1)), "", "one byte past the cap is refused")
-	assert_eq(ServerStatus.valid_version("ã".repeat(ServerStatus.VERSION_MAX_BYTES / 2 + 1)), "", "the cap counts UTF-8 bytes")
+	assert_eq(ServerStatus.valid_version("1.0ã"), "", "a letter outside A-Z is refused")
+	assert_eq(ServerStatus.valid_version("1.0\u202e"), "", "a bidi override is refused")
+	assert_eq(ServerStatus.valid_version("1.0\u200b"), "", "a zero-width space is refused")
+	assert_eq(ServerStatus.valid_version("0.3.0-rc.1+b7_x"), "0.3.0-rc.1+b7_x", "dots, dashes, plus and underscores are kept")
 	assert_eq(ServerStatus.valid_version("0.2\n.0"), "", "a control character is refused")
 	assert_eq(ServerStatus.valid_version(" 0.2.0"), "", "outer whitespace is refused")
 	var own := ServerStatus.game_version()
