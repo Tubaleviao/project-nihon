@@ -1055,6 +1055,10 @@ func remote_walk_smooth(h: Node) -> void:
 			# past the final state (at most one send interval) eases back to it once the host stops.
 			if (at as Vector3).x < (rec["prev"] as Vector3).x - 0.001 and float(rec["far"]) < WALK_MPS * interval * float(WALK_STATES) - 1.0:
 				rec["back"] = int(rec["back"]) + 1
+				rec["run_m"] = float(rec.get("run_m", 0.0)) + (rec["prev"] as Vector3).x - (at as Vector3).x
+				rec["retreat"] = maxf(float(rec.get("retreat", 0.0)), float(rec["run_m"]))
+			else:
+				rec["run_m"] = 0.0
 			rec["still_us"] = int(rec["still_us"]) + (now - int(rec["us"])) if step < 0.0001 else 0
 		rec["prev"] = at
 		rec["us"] = now
@@ -1062,9 +1066,14 @@ func remote_walk_smooth(h: Node) -> void:
 		# Done once the avatar walked most of the line and has stood still for half a second.
 		return float(rec["far"]) >= WALK_MPS * interval * float(WALK_STATES) * 0.8 and int(rec["still_us"]) >= 500000
 	var done: bool = await h._await_until(walked, h._step_timeout() * 4.0)
-	var smooth: bool = float(rec["worst"]) <= WALK_MAX_STEP_M and int(rec["back"]) == 0
+	# On a lossy link a stall longer than the buffer makes the track hold its carried distance and ease back to
+	# the newest state (RemoteMotion, by design): a retreat of at most that carried distance is allowed there,
+	# none on a clean link.
+	var carried_m: float = WALK_MPS * float(RemoteMotionRules.rules()["players"]["extrapolateMaxMs"]) / 1000.0
+	var back_ok: bool = int(rec["back"]) == 0 or (h._root._networking.net_profile != "" and float(rec.get("retreat", 0.0)) <= carried_m + 0.1)
+	var smooth: bool = float(rec["worst"]) <= WALK_MAX_STEP_M and back_ok
 	h._report(STEP, h.verdict(done and smooth, true), "walked_smooth" if done and smooth else (
-		"not_walked_%.1fm" % float(rec["far"]) if not done else "step_%.3fm_per_16ms_back_%d_in_%d_frames_%s" % [float(rec["worst"]), int(rec["back"]), int(rec["frames"]), str(rec.get("worst_at", ""))]))
+		"not_walked_%.1fm" % float(rec["far"]) if not done else "step_%.3fm_per_16ms_back_%d_in_%d_frames_%s_retreat_%.2fm" % [float(rec["worst"]), int(rec["back"]), int(rec["frames"]), str(rec.get("worst_at", "")), float(rec.get("retreat", 0.0))]))
 
 ## Phase 226 — several characters per player over the wire. The client leaves and comes back the way a menu join
 ## does: it asks for its character list before entering (`awaiting_character`), finds its one character, makes
