@@ -236,12 +236,13 @@ func _ready() -> void:
 	if render_visuals:
 		_sway_on = TreeMaterial.sway_enabled()
 		_build_pool()
-		if not ProjectSettings.settings_changed.is_connected(refresh_sway):
-			ProjectSettings.settings_changed.connect(refresh_sway)
+
+## The sway switch follows the tree: connected on every (re-)enter, dropped on exit (#747).
+func _enter_tree() -> void:
+	if render_visuals and not ProjectSettings.settings_changed.is_connected(refresh_sway): ProjectSettings.settings_changed.connect(refresh_sway)
 
 func _exit_tree() -> void:
-	if ProjectSettings.settings_changed.is_connected(refresh_sway):
-		ProjectSettings.settings_changed.disconnect(refresh_sway)
+	if ProjectSettings.settings_changed.is_connected(refresh_sway): ProjectSettings.settings_changed.disconnect(refresh_sway)
 
 func _process(delta: float) -> void:
 	step_visuals(delta)
