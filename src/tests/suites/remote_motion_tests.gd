@@ -27,6 +27,7 @@ func register() -> void:
 	_run_test("remote motion: the teleport check's relay gap mirrors RelayBatch.FAR_GAP_MS", _test_far_gap_mirrored)
 	_run_test("remote motion: a late state behind the carried body does not pull it back", _test_late_state_never_back)
 	_run_test("remote motion: a body whose states come less often is played back later, still smooth", _test_sparse_states_smooth)
+	_run_test("remote motion: a stalled link's backlog arriving within a few ms plays back at walking pace, in no frame above 0.25 m", _test_burst_after_stall)
 	_run_test("remote motion: the state list stays bounded", _test_bounded_states)
 	_run_test("remote motion: a remote player plays walk, run and idle from its speed and turns at the turn rate", _test_avatar_clips_and_turn)
 	_run_test("remote motion: a remote avatar is not moved by a state, only by its playback", _test_avatar_state_does_not_snap)
@@ -34,6 +35,25 @@ func register() -> void:
 	_run_test("remote motion: the host sends a creature far from every player less often", _test_far_creature_throttled)
 	_run_test("remote motion: a client fold drops the creatures' tracks and drawn positions", _test_fold_clears_tracks)
 
+
+## A walk at 1 m / 100 ms, then 600 ms of silence, then the six states sent in the gap arriving 1 ms apart.
+func _test_burst_after_stall() -> void:
+	var t := _track()
+	var states := _line(0.0, 8, 100.0, 1.0)   # 0..700 ms, x 0..7
+	for k in 6:
+		states.append([1300.0 + float(k), Vector3(8.0 + float(k), 0.0, 0.0)])
+	for k in 10:
+		states.append([1400.0 + float(k) * 100.0, Vector3(14.0 + float(k), 0.0, 0.0)])
+	var drawn := _play(t, states, 3500.0)
+	var worst := 0.0
+	var back := 0
+	for i in range(int(1500.0 / FRAME_MS), int(2500.0 / FRAME_MS)):   # the backlog and the walk after it (a stop eases back by design)
+		worst = maxf(worst, (drawn[i] as Vector3).distance_to(drawn[i - 1]))
+		if (drawn[i] as Vector3).x < (drawn[i - 1] as Vector3).x - 0.001:
+			back += 1
+	assert_true(worst <= MAX_STEP_M, "no frame above %.2f m after a burst (worst %.3f)" % [MAX_STEP_M, worst])
+	assert_eq(back, 0, "never back along the line")
+	assert_true((drawn[drawn.size() - 1] as Vector3).x >= 22.0, "the body reaches the last state")
 
 func _track() -> RemoteMotion:
 	return RemoteMotion.new(RemoteMotionRules.group("players"))

@@ -38,6 +38,8 @@ const MAX_RATE := 1.5
 const GAP_MARGIN := 1.25
 const MAX_GAP_SAMPLE_MS := 1000.0
 ## Metres under which two states are the same spot (a keepalive).
+## Least spacing of two states on the playback clock, as a share of the send interval.
+const MIN_SPACING := 0.75
 const SAME_SPOT_M := 0.001
 ## The correction offset eases out at this rate (1/s), and at least OFFSET_MIN_SPEED m/s.
 const OFFSET_RATE := 5.0
@@ -81,6 +83,8 @@ var _offset := Vector3.ZERO
 var _yaw_target := 0.0
 ## True once the carried distance past the newest state has been handed to the offset to ease out.
 var _back_started := false
+## Set when playback jumped to its target (`RESYNC_MS`): the next sample's gap to the drawn body becomes the offset.
+var resync_pending := false
 ## `_sample` output (fields, not a Dictionary: this runs per body per frame).
 var _s_pos := Vector3.ZERO
 var _s_vel := Vector3.ZERO
@@ -109,6 +113,7 @@ func push(now_ms: float, pos: Vector3, state_yaw: float = NAN, air: bool = false
 		return
 	settled = false
 	var moved := false
+	var arrived_ms := now_ms
 	if _states.is_empty():
 		if not has_position:
 			_snap_pending = true
@@ -120,13 +125,18 @@ func push(now_ms: float, pos: Vector3, state_yaw: float = NAN, air: bool = false
 			_snap_pending = true
 			_offset = Vector3.ZERO
 			snaps += 1 if has_position else 0
-		elif now_ms <= float(last["t"]):
+		elif now_ms <= float(last.get("arr", last["t"])):
 			# Two states in one instant (a burst): the later one stands for both.
 			last["pos"] = pos
 			last["yaw"] = state_yaw
 			last["air"] = air
 			return
 		else:
+			# A burst (a stalled link delivering its backlog at once) must not become a run of states a
+			# millisecond apart, which would play back at hundreds of m/s: states sit at least MIN_SPACING of the
+			# send interval apart on the playback clock, so the backlog plays out at about the pace it was sent.
+			arrived_ms = now_ms
+			now_ms = maxf(now_ms, float(last["t"]) + send_interval_ms * MIN_SPACING)
 			var gap := now_ms - float(last["t"])
 			moved = pos.distance_to(lpos) > SAME_SPOT_M
 			if moved and bool(last.get("moved", false)) and gap <= MAX_GAP_SAMPLE_MS:
@@ -138,7 +148,7 @@ func push(now_ms: float, pos: Vector3, state_yaw: float = NAN, air: bool = false
 				_s_pos = lpos   # the base the next frame's travel is measured from
 				_back_started = false
 				_states.append({ "t": _play_ms, "pos": lpos, "yaw": last["yaw"], "air": last["air"], "moved": false })
-	_states.append({ "t": now_ms, "pos": pos, "yaw": state_yaw, "air": air, "moved": moved })
+	_states.append({ "t": now_ms, "pos": pos, "yaw": state_yaw, "air": air, "moved": moved, "arr": arrived_ms })
 	while _states.size() > MAX_STATES:
 		_states.pop_front()
 
@@ -180,12 +190,19 @@ func step(now_ms: float, delta: float) -> void:
 		if err > RESYNC_MS:
 			_play_ms = target
 			_rate = 1.0
+			resync_pending = true
 		else:
 			_rate = clampf(1.0 + err / CATCHUP_MS, MIN_RATE, MAX_RATE)
 			_play_ms += delta * 1000.0 * _rate
 	_prune()
 	var base_was := _s_pos
 	_sample(_play_ms)
+	if resync_pending:
+		# A long stall (a congested link delivers a second of states at once) moved playback far ahead: the
+		# drawn body stays where it is and the gap eases out like any late state's, instead of stepping in one frame.
+		resync_pending = false
+		if has_position and (position - _s_pos).length() <= teleport_m:
+			_offset = position - _s_pos
 	_ease_offset(delta, (_s_pos - base_was).length() if _s_vel != Vector3.ZERO else -1.0)
 	position = _s_pos + _offset
 	has_position = true
