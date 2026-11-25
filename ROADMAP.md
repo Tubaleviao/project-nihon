@@ -204,7 +204,7 @@ Filed by the owner on 2026-11-25 after reviewing [GDVoxelTerrain](https://github
 (MIT, Joris AR), a Godot smooth-voxel plugin whose edits are SDF brushes: a dig or a build is one small
 op (shape, position, radius, boolean or smooth boolean) applied to the field and re-meshed, with the
 edit's material painted onto what it touched. Digging here is the opposite: one mine removes one
-0.5 × 0.5 × 0.125 m slab (0.03 m³) from one column, a 1 m pit is about 64 holds, and on the smooth
+0.5 × 0.5 × 0.125 m slab (0.03 m³) from one column, a 1 m cube is 32 holds, and on the smooth
 mesher (Phase 240) a slab barely shows. The review kept the brush ops, the smooth boolean maths
 (`sdf_operations.h`), paint-on-edit and the populator's placement filters (into 247); it left the
 octree storage, since the run columns, op logs and stable-world rule already work and the brush can be
@@ -882,8 +882,9 @@ brush op; this phase does the same on top of the run columns.
 - **Yield by volume:** the removed volume is summed per material: the biome's soil within
   `topsoilDepth`, host rock below it, and Phase 43's vein material where the ore field has one
   (depletion recorded per vein as now). Quantity is the volume over the fabric's unit volume per
-  material; the remainder is kept per player and material, so many small digs yield the same as one
-  big one.
+  material, which defaults to one slab (0.03125 m³) so today's recipe and trade quantities keep their
+  meaning; the remainder is kept per player and material (saved with the player), so many small digs
+  yield the same as one big one.
 - **Tools decide the brush** (fabric, separate PR): each digging tool has a shape, a radius and the
   materials it cuts. Bare hands: a small sphere in soil and sand only. A shovel: a larger sphere,
   soil, sand and gravel, the fastest per m³. A pick: a smaller sphere that also cuts rock and ore. A
@@ -921,10 +922,12 @@ material onto what it touched, which is what makes a dig read as a dig.
   sand, gravel) by volume, at the same unit volume as Phase 300's yield. The added spans are natural-
   ground spans of that material (not placed blocks), so they mesh smooth and can be dug again.
 - **Flatten:** the first hit sets a target plane; each hold removes ground above it and fills below it
-  within the brush, the fill paid from the inventory as above. Roads (Phase 235) and the tower's
+  within the brush; what it removes yields as a Phase 300 dig, and the fill is paid from the
+  inventory as above. Roads (Phase 235) and the tower's
   levelled ground (Phase 213's step) use it.
 - **Smooth:** each hold relaxes the column tops in the brush toward their neighbours' mean, conserving
-  volume (what one column loses its neighbours gain, so nothing is created).
+  volume (what one column loses its neighbours gain, so nothing is created), in whole `STEP_HEIGHT`
+  steps. Like the dig, it moves natural spans only: a placed block neither moves nor takes ground.
 - **A dug surface shows what it is:** `terrain_weights` reads, per vertex, how deep the exposed run
   top lies under the column's natural surface: within `topsoilDepth` it weighs the biome's soil
   material, below it the host rock, and on a vein its ore tint; a filled span shows its own material.
