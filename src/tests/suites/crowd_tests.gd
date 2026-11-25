@@ -414,11 +414,11 @@ func _test_crowd_baseline_gate() -> void:
 	var ok := { "lan/cluster": at.call(32), "lan/cross": at.call(16), "lan/spread": at.call(64), "lan/pole": at.call(32), "lan/churn": at.call(0) }
 	assert_true(StressRules.baseline_regressions(ok, 64).is_empty(), "meeting or beating every baseline size passes")
 	var worse := ok.duplicate()
-	worse["lan/pole"] = at.call(16)
+	worse["lan/pole"] = at.call(8)
 	var regs := StressRules.baseline_regressions(worse, 64)
 	assert_eq(regs.size(), 1, "one series below its baseline is one regression")
 	assert_true(str(regs[0]).begins_with("lan/pole"), "and it is named")
-	assert_true(StressRules.baseline_regressions(worse, 16).is_empty(), "a baseline above the run's ceiling is not judged")
+	assert_true(StressRules.baseline_regressions(worse, 8).is_empty(), "a baseline above the run's ceiling is not judged")
 	assert_true(StressRules.baseline_regressions({ "wan_br/pole": at.call(0) }, 64).is_empty(), "a series without a baseline is not judged")
 	var md := StressRules.report_markdown(StressRules.build_report([], { "max": "64" }))
 	assert_true(md.contains("## Baseline"), "the report has a baseline section")

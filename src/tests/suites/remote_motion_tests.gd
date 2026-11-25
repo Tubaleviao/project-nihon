@@ -28,6 +28,7 @@ func register() -> void:
 	_run_test("remote motion: a late state behind the carried body does not pull it back", _test_late_state_never_back)
 	_run_test("remote motion: a body whose states come less often is played back later, still smooth", _test_sparse_states_smooth)
 	_run_test("remote motion: a stalled link's backlog arriving within a few ms plays back at walking pace, in no frame above 0.25 m", _test_burst_after_stall)
+	_run_test("remote motion: a playback resync after a long stall eases the body instead of stepping it", _test_resync_eases)
 	_run_test("remote motion: the state list stays bounded", _test_bounded_states)
 	_run_test("remote motion: a remote player plays walk, run and idle from its speed and turns at the turn rate", _test_avatar_clips_and_turn)
 	_run_test("remote motion: a remote avatar is not moved by a state, only by its playback", _test_avatar_state_does_not_snap)
@@ -54,6 +55,17 @@ func _test_burst_after_stall() -> void:
 	assert_true(worst <= MAX_STEP_M, "no frame above %.2f m after a burst (worst %.3f)" % [MAX_STEP_M, worst])
 	assert_eq(back, 0, "never back along the line")
 	assert_true((drawn[drawn.size() - 1] as Vector3).x >= 22.0, "the body reaches the last state")
+
+func _test_resync_eases() -> void:
+	var t := _track()
+	var states := _line(0.0, 40, 100.0, 0.45)
+	var drawn := _play(t, states, 1200.0)
+	var before: Vector3 = drawn[drawn.size() - 1]
+	# The clock jumps 1.6 s between two frames (a stalled process) while states kept arriving.
+	for k in range(12, 28):
+		t.push(1200.0 + float(k - 11) * 100.0, Vector3(float(k) * 0.45, 0.0, 0.0))
+	t.step(2900.0, FRAME_MS / 1000.0)
+	assert_true(t.position.distance_to(before) <= MAX_STEP_M, "the resync frame moves the body %.3f m (limit %.2f)" % [t.position.distance_to(before), MAX_STEP_M])
 
 func _track() -> RemoteMotion:
 	return RemoteMotion.new(RemoteMotionRules.group("players"))

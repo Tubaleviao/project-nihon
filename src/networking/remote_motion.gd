@@ -44,6 +44,8 @@ const SAME_SPOT_M := 0.001
 ## The correction offset eases out at this rate (1/s), and at least OFFSET_MIN_SPEED m/s.
 const OFFSET_RATE := 5.0
 const OFFSET_MIN_SPEED := 0.2
+## ...and never faster than this (m/s): a gap of metres (a resync after a stall) eases out over about a second.
+const OFFSET_MAX_SPEED := 8.0
 ## A body whose states carry no air flag (the player relay sends positions only) reads as in the air when it
 ## drops at least this fast (m/s, `Locomotion.FALL_SPEED`) and more steeply than STEEP_DROP (vertical over
 ## horizontal speed: steeper than any slope a body walks down), so a walk downhill never plays `fall`.
@@ -203,6 +205,7 @@ func step(now_ms: float, delta: float) -> void:
 		resync_pending = false
 		if has_position and (position - _s_pos).length() <= teleport_m:
 			_offset = position - _s_pos
+			base_was = _s_pos   # the jump is not travel: it must not let the ease swallow half of it in one frame
 	_ease_offset(delta, (_s_pos - base_was).length() if _s_vel != Vector3.ZERO else -1.0)
 	position = _s_pos + _offset
 	has_position = true
@@ -244,7 +247,7 @@ func _ease_offset(delta: float, travel: float) -> void:
 	var off := _offset.length()
 	if off == 0.0:
 		return
-	var take := maxf(OFFSET_RATE * off, OFFSET_MIN_SPEED) * delta
+	var take := minf(maxf(OFFSET_RATE * off, OFFSET_MIN_SPEED), OFFSET_MAX_SPEED) * delta
 	if travel >= 0.0:
 		take = minf(take, 0.5 * travel)
 	_offset = Vector3.ZERO if take >= off else _offset * (1.0 - take / off)

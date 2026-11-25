@@ -1047,6 +1047,8 @@ func remote_walk_smooth(h: Node) -> void:
 		if rec["prev"] != null:
 			var frame_ms := maxf(float(now - int(rec["us"])) / 1000.0, 16.0)
 			var step: float = (at as Vector3).distance_to(rec["prev"])
+			if step * 16.0 / frame_ms > float(rec["worst"]):
+				rec["worst_at"] = "frame%d_%.0fms_%.2fm_from_%.1f" % [int(rec["frames"]), frame_ms, step, (rec["prev"] as Vector3).x - (rec["start"] as Vector3).x]
 			rec["worst"] = maxf(float(rec["worst"]), step * 16.0 / frame_ms)
 			rec["frames"] = int(rec["frames"]) + 1
 			# The walk is along +X: a frame back along it is a fault, until the last metre, where the body carried
@@ -1062,7 +1064,7 @@ func remote_walk_smooth(h: Node) -> void:
 	var done: bool = await h._await_until(walked, h._step_timeout() * 4.0)
 	var smooth: bool = float(rec["worst"]) <= WALK_MAX_STEP_M and int(rec["back"]) == 0
 	h._report(STEP, h.verdict(done and smooth, true), "walked_smooth" if done and smooth else (
-		"not_walked_%.1fm" % float(rec["far"]) if not done else "step_%.3fm_per_16ms_back_%d_in_%d_frames" % [float(rec["worst"]), int(rec["back"]), int(rec["frames"])]))
+		"not_walked_%.1fm" % float(rec["far"]) if not done else "step_%.3fm_per_16ms_back_%d_in_%d_frames_%s" % [float(rec["worst"]), int(rec["back"]), int(rec["frames"]), str(rec.get("worst_at", ""))]))
 
 ## Phase 226 — several characters per player over the wire. The client leaves and comes back the way a menu join
 ## does: it asks for its character list before entering (`awaiting_character`), finds its one character, makes
