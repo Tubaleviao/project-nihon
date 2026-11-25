@@ -13,6 +13,9 @@ func register() -> void:
 	_run_test("animation: a creature hit past the stagger share staggers, a light one flinches (Phase 287)", _test_creature_hit_clip_param)
 	_run_test("animation: a peer with no body on the host still chains its combo and a stagger rides the wire (Phase 287)", _test_bodyless_combo_and_stagger)
 	_run_test("animation: the host deals a player swing at the impact time, and a refused re-check deals nothing (Phase 287)", _test_battle_impact_timing)
+	_run_test("animation: the host's swing carries its combo clip and a viewer plays that clip (#726)", _test_swing_clip_synced)
+	_run_test("animation: a rig with no upper-body bones gets no upper-body attack node (#726)", _test_upper_attack_needs_upper_bones)
+	_run_test("animation: an attacker cancelled earlier in a due batch deals nothing; one state read per lone hit (#726)", _test_battle_impact_batch_cancel)
 	_run_test("animation: a pending hit lands at impact and is cancelled by range, death, stagger or a weapon switch (Phase 287)", _test_pending_hits)
 	_run_test("animation: a bodyless peer's swing is timed from the placeholder clip lengths, not a flat guess (Phase 287)", _test_placeholder_lengths)
 	_run_test("animation: repeated attacks inside the window play the combo variants, a pause restarts, a missing variant falls back (Phase 287)", _test_combo_chain)
@@ -90,10 +93,67 @@ func _test_synced_swing_animates_peer() -> void:
 	assert_eq(int(f["ch"]._instances[peer_iid]["locomotion"].swing_serial), 1, "its hit at impact does not swing again")
 	assert_eq(int(f["cr"].visuals().models["w0"]["tree"].get_meta("hit_shots", 0)), 1, "and the target flinched")
 	assert_eq(int(f["ch"]._instances[f["iid"]]["locomotion"].swing_serial), 0, "the local avatar did not")
+	# #726: an outcome with no "swing" packet before it (the packet was lost) swings the peer once, with the hit.
+	GameBus.combat_hit_synced.emit("p:5", "c:w0", "hit")
+	assert_eq(int(f["ch"]._instances[peer_iid]["locomotion"].swing_serial), 2, "an outcome with no announced swing swings the peer")
+	GameBus.combat_hit_synced.emit("p:5", "c:w0", "swing")
+	GameBus.combat_hit_synced.emit("p:5", "c:w0", "miss")
+	assert_eq(int(f["ch"]._instances[peer_iid]["locomotion"].swing_serial), 3, "an announced swing's miss does not swing again")
+	assert_true(f["gr"]._combat_wiring._swung_keys.is_empty(), "and the announced swing is consumed")
+	# A swing whose hit was refused sends no outcome: its stale entry must not swallow a later fallback swing.
+	var cw = f["gr"]._combat_wiring
+	cw._swung_keys["p:5"] = Time.get_ticks_msec() - CombatWiringScript.SWUNG_KEY_TTL_MS - 1000
+	GameBus.combat_hit_synced.emit("p:5", "c:w0", "hit")
+	assert_eq(int(f["ch"]._instances[peer_iid]["locomotion"].swing_serial), 4, "a stale announced swing does not hide a lost one")
+	# Keys of refused hits and departed peers do not fill the map for good: stale ones are pruned when it is full.
+	var old_ms := Time.get_ticks_msec() - CombatWiringScript.SWUNG_KEY_TTL_MS - 1000
+	for i in CombatWiringScript.MAX_SWUNG_KEYS:
+		cw._swung_keys["p:%d" % (1000 + i)] = old_ms
+	cw._note_swung("p:77", Time.get_ticks_msec())
+	assert_true(cw._swung_keys.has("p:77"), "a full map of stale keys still records a new swing")
+	assert_eq(cw._swung_keys.size(), 1, "after pruning the stale ones")
+	cw._swung_keys.clear()
 	# A host never plays a packet's animation twice: the synced signal only acts on a client.
 	f["gr"]._is_client = false
 	GameBus.combat_hit_synced.emit("p:5", "c:w0", "swing")
-	assert_eq(int(f["ch"]._instances[peer_iid]["locomotion"].swing_serial), 1, "a host ignores the synced signal")
+	assert_eq(int(f["ch"]._instances[peer_iid]["locomotion"].swing_serial), 4, "a host ignores the synced signal")
+	_free_fixture(f)
+
+
+## #726 — observers used to guess the combo step from their own clock; the host now names the clip it picked.
+func _test_swing_clip_synced() -> void:
+	var f := _fixture()
+	var cw = f["gr"]._combat_wiring
+	assert_true(ComboChain.is_contract_clip("attack_1h_3"), "attack_1h_3 is a rig-contract clip")
+	assert_false(ComboChain.is_contract_clip("attack_flurry"), "a made-up clip is not")
+	assert_false(ComboChain.is_contract_clip(""), "nor is an empty one")
+	# A viewer's rig that lacks the host's step falls back the way `clip_for` does on the host.
+	assert_eq(ComboChain.resolve_clip("attack_1h_3", {"attack_1h_3": 0.6}), "attack_1h_3", "a clip the rig has plays as is")
+	assert_eq(ComboChain.resolve_clip("attack_1h_3", {"attack_1h": 0.5}), ComboChain.clip_for("one_hand", 2, {"attack_1h": 0.5}),
+		"a missing step plays its chain's base clip, like the host's own fallback")
+	assert_eq(ComboChain.resolve_clip("attack_1h_3", {}), ComboChain.FALLBACK_CLIP, "a rig with no chain clip plays attack")
+	# Host: the swing a body starts records the step's clip, and the swing announce consumes it once.
+	cw.impact_info("player")
+	var clip := str(cw._last_swing_clip.get("player", ""))
+	assert_true(ComboChain.is_contract_clip(clip), "the host recorded the combo clip it played (%s)" % clip)
+	cw._on_swing_started("player", "w0")
+	assert_false(cw._last_swing_clip.has("player"), "the announce consumes it (offline nothing is sent)")
+	# Viewer: the announced clip is played on the peer's avatar instead of its own combo guess.
+	f["gr"]._is_client = true
+	var peer_iid: String = f["ch"].create_character_from_recipe({"skeleton": "HumanoidSkeleton"}, Vector3(3, 0, 0))
+	assert_true(f["ch"].attach_rig(peer_iid, "models/player_rig.glb.raw"), "the peer's copy has the rig")
+	f["ch"].bind_peer_character(5, peer_iid)
+	var loco = f["ch"]._instances[peer_iid]["locomotion"]
+	GameBus.combat_swing_clip_synced.emit("p:5", "attack_1h_3")
+	GameBus.combat_hit_synced.emit("p:5", "c:w0", "swing")
+	assert_eq(str(loco.attack_clip), "attack_1h_3", "the viewer plays the host's step")
+	assert_true(cw._swing_clips.is_empty(), "and the clip is used once")
+	GameBus.combat_hit_synced.emit("p:5", "c:w0", "hit")
+	GameBus.combat_hit_synced.emit("p:5", "c:w0", "swing")
+	assert_true(str(loco.attack_clip) != "", "a swing with no named clip falls back to the viewer's own chain")
+	for i in CombatWiringScript.MAX_SWUNG_KEYS + 10:
+		GameBus.combat_swing_clip_synced.emit("p:%d" % (100 + i), "attack_1h")
+	assert_true(cw._swing_clips.size() <= CombatWiringScript.MAX_SWUNG_KEYS, "the client's pending clips are bounded")
 	_free_fixture(f)
 
 
@@ -545,6 +605,51 @@ func _test_battle_impact_timing() -> void:
 	GameBus.combat_hit_resolved.disconnect(cb)
 	b.free()
 
+## #726: a hit staggering an attacker whose own hit is due in the same batch cancels that hit, and a lone due hit
+## reads the state at impact once.
+func _test_battle_impact_batch_cancel() -> void:
+	var b := BattleSliceP.new()
+	add_child(b)
+	var clock := [0.0]
+	b.now_fn = func(): return clock[0]
+	b.impact_queue = PendingHit.new()
+	var reads := [0]
+	b.impact_state_fn = func(_e):
+		reads[0] += 1
+		return { "attacker_alive": true, "attacker_staggered": false, "attacker_item": "X", "target_alive": true,
+			"gap": 1.0, "reach": 3.0 }
+	b._hp_state["GraywolfPack"] = 10000.0
+	b.impact_queue.start("player", "GraywolfPack", "one_hand", "X", 0, 0.0, 0.5)
+	clock[0] = 1.0
+	assert_eq(b.tick_impacts(), 1, "a lone due hit lands")
+	assert_eq(reads[0], 1, "and the state at impact is read once, not twice")
+	# Two attackers due together; the first hit's resolution cancels the second attacker (a stagger).
+	var cancel_second := func(a, _d, _o, _dmg):
+		if a == "player":
+			b.impact_queue.cancel("player_1_1_1")
+	GameBus.combat_hit_resolved.connect(cancel_second)
+	b.impact_queue.start("player", "GraywolfPack", "one_hand", "X", 0, 2.0, 0.5)
+	b.impact_queue.start("player_1_1_1", "GraywolfPack", "one_hand", "X", 0, 2.0, 0.5)
+	var hits := []
+	var cb := func(a, _d, _o, _dmg): hits.append(a)
+	GameBus.combat_hit_resolved.connect(cb)
+	clock[0] = 3.0
+	# Pending hits resolve in queue order (Dictionary insertion order), so "player" lands first.
+	assert_eq(b.tick_impacts(), 1, "an attacker staggered earlier in the same batch deals nothing")
+	assert_false(hits.has("player_1_1_1"), "and sends no hit")
+	GameBus.combat_hit_resolved.disconnect(cb)
+	GameBus.combat_hit_resolved.disconnect(cancel_second)
+	var q := PendingHit.new()
+	q.cancel("a")
+	q.begin_batch()
+	assert_false(q.cancelled_in_batch("a"), "a cancel before the batch is forgotten when the batch starts")
+	q.cancel("b")
+	assert_true(q.cancelled_in_batch("b"), "a cancel inside the batch is remembered")
+	q.end_batch()
+	q.cancel("c")
+	assert_true(q._cancelled_in_batch.is_empty(), "cancels outside a batch are not kept (a queue never ticked does not grow)")
+	b.free()
+
 func _test_creature_hit_clip_param() -> void:
 	var f := _fixture()
 	f["gr"]._battle = BattleSliceP.new()
@@ -554,6 +659,30 @@ func _test_creature_hit_clip_param() -> void:
 	f["gr"]._battle.free()
 	f["gr"]._battle = null
 	_free_fixture(f)
+
+## #726: a rig whose bones match none of `UPPER_BONES` gets no upper-body attack node (an empty filter would
+## play no swing while moving), so its swing keeps the full-body Attack state.
+func _test_upper_attack_needs_upper_bones() -> void:
+	var player := AnimationPlayer.new()
+	var lib := AnimationLibrary.new()
+	for clip_name in ["idle", RigTree.ATTACK_DEFAULT]:
+		var anim := Animation.new()
+		var t := anim.add_track(Animation.TYPE_ROTATION_3D)
+		anim.track_set_path(t, NodePath("Skeleton3D:bone_odd_%s" % clip_name))
+		anim.rotation_track_insert_key(t, 0.0, Quaternion.IDENTITY)
+		anim.length = 0.5
+		lib.add_animation(clip_name, anim)
+	player.add_animation_library("", lib)
+	assert_true(RigTree.upper_body_paths(player).is_empty(), "no track names an upper-body bone")
+	var tree := RigTree.build_tree(player)
+	var loco_tree: AnimationNodeBlendTree = tree.get_meta("loco_tree")
+	assert_false(loco_tree.has_node(RigTree.UPPER_NODE), "so the rig has no upper-body attack node")
+	var loco := Locomotion.new()
+	loco.update(3.0, true, 0.0, 0.1)
+	loco.trigger_attack(RigTree.ATTACK_DEFAULT, 0.5)
+	assert_false(RigTree.swing_on_upper_body(tree, loco), "and a moving swing plays the full-body Attack state")
+	tree.free()
+	player.free()
 
 func _test_upper_body_attack() -> void:
 	var root := AssetOverlay.load_rig_scene("models/player_rig.glb.raw")
@@ -588,6 +717,7 @@ func _test_upper_body_attack() -> void:
 	assert_true(bool(tree.get_meta("swing_upper", false)), "a swing begun while moving is latched upper-body")
 	root.free()
 
+const CombatWiringScript := preload("res://src/battle/combat_wiring.gd")
 const HitFeel := preload("res://src/battle/hit_feel.gd")
 const GameSettings := preload("res://src/core/game_settings.gd")
 

@@ -12,6 +12,7 @@ const PlayerRegistry   := preload("res://src/persistence/player_registry.gd")
 const PlayerSlice      := preload("res://src/player/player_slice.gd")
 const StatusEffects    := preload("res://src/battle/status_effects.gd")
 const RigTree          := preload("res://src/character/rig_tree.gd")
+const WorldShape := preload("res://src/terrain/world_shape.gd")
 const PendingHit       := preload("res://src/battle/pending_hit.gd")
 const HitFeel          := preload("res://src/battle/hit_feel.gd")
 const ComboChain       := preload("res://src/battle/combo_chain.gd")
@@ -33,6 +34,7 @@ func _connect_all() -> void:
 	connect_bus(GameBus.knockback_requested, _on_knockback_requested)
 	connect_bus(GameBus.player_died, _on_status_player_died)
 	connect_bus(GameBus.combat_hit_resolved, _on_combat_hit_resolved)
+	connect_bus(GameBus.combat_swing_clip_synced, _on_swing_clip_synced)
 	connect_bus(GameBus.combat_hit_synced, _on_combat_hit_synced)
 	connect_bus(GameBus.player_damaged, _on_local_player_damaged)
 	connect_bus(GameBus.block_mine_requested, _on_mine_swing)
@@ -88,6 +90,10 @@ var _last_swing_ms: Dictionary = {}
 var _last_ability_ms: Dictionary = {}
 ## Host: attacker id -> { weapon, step, at } for a peer drawn no body here (a dedicated host), so its combo advances.
 var _bodyless_combo: Dictionary = {}
+## Host: attacker id -> the combo clip `impact_info` just picked, read once by `_on_swing_started` (#726).
+var _last_swing_clip: Dictionary = {}
+## Client: wire key -> the clip of the swing the host announced next for it (#726), read once by `_swing`.
+var _swing_clips: Dictionary = {}
 
 ## Host: a peer's swing (`attack_intent`, re-emitted by NetworkingSlice with the connection's player id). The
 ## host checks everything it can know itself: the peer is connected and not downed or held, the target is a
@@ -247,6 +253,7 @@ func forget_swinger(player_id: String) -> void:
 	_last_swing_ms.erase(player_id)
 	_last_ability_ms.erase(player_id)
 	_bodyless_combo.erase(player_id)
+	_last_swing_clip.erase(player_id)
 	if root._battle != null and root._battle.impact_queue != null:
 		root._battle.impact_queue.cancel(player_id)
 
@@ -262,19 +269,25 @@ func enable_impact_timing() -> void:
 ## when (or if) the hit lands.
 func _on_swing_started(attacker_id: String, defender_id: String) -> void:
 	root._gesture_wiring.note_action(attacker_id)   # a swing ends a pose at the click, hit or no hit
+	var clip := str(_last_swing_clip.get(attacker_id, ""))
+	_last_swing_clip.erase(attacker_id)
 	if root._networking == null or not root._networking.is_host():
 		return
 	var a_key := _wire_key(attacker_id)
 	var at: Variant = _event_position(a_key, _wire_key(defender_id))
 	if at != null:
-		root._networking.send_combat_hit(a_key, _wire_key(defender_id), "swing", at)
+		# #726: the clip the host's combo chain picked, so every viewer plays the same step.
+		root._networking.send_combat_hit(a_key, _wire_key(defender_id), "swing", at, clip)
 
 func _attacker_character(attacker_id: String) -> String:
 	return _character_for_key(_wire_key(attacker_id))
 
-## The held hotbar item (Phase 280) else the main-hand item the host's registry holds for a player with no body here ("" for the local "player").
+## The held hotbar item (Phase 280) else the main-hand item the host's registry holds for a player with no body
+## here. #726: the local "player" reads its own registry id, so a bodyless local swing keeps its weapon class.
 func _registry_main_hand(attacker_id: String) -> String:
 	if attacker_id == "player":
+		attacker_id = root._registry.local_player_id
+	if attacker_id == "":
 		return ""
 	var held: String = root._held_item_wiring.held_of(attacker_id)
 	return held if held != "" else str(root._registry.get_equipment(attacker_id).get("MainHand", ""))
@@ -295,6 +308,7 @@ func impact_info(attacker_id: String) -> Dictionary:
 		var last: Dictionary = _bodyless_combo.get(attacker_id, {})
 		var bstep: int = ComboChain.next_step(weapon, str(last.get("weapon", "")), int(last.get("step", -1)), now - float(last.get("at", -1e9)))
 		_bodyless_combo[attacker_id] = { "weapon": weapon, "step": bstep, "at": now }
+		_last_swing_clip[attacker_id] = ComboChain.clip_for(weapon, bstep)
 		return { "weapon": weapon, "item": item, "step": bstep, "clip_length": ComboChain.placeholder_length(weapon, bstep) }
 	root._character.trigger_attack(iid)
 	var inst: Dictionary = root._character._instances[iid]
@@ -305,6 +319,7 @@ func impact_info(attacker_id: String) -> Dictionary:
 	var clip: String = ComboChain.clip_for(weapon, step, lengths if not lengths.is_empty() else null)
 	if not lengths.has(clip):
 		clip = RigTree.ATTACK_DEFAULT   # the clip `trigger_attack` played
+	_last_swing_clip[attacker_id] = ComboChain.clip_for(weapon, step)   # the step's clip: each viewer's rig falls back on its own
 	return { "weapon": weapon, "item": _main_hand(iid), "step": step, "clip_length": float(lengths.get(clip, 0.5)) }
 
 ## The state at impact for `PendingHit.refusal`, with the same checks as the click: both alive, the attacker not
@@ -382,22 +397,65 @@ func push_struck(attacker_id: String, defender_id: String, reaction: String) -> 
 	var apos: Variant = death_attacker_pos(attacker_id)
 	if not apos is Vector3 or root._creature.get_instance_state(defender_id) in ["", "dead"]:
 		return 0.0
+	# #726: a flyer or swimmer holds its own height; the push below snaps y to the ground, so it is not pushed.
+	if root._creature.movement_of(defender_id) != root._creature.MOVE_GROUND:
+		return 0.0
 	var tex: Dictionary = root._creature.get_instance_pos(defender_id)
 	var tpos: Vector3 = root._creature.get_instance_position(defender_id)
 	var dir := PendingHit.knockback_direction(apos, tpos)
-	var moved := 0.0
-	while moved + 0.1 <= metres + 0.0001 and dir != Vector3.ZERO:
-		var probe := tpos + dir * (moved + 0.1)
-		if not death_walkable(Vector3(probe.x, tpos.y, probe.z)):
-			break
-		moved += 0.1
+	var moved := knock_distance(defender_id, tpos, dir, metres)
 	if moved <= 0.0:
 		return 0.0
 	# The push is added to the exact {chunk, local} position, so it survives far from the origin.
 	var spot: Vector3 = tex["local"] + dir * moved
 	root._creature.set_instance_pos(defender_id, WorldPos.normalized({"chunk": tex["chunk"],
 		"local": Vector3(spot.x, death_ground(tpos + dir * moved), spot.z)}))
+	# #726: the creature's path was planned from where it stood; drop it so the AI re-plans from here.
+	if root._creature_ai != null:
+		root._creature_ai.forget_path(defender_id)
 	return moved
+
+## How far (0.1 m steps, up to `metres`) `defender_id` standing at `tpos` can be pushed along `dir`.
+## `ground(Vector3) -> float` is the column top under a spot (unset: the voxel world's).
+func knock_distance(defender_id: String, tpos: Vector3, dir: Vector3, metres: float, ground: Callable = Callable()) -> float:
+	var moved := 0.0
+	while moved + 0.1 <= metres + 0.0001 and dir != Vector3.ZERO:
+		var probe := tpos + dir * (moved + 0.1)
+		if not knock_walkable(defender_id, Vector3(probe.x, tpos.y, probe.z), ground):
+			break
+		moved += 0.1
+	return moved
+
+## #726: a knock-back step may land on ground the creature can step onto (the death-push rule) and, unless the
+## fabric says it swims, not in water (ground below sea level), matching the creature's own path rules.
+func knock_walkable(defender_id: String, probe: Vector3, ground: Callable = Callable()) -> bool:
+	var top: float = ground.call(probe) if ground.is_valid() else death_ground(probe)
+	if top > probe.y + root.KNOCKBACK_STEP_UP:
+		return false
+	var res: Resource = GameData.CREATURES.get(root._creature.get_instance_creature_id(defender_id), null)
+	var swims: bool = res != null and res.get("canSwim") != null and bool(res.get("canSwim"))
+	return swims or top >= WorldShape.sea_level()
+
+## Client: wire key -> msec of a player's announced swing that has not had its outcome yet (#726), bounded.
+## A refused hit sends no outcome and a peer that left sends nothing more, so an entry only counts for
+## SWUNG_KEY_TTL_MS (longer than any clip's impact plus jitter) and stale ones are pruned when the map is full.
+var _swung_keys: Dictionary = {}
+const MAX_SWUNG_KEYS := 256
+const SWUNG_KEY_TTL_MS := 3000
+
+func _note_swung(key: String, now_ms: int) -> void:
+	if not _swung_keys.has(key) and _swung_keys.size() >= MAX_SWUNG_KEYS:
+		for k in _swung_keys.keys():
+			if now_ms - int(_swung_keys[k]) > SWUNG_KEY_TTL_MS:
+				_swung_keys.erase(k)
+	if _swung_keys.has(key) or _swung_keys.size() < MAX_SWUNG_KEYS:
+		_swung_keys[key] = now_ms
+
+## True (and consumed) when `key` announced a swing within SWUNG_KEY_TTL_MS.
+func _take_swung(key: String, now_ms: int) -> bool:
+	var at: Variant = _swung_keys.get(key, null)
+	_swung_keys.erase(key)
+	return at != null and now_ms - int(at) <= SWUNG_KEY_TTL_MS
 
 ## Client: the host's swing, animated on whatever bodies this client draws.
 func _on_combat_hit_synced(attacker_key: String, defender_key: String, outcome: String) -> void:
@@ -405,10 +463,16 @@ func _on_combat_hit_synced(attacker_key: String, defender_key: String, outcome: 
 		return
 	if outcome == "swing":
 		_swing(attacker_key)
+		_note_swung(attacker_key, Time.get_ticks_msec())
 		return
 	# A player's swing played when the host announced it, at the click; only a creature's plays with its hit.
+	# #726: a peer whose "swing" packet never reached this client (lost, or it came into range mid-swing) swings
+	# with its first outcome instead, so a hit is never seen without the blow.
+	var swing := attacker_key.begins_with("c:")
+	if attacker_key.begins_with("p:"):
+		swing = not _take_swung(attacker_key, Time.get_ticks_msec()) and _character_for_key(attacker_key) != root._character.get_player_character()
 	var reaction := "stagger" if outcome == "stagger" else "hit"
-	_animate_hit(attacker_key, defender_key, outcome, reaction, attacker_key.begins_with("c:"))
+	_animate_hit(attacker_key, defender_key, outcome, reaction, swing)
 	if outcome != "miss" and attacker_key.begins_with("p:") and _character_for_key(attacker_key) == root._character.get_player_character() \
 			and root._character.get_player_character() != "":
 		_hit_feel()
@@ -484,9 +548,16 @@ func _swing(key: String) -> void:
 	if key.begins_with("c:"):
 		root._creature.trigger_attack_animation(key.substr(2))
 		return
+	var clip := str(_swing_clips.get(key, ""))
+	_swing_clips.erase(key)
 	var iid := _character_for_key(key)
 	if iid != "":
-		root._character.trigger_attack(iid)
+		root._character.trigger_attack(iid, clip)   # "" = this machine's own combo guess
+
+## Client (#726): the host's combo clip for `key`'s next announced swing. Bounded like `_swung_keys`.
+func _on_swing_clip_synced(key: String, clip: String) -> void:
+	if root._is_client and (_swing_clips.has(key) or _swing_clips.size() < MAX_SWUNG_KEYS):
+		_swing_clips[key] = clip
 
 func _flinch(key: String, reaction: String = "hit") -> void:
 	if key.begins_with("c:"):

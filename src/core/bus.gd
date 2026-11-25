@@ -49,7 +49,11 @@ signal work_strike(peer: int, kind: String)
 ## into wire keys ("p:<peer id>" for a player, "c:<id>" for a creature). Animation only.
 ## outcome : String — as `combat_hit_resolved`, plus "swing" (Phase 287: a player's swing started, no hit yet) and
 ## "stagger" (a non-lethal "hit" or "critical" that staggers the target; the critical flag is not carried).
+## A "swing" is preceded by `combat_swing_clip_synced` when the host named its combo clip (#726).
 signal combat_hit_synced(attacker_key: String, defender_key: String, outcome: String)
+## #726 — client side: the attack clip (a rig-contract clip name) of the swing the host just announced for
+## `attacker_key`, sent just before its "swing" `combat_hit_synced`, so every viewer plays the host's combo step.
+signal combat_swing_clip_synced(attacker_key: String, clip: String)
 
 ## Request a combat round (any system can fire this).
 ## attacker_id : String — entity key from GameData.CREATURES or "player"

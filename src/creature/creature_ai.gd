@@ -720,6 +720,12 @@ func _walk_path(iid: String, inst: Dictionary, target: Vector3, speed: float, de
 static func _canon(tile: Vector2i, lap: int) -> Vector2i:
 	return Vector2i(SeamWrap.wrap_i(tile.x, lap), tile.y) if lap > 0 else tile
 
+## #726: drop an instance's planned path (it was moved by something other than its own walk, e.g. a
+## knock-back), so the next tick re-plans from where it now stands.
+func forget_path(iid: String) -> void:
+	if _ai.has(iid):
+		_clear_path(_ai[iid])
+
 func _clear_path(ai: Dictionary) -> void:
 	ai.erase("path")
 	ai.erase("path_goal")

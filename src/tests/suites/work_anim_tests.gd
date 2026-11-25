@@ -17,6 +17,8 @@ func register() -> void:
 	_run_test("work anim: another peer's work plays on its copy", _test_p281_peer_copy)
 	_run_test("work anim: a peer's copy with no rig still plays the kind's own clip", _test_p281_rigless_copy)
 	_run_test("work anim: #714 ending a hold never cuts a combat swing started since", _test_stop_work_keeps_swing)
+	_run_test("work anim: #714 a hold whose host session is gone stops instead of refreshing forever", _test_dead_hold_stops)
+	_run_test("work anim: #714 a hold longer than the remote expiry keeps playing on the host and on a viewer", _test_long_hold_refreshed)
 
 
 func _fixture() -> Dictionary:
@@ -207,4 +209,71 @@ func _test_stop_work_keeps_swing() -> void:
 	ch.stop_work(iid)
 	assert_eq(loco.get_state(), Locomotion.State.ATTACK, "with no work running, a stop leaves a swing alone")
 	ch.stop_work("nobody")   # an unknown instance is a no-op
+	_free_fixture(f)
+
+
+## #714 — a remote copy used to stop after REMOTE_LOOP_MAX_SECONDS even while the hold still ran. The host keeps
+## its own copy of a running loop alive and re-announces it every LOOP_REFRESH_SECONDS; a viewer's repeat of the
+## same loop only pushes the expiry back, never restarts the clip.
+func _test_long_hold_refreshed() -> void:
+	var f := _fixture()
+	var ch: CharacterSlice = f["ch"]
+	var w = f["w"]
+	var peer_iid: String = ch.create_character_from_recipe({"skeleton": "HumanoidSkeleton"}, Vector3.ZERO)
+	assert_true(ch.attach_rig(peer_iid, "models/player_rig.glb.raw"), "the peer's copy has the rig")
+	ch.bind_peer_character(7, peer_iid)
+	var loco = ch._instances[peer_iid]["locomotion"]
+	# Host: peer 7 holds a chop for longer than the remote expiry.
+	GameBus.work_anim_changed.emit(7, "chop")
+	assert_true(w.is_working(7), "the host plays peer 7's chop")
+	var steps := int((WorkAnimWiring.REMOTE_LOOP_MAX_SECONDS + 5.0) / 0.5)
+	for i in steps:
+		w.tick(0.5)
+	assert_true(w.is_working(7), "past the remote expiry the host's copy still plays: the hold is running")
+	assert_eq(w._since_sent.get(7, -1.0) < WorkAnimWiring.LOOP_REFRESH_SECONDS, true, "and the loop was re-sent on schedule")
+	GameBus.work_anim_changed.emit(7, "")
+	assert_false(w.is_working(7), "the stop ends it")
+	w.tick(WorkAnimWiring.LOOP_REFRESH_SECONDS + 1.0)
+	assert_false(w._since_sent.has(7), "and a stopped loop is not re-sent")
+	# Viewer: the host's refresh of the same loop keeps the clip running without restarting it.
+	f["gr"]._is_client = true
+	w._announced.clear()
+	GameBus.work_anim_changed.emit(7, "chop")
+	var serial := int(loco.swing_serial)
+	var t := 0.0
+	while t < WorkAnimWiring.REMOTE_LOOP_MAX_SECONDS + 5.0:
+		w.tick(0.5)
+		t += 0.5
+		if fmod(t, WorkAnimWiring.LOOP_REFRESH_SECONDS) == 0.0:
+			GameBus.work_anim_changed.emit(7, "chop")   # the host's refresh
+	assert_true(w.is_working(7), "a refreshed loop outlives the remote expiry on a viewer")
+	assert_true(float(w._active[7]["age"]) < WorkAnimWiring.LOOP_REFRESH_SECONDS, "its expiry was pushed back")
+	assert_true(int(loco.swing_serial) > serial, "the loop kept cycling its clip")
+	# Without refreshes (the worker left range) the viewer's copy still expires.
+	for i in int((WorkAnimWiring.REMOTE_LOOP_MAX_SECONDS + 1.0) / 0.5):
+		w.tick(0.5)
+	assert_false(w.is_working(7), "an unrefreshed remote loop expires")
+	_free_fixture(f)
+
+
+## A hold whose WorkHost session vanished without a stop (death, abandoned hold) is ended for everyone at the next
+## refresh instead of being re-announced forever.
+func _test_dead_hold_stops() -> void:
+	var f := _fixture()
+	var w = f["w"]
+	var ch: CharacterSlice = f["ch"]
+	var peer_iid: String = ch.create_character_from_recipe({"skeleton": "HumanoidSkeleton"}, Vector3.ZERO)
+	assert_true(ch.attach_rig(peer_iid, "models/player_rig.glb.raw"), "the peer's copy has the rig")
+	ch.bind_peer_character(7, peer_iid)
+	var host = (load("res://src/core/work_host.gd") as GDScript).new()
+	var net := NetworkingSlice.new()
+	net.set_meta("work_host", host)
+	f["gr"]._networking = net
+	GameBus.work_anim_changed.emit(7, "chop")
+	assert_true(w.is_working(7), "the host plays peer 7's chop")
+	w.tick(WorkAnimWiring.LOOP_REFRESH_SECONDS + 1.0)
+	assert_false(w.is_working(7), "no session on the host: the refresh ends the hold")
+	assert_eq(str(w._announced.get(7, "")), "", "and it is not announced again")
+	f["gr"]._networking = null
+	net.free()
 	_free_fixture(f)

@@ -24,6 +24,7 @@ func register() -> void:
 	_run_test("path: open ground takes the straight line, a shortest path, with no search", _test_path_straight_line)
 	_run_test("path: a goal past the window aims at its edge, and a long chase never stalls", _test_path_window_aim)
 	_run_test("path: the time cap stops a search with its best partial path", _test_path_time_cap)
+	_run_test("knockback: a struck creature stops at water and cliffs, a flyer is not pushed, the path is dropped (#726)", _test_knockback_walkability)
 	_run_test("ai lod: a far idle creature ticks once a stride with the time it missed", _test_ai_lod_far_stride)
 	_run_test("ai lod: a near or chasing creature ticks every frame", _test_ai_lod_full_rate)
 
@@ -397,3 +398,41 @@ func _test_path_time_cap() -> void:
 	assert_true(info["capped"], "the search is capped")
 	assert_true(int(info["expansions"]) < 50, "long before the expansion cap (%d)" % int(info["expansions"]))
 	assert_false(info["reached"], "and reports the goal unreached")
+
+
+## #726 — the host's knock-back of a struck creature: a ground creature is pushed over ground it can step onto
+## but not into water (ground below sea level) or up a wall; a flyer is never pushed (the push snaps y to the
+## ground); a moved creature's planned path is dropped.
+func _test_knockback_walkability() -> void:
+	var sea: float = CreatureAI.WorldShape.sea_level()
+	# x < 3: dry land at sea + 1; x >= 3: water (sea - 2); z >= 3: a 5 m wall.
+	var land := func(x: int, z: int) -> float:
+		if z >= 3:
+			return sea + 6.0
+		return sea + 1.0 if x < 3 else sea - 2.0
+	var w := _make_walker(land)
+	var c: CreatureSlice = w["creature"]
+	var ai: CreatureAI = w["ai"]
+	var boar: String = w["ids"][0]
+	var gr: Node = (load("res://src/core/game_root.gd") as GDScript).new()
+	gr._creature = c
+	gr._creature_ai = ai
+	var cw = gr._combat_wiring
+	cw.root = gr
+	var v: Node = w["voxel"]
+	var top := func(p: Vector3) -> float: return v.get_voxel_height_at(Vector2(p.x, p.z))
+	var start := Vector3(2.5, sea + 1.0, 0.5)
+	var east: float = cw.knock_distance(boar, start, Vector3(1, 0, 0), 2.0, top)
+	assert_true(east > 0.0 and east < 0.6, "the push east stops at the shore (%f m)" % east)
+	assert_true(absf(cw.knock_distance(boar, start, Vector3(-1, 0, 0), 0.8, top) - 0.8) < 1e-4, "the push west over dry land runs its full length")
+	var north: float = cw.knock_distance(boar, Vector3(0.5, sea + 1.0, 2.5), Vector3(0, 0, 1), 2.0, top)
+	assert_true(north < 0.6, "and a wall stops it (%f m)" % north)
+	var hawk: String = c._spawn("RidgeHawk", Vector2i(0, 0), 0)
+	assert_true(c.movement_of(hawk) != c.MOVE_GROUND, "the hawk flies")
+	assert_eq(c.movement_of(boar), c.MOVE_GROUND, "the boar walks")
+	ai._ai[boar]["path"] = [Vector2i(1, 0)]
+	ai.forget_path(boar)
+	assert_false(ai._ai[boar].has("path"), "a moved creature's path is dropped")
+	ai.forget_path("nobody")
+	gr.free()
+	_free_walker(w)

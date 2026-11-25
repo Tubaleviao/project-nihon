@@ -2,6 +2,7 @@ extends RefCounted
 ## Methods moved verbatim out of `networking_slice.gd` (Phase 154). `sl` is the owning slice; each moved method keeps a forwarder there.
 
 const HeldItem := preload("res://src/character/held_item.gd")
+const ComboChain := preload("res://src/battle/combo_chain.gd")
 var sl: Node
 ## Phase 196 — the most HP one `player_healed` packet may restore (one regen interval at any sane rate).
 const MAX_REST_HEAL := 1000.0
@@ -531,6 +532,10 @@ func _route_h2c(payload: Dictionary) -> void:
 			var o := str(payload.get("o", ""))
 			if sl._role == sl.Role.CLIENT and a.length() <= sl.COMBAT_KEY_MAX and d.length() <= sl.COMBAT_KEY_MAX \
 					and o in sl.COMBAT_OUTCOMES:
+				# #726: a swing's combo clip, kept only when it names a clip of the rig contract.
+				var c: Variant = payload.get("c", null)
+				if o == "swing" and c is String and ComboChain.is_contract_clip(c):
+					GameBus.combat_swing_clip_synced.emit(a, c)
 				GameBus.combat_hit_synced.emit(a, d, o)
 		"work_anim":
 			# Phase 281 — animation only. Peer ids and kinds are bounded; an unknown kind is dropped by the wiring.

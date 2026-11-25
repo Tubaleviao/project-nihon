@@ -243,6 +243,8 @@ func trigger_attack(instance_id: String, clip: String = "", now: float = -1.0) -
 	var lengths: Dictionary = inst.get("swing_lengths", {})
 	if clip == "":
 		clip = combo_clip(inst, instance_id, lengths, now)
+	elif not lengths.is_empty():
+		clip = ComboChain.resolve_clip(clip, lengths)   # #726: a named step this rig lacks falls back like `clip_for`
 	var played: String = clip if lengths.has(clip) else sl.RigTree.ATTACK_DEFAULT
 	inst["locomotion"].trigger_attack(clip, float(lengths.get(played, -1.0)))
 
