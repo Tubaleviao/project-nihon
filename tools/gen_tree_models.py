@@ -4,8 +4,8 @@
 One model per fabric tree species (`TreeSlice.TREES_BY_BIOME`, species in `SPECIES` below; the suite
 checks the two lists agree), two variants each, chosen by the tree's seed. Each is one closed mesh:
 a tapered trunk (an 8-sided frustum) under a crown of several overlapping closed lumps (low UV spheres),
-coloured per species with a vertex colour. Origin at the trunk's foot, +Y up, about 3.4 m tall, so
-it stands where the procedural fallback mesh stands. The private repo overrides each key by name.
+coloured per species with a vertex colour. Origin at the trunk's foot, +Y up, about 3.8 m tall (the crown top;
+`TreeMaterial.SWAY_TO` matches it), standing where the procedural fallback mesh stands. The private repo overrides each key by name.
 
     python3 tools/gen_tree_models.py           # write the files and the manifest entries
     python3 tools/gen_tree_models.py --check   # fail when a file is stale, missing or orphaned

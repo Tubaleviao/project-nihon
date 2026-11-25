@@ -666,7 +666,8 @@ func _on_tree_chopped(tree_id: String, wood: String, state: String, respawn_at: 
 		"tree_id":    tree_id,
 		"wood":       wood,
 		"state":      state,
-		"respawn_at": respawn_at, "fall_yaw": fall_yaw,
+		"respawn_at": respawn_at,
+		"fall_yaw":   fall_yaw,
 	})
 
 func _on_tree_respawned(tree_id: String) -> void:
