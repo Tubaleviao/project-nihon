@@ -26,7 +26,7 @@ func _connect_all() -> void:
 	connect_bus(GameBus.tree_chop_requested, _on_completion_tree)
 	connect_bus(GameBus.block_mine_requested, _on_completion_block)
 	connect_bus(GameBus.block_place_requested, _on_place)
-	connect_bus(GameBus.block_placed, _on_block_placed)
+	connect_bus(GameBus.block_place_resolved, _on_place_resolved)
 	connect_bus(GameBus.station_placed_by_me, _on_station_placed_by_me)
 	connect_bus(GameBus.work_anim_changed, _on_anim_changed)
 	connect_bus(GameBus.harvest_started, _on_harvest_started)
@@ -102,7 +102,9 @@ func _on_own_work_started(key: String, _duration: float, action: String, _materi
 static func answers_hold(hold_key: String, key: String) -> bool:
 	if hold_key == "":
 		return false
-	return hold_key == ANY_TARGET or not key.begins_with("tree:") or key == hold_key
+	if hold_key == ANY_TARGET:
+		return not key.begins_with("tree:")   # a block hold: any block key, never a tree left behind
+	return key == hold_key
 
 func _on_own_cancel(player_id: String) -> void:
 	if player_id == "":
@@ -118,37 +120,15 @@ func _on_completion_block(_pos: Vector3, _normal: Vector3, player_id: String, _e
 	if player_id == "":
 		_announce(_local_peer(), "")
 
-## #714 — host: placements that went through and no `build` has claimed yet, and the frame of the last one.
-## `block_placed` names no player, but the VoxelSlice resolves a `block_place_requested` synchronously and is
-## connected before any wiring (its `_ready` runs before `GameRoot` wires), so a request that placed its block
-## finds the placement already counted here when `_on_place` runs; a refused one finds none.
-var _placed_unclaimed := 0
-var _placed_frame := -1
-
-func _on_block_placed(_material: String, _pos: Vector3) -> void:
-	if root._is_client:
-		return
-	var frame := Engine.get_process_frames()
-	if frame != _placed_frame:
-		_placed_unclaimed = 0   # a placement no request claimed in its own frame (a boot fixture) is never claimed later
-	_placed_frame = frame
-	_placed_unclaimed += 1
-
-## Host: true (and the placement claimed) when this frame placed a block no request has claimed yet.
-func _claim_placement() -> bool:
-	if _placed_unclaimed <= 0 or _placed_frame != Engine.get_process_frames():
-		return false
-	_placed_unclaimed -= 1
-	return true
-
+## A client plays its own placement at once, as a prediction (the host answers a refusal with the block itself).
 func _on_place(_pos: Vector3, _normal: Vector3, player_id: String, _material: String, _exact: Dictionary) -> void:
-	if root._is_client:
-		if player_id == "" or player_id == "player":
-			_play(_local_peer(), "build")
-		return
-	# #714: a placement the host refused (no hammer, no block in the pack, out of reach, someone else's claim)
-	# plays nothing; before, every request played `build` on the builder for everyone in range.
-	if not _claim_placement():
+	if root._is_client and (player_id == "" or player_id == "player"):
+		_play(_local_peer(), "build")
+
+## #714 — host: the VoxelSlice's answer to a place request. A placement it refused (no hammer, no block in the pack,
+## out of reach, someone else's claim) plays nothing; before, every request played `build` for everyone in range.
+func _on_place_resolved(player_id: String, placed: bool) -> void:
+	if root._is_client or not placed:
 		return
 	var peer := 1
 	if player_id != "" and player_id != "player" and player_id != root._registry.local_player_id:

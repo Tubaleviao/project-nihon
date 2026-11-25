@@ -190,7 +190,11 @@ func _build_now(chunk: Vector2i, key: String) -> bool:
 			_open[key]["sync"] = true
 			_open[key]["prebuilt"] = true
 			sl._build_attempts[key] = int(sl._build_attempts.get(key, 0)) + 1
-			sl._attach_built(key, chunk, ready["heightmap"], ready["arrays"], int(sl.voxel_slice.chunk_revision(chunk)))
+			# #679: `take` returned it only because the chunk's input still matches what it was built from, so the
+			# disk key of the state now is the key of the state it read.
+			var lod := int((ready["arrays"] as Dictionary).get("lod", 1))
+			sl._attach_built(key, chunk, ready["heightmap"], ready["arrays"], int(sl.voxel_slice.chunk_revision(chunk)),
+				{ "disk_key": m1.dispatch_disk_key(chunk, lod), "disk_lod": lod })
 			return true
 	if not can_build_now(chunk):
 		return false
@@ -200,6 +204,7 @@ func _build_now(chunk: Vector2i, key: String) -> bool:
 	var b: Dictionary = m1.noise_build_job(chunk, sl.voxel_slice._heightmaps.get(key, []))
 	_open[key]["dispatched"] = int(clock_usec.call())
 	_open[key]["sync"] = true
+	var disk_entry := { "disk_key": m1.dispatch_disk_key(chunk, int(b["lod"])), "disk_lod": int(b["lod"]) }   # #679: the state it reads
 	(b["job"] as Callable).call()
 	var result: Array = b["result"]
 	sl.worker_usec += int(result[2]) if result.size() > 2 else 0
@@ -210,7 +215,7 @@ func _build_now(chunk: Vector2i, key: String) -> bool:
 		return false
 	sl._build_attempts[key] = int(sl._build_attempts.get(key, 0)) + 1
 	var heightmap: Array = result[1] if result[1] is Array else []
-	sl._attach_built(key, chunk, heightmap, result[0], int(b["revision"]))
+	sl._attach_built(key, chunk, heightmap, result[0], int(b["revision"]), disk_entry)
 	return true
 
 func _prune(now: int) -> void:

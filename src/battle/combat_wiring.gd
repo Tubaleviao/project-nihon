@@ -443,6 +443,7 @@ func push_struck(attacker_id: String, defender_id: String, reaction: String) -> 
 func _push_player(defender_id: String, apos: Vector3, metres: float) -> float:
 	var peer := 0
 	var pos: Vector3
+	var exact: Dictionary = {}
 	if defender_id == "player" or defender_id == root._registry.local_player_id:
 		if root._player == null or root._is_client:
 			return 0.0
@@ -451,7 +452,12 @@ func _push_player(defender_id: String, apos: Vector3, metres: float) -> float:
 		peer = root._registry.get_peer_id(defender_id)
 		if peer <= 0 or root._networking == null or not root._networking.has_last_known_state(peer):
 			return 0.0   # a peer that never reported has no position to push from (it reads as the origin)
-		pos = root._networking.get_last_known_state(peer)
+		# The position the host judges the peer at: a teleport it has not reported from yet (bed, waystone) wins
+		# over its last report, so the push starts there and never sends it back to the old spot.
+		exact = root._networking.get_expected_exact(peer)
+		if exact.is_empty():
+			exact = root._peer_wiring.peer_exact_pos(peer)
+		pos = WorldPos.to_scene(exact, Vector2i.ZERO)
 	var spot := player_knock_spot(pos, apos, metres, death_walkable)
 	var moved := Vector2(spot.x - pos.x, spot.z - pos.z).length()
 	if moved <= 0.0:
@@ -461,7 +467,6 @@ func _push_player(defender_id: String, apos: Vector3, metres: float) -> float:
 		root._player.spawn_at(spot)
 	else:
 		# Added to the peer's exact position, so the push holds far from the origin too.
-		var exact: Dictionary = root._peer_wiring.peer_exact_pos(peer)
 		var local: Vector3 = (exact["local"] as Vector3) + Vector3(spot.x - pos.x, spot.y - pos.y, spot.z - pos.z)
 		root._networking.send_teleport(peer, WorldPos.normalized({ "chunk": exact["chunk"], "local": local }))
 	return moved

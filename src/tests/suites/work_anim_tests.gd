@@ -22,7 +22,7 @@ func register() -> void:
 	_run_test("work anim: #714 the dissect loop ends on the pose it starts from (no pop to standing)", _test_dissect_loop_safe)
 	_run_test("work anim: #714 a client drops a work answer for a hold it released or a tree it left", _test_stale_answer_dropped)
 	_run_test("work anim: #714 a peer that leaves mid-hold has its loop stopped for the viewers", _test_leave_stops_loop)
-	_run_test("work anim: #714 the host plays build only for a placement that went through, once per placement", _test_refused_place_no_build)
+	_run_test("work anim: #714 the host plays build only for a placement that went through", _test_refused_place_no_build)
 
 
 func _fixture() -> Dictionary:
@@ -284,31 +284,24 @@ func _test_dead_hold_stops() -> void:
 	net.free()
 	_free_fixture(f)
 
-## The host's order for an accepted placement: the VoxelSlice places the block (`block_placed`) while the request
-## is being handled, before the wiring sees the request.
-func _place_on_host(player_id: String = "") -> void:
-	GameBus.block_placed.emit("Soil", Vector3.ZERO)
+## The host's order for an accepted placement: the request, then the VoxelSlice's answer that the block went in.
+func _place_on_host(player_id: String = "", placed: bool = true) -> void:
 	GameBus.block_place_requested.emit(Vector3.ZERO, Vector3.UP, player_id, "Soil", {})
+	GameBus.block_place_resolved.emit(player_id, placed)
 
-## #714 — `build` played on every placement request, even one the host refused. Now only a request whose block was
-## placed in the same frame plays it, one placement per request, and a placement no request claimed (a boot
-## fixture) is never claimed by a later refused request.
+## #714 — `build` played on every placement request, even one the host refused. Now the host plays it on the
+## VoxelSlice's answer, and only when the block went in.
 func _test_refused_place_no_build() -> void:
 	var f := _fixture()
-	var w = f["w"]
 	var heard: Array = []
 	var cb := func(peer: int, kind: String) -> void: heard.append("%d:%s" % [peer, kind])
 	GameBus.work_anim_changed.connect(cb)
-	GameBus.block_place_requested.emit(Vector3.ZERO, Vector3.UP, "", "Soil", {})
+	_place_on_host("", false)
 	assert_eq(heard.size(), 0, "a refused placement announces nothing")
 	_place_on_host()
 	assert_eq(heard, ["1:build"], "an accepted one announces build for its builder")
 	GameBus.block_place_requested.emit(Vector3.ZERO, Vector3.UP, "", "Soil", {})
-	assert_eq(heard.size(), 1, "a second request cannot claim the first one's placement")
-	GameBus.block_placed.emit("Soil", Vector3.ZERO)
-	w._placed_frame = Engine.get_process_frames() - 1   # that placement was made in an earlier frame
-	GameBus.block_place_requested.emit(Vector3.ZERO, Vector3.UP, "", "Soil", {})
-	assert_eq(heard.size(), 1, "a placement from an earlier frame is not claimed by a later refused request")
+	assert_eq(heard.size(), 1, "a request alone (no answer yet) announces nothing on the host")
 	GameBus.work_anim_changed.disconnect(cb)
 	_free_fixture(f)
 
@@ -364,7 +357,9 @@ func _test_stale_answer_dropped() -> void:
 	GameBus.work_started.emit("block:1:2:3", 1.0, "mine", "")
 	assert_true(w.is_working(1), "a block hold takes the host's key as given")
 	GameBus.work_cancel_requested.emit("")
-	assert_true(WorkAnimWiring.answers_hold("*", "tree:x") and not WorkAnimWiring.answers_hold("", "block:1"), "answers_hold: any target, and none when released")
+	assert_true(WorkAnimWiring.answers_hold("*", "block:1") and not WorkAnimWiring.answers_hold("", "block:1"), "answers_hold: any block for a block hold, none when released")
+	assert_false(WorkAnimWiring.answers_hold("*", "tree:x"), "a block hold never takes a tree answer left behind")
+	assert_false(WorkAnimWiring.answers_hold("tree:x", "block:1"), "a tree hold never takes a block answer")
 	_free_fixture(f)
 
 ## #714 — a peer that disconnected mid-hold left its loop running on every viewer until the 30 s remote expiry: the
