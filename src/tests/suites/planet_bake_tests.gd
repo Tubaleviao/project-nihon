@@ -17,6 +17,7 @@ func register() -> void:
 	_run_test("bake: thermal erosion softens slopes, keeps sea and mass, and the native twin matches", _test_bake_erosion)
 	_run_test("bake: hydrology reads the baked rivers and carves the ground below their water", _test_bake_hydrology)
 	_run_test("bake: ensure loads a good file, and bakes again when it is damaged or not the host's", _test_bake_ensure)
+	_run_test("bake: the bake-only boot skips the main menu and the file name carries seed and version", _test_bake_cli)
 	_run_test("bake: a carved river lies below the water with soft banks", _test_bake_carve)
 
 ## A hill-and-sea grid: a ridge with noise-free integer bumps, sea on the east side.
@@ -273,3 +274,9 @@ func _test_bake_ensure() -> void:
 	for fn in [path, path + ".sha256"]:
 		DirAccess.remove_absolute(fn)
 	DirAccess.remove_absolute(ProjectSettings.globalize_path(dir))
+
+
+func _test_bake_cli() -> void:
+	const MenuWiring := preload("res://src/menu/menu_wiring.gd")
+	assert_true(not MenuWiring.should_show_main_menu(["--bake-planet", "build/bake"]), "--bake-planet boots without the menu")
+	assert_eq(Bake.file_path("d", 238, 13, 1000, 500), "d/planet_238_v13_1000x500.bin", "file name")

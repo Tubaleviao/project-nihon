@@ -302,6 +302,8 @@ func _ready() -> void:
 	# scenario started.
 	if _net_harness_role == "" and should_run_tests(OS.get_cmdline_user_args(), OS.is_debug_build()):
 		_boot_wiring.run_tests()
+	if _boot_wiring.bake_planet_if_asked(OS.get_cmdline_user_args()):
+		return   # Phase 245 — a bake-only boot
 	await _build_and_boot()
 
 ## The slices, their wiring and the role boot; run by `_ready`, or by the main menu (Phase 223).

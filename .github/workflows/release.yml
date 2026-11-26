@@ -167,9 +167,20 @@ jobs:
           path: build/playtest/playtest/
           if-no-files-found: warn
 
+      - name: Bake the planet for the fabric seed
+        # Phase 245 — the bake and its SHA-256 are published beside the packages (a host that finds no
+        # bake of its own, or a client whose hash differs from its host's, reads this or bakes again).
+        run: |
+          mkdir -p build/bake
+          /tmp/godot/Godot_v4.7-stable_linux.x86_64 --headless --path . --quit-after 5 -- --bake-planet build/bake | tee /tmp/bake.log
+          grep -q '^BAKE ' /tmp/bake.log
+          test -s build/bake/planet_*.bin
+          test -s build/bake/planet_*.bin.sha256
+
       - name: Package
         run: |
           mkdir -p dist
+          cp build/bake/planet_* dist/
           tar -czf "dist/nihon-linux-${RELEASE_NAME}.tar.gz" -C build/linux .
           (cd build/windows && zip -qr "../../dist/nihon-windows-${RELEASE_NAME}.zip" .)
           cp build/macos/nihon.zip "dist/nihon-macos-${RELEASE_NAME}.zip"

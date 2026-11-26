@@ -15,6 +15,9 @@ const DX := [-1, 0, 1, -1, 1, -1, 0, 1]
 const DZ := [-1, -1, -1, 0, 0, 1, 1, 1]
 ## Thermal erosion: passes, the steepest slope (mm of height per cell) a slope keeps, and the share
 ## (1/ERODE_SHARE) of the excess that slides down per pass.
+## The bake grid: cell size in metres, and the flow (cells draining through) that makes a river.
+const CELL_M := 2000.0
+const RIVER_FLOW := 40
 const ERODE_PASSES := 6
 const ERODE_TALUS_MM := 2400
 const ERODE_SHARE := 8
