@@ -372,6 +372,9 @@ static func clear_bake(seed_v: int) -> void:
 	_baked.erase(seed_v)
 	reset_cache()
 
+static func clear_all_bakes() -> void:
+	_baked.clear()
+
 static func has_bake(seed_v: int) -> bool:
 	return _baked.has(seed_v)
 

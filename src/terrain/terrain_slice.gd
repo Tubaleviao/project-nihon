@@ -248,22 +248,24 @@ static func adopt_record_circumference(rec: Dictionary) -> void:
 ## off the world record (authoritative boot) or out of the host's join snapshot
 ## (client) BEFORE any chunk is requested, so every height in the session comes
 ## from the same noise field.
-func set_world_seed(seed_v: int) -> void:
+func set_world_seed(seed_v: int, with_bake: bool = true) -> void:
 	_world_seed = seed_v
 	seed_adopted = true
 	_corner_mutex.lock()
 	_corner_caches.clear()
 	_corner_mutex.unlock()
 	_noise.seed = seed_v
-	_adopt_planet_bake(seed_v)
+	_adopt_planet_bake(seed_v, with_bake)
 
 ## Phase 245 — the planet bake for this seed: read from `user://bake/` when its hash checks out, else baked
 ## now (about 6 s natively) and saved, then handed to `Hydrology` so the rivers are the baked ones. A client
 ## bakes itself from the seed it adopted (the bake is deterministic, so it equals the host's) and a damaged
 ## file is baked again. Off under `--run-tests`, whose many seeds would each pay for a bake.
-func _adopt_planet_bake(seed_v: int) -> void:
-	if Hydrology.has_bake(seed_v):
-		Hydrology.clear_bake(seed_v)   # a bake registered for an earlier circumference must not outlive this call
+func _adopt_planet_bake(seed_v: int, with_bake: bool = true) -> void:
+	Hydrology.clear_all_bakes()   # no bake of another seed or circumference outlives this call
+	_bake_hash = ""
+	if not with_bake:   # the caller keeps the local river trace (an old world, a host without a bake): no bake to pay for
+		return
 	if "--run-tests" in OS.get_cmdline_user_args():
 		return
 	var circ := float(circumference_chunks()) * CHUNK_METERS
@@ -274,7 +276,14 @@ func _adopt_planet_bake(seed_v: int) -> void:
 	var path := PlanetBake.file_path("user://bake", seed_v, WORLDGEN_VERSION, w, h)
 	var r := PlanetBake.ensure(path, seed_v, w, h, circ, PlanetBake.RIVER_FLOW)
 	Hydrology.use_bake(seed_v, r.bake, circ)
+	_bake_hash = str(r.hash)
 	print("[World] planet bake %s (%s)" % [str(r.hash).substr(0, 12), "read" if r.loaded else "baked"])
+
+## Hex hash of the bake in use ("" without one); the host sends it so a client can tell its own bake differs.
+var _bake_hash := ""
+
+func planet_bake_hash() -> String:
+	return _bake_hash if has_planet_bake() else ""
 
 ## True while the rivers of the current seed are the baked ones.
 func has_planet_bake() -> bool:
@@ -284,6 +293,7 @@ func has_planet_bake() -> bool:
 ## (the stable-world rule), and a client follows a host that has no bake.
 func release_planet_bake() -> void:
 	Hydrology.clear_bake(_world_seed)
+	_bake_hash = ""
 
 ## The seed this world is generating from (see set_world_seed).
 func get_world_seed() -> int:

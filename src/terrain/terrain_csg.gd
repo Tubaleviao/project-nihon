@@ -91,8 +91,8 @@ static func _seg_dist2(p: Vector2i, a: Vector2i, b: Vector2i) -> int:
 	if dot >= len2:
 		return length2(p.x - b.x, p.y - b.y)
 	# Closest point a + ab * dot / len2, with the division rounded down.
-	var cx := a.x + _fdiv(ab.x * dot, len2)
-	var cy := a.y + _fdiv(ab.y * dot, len2)
+	var cx := a.x + _muldiv(ab.x, dot, len2)
+	var cy := a.y + _muldiv(ab.y, dot, len2)
 	return length2(p.x - cx, p.y - cy)
 
 
@@ -142,10 +142,21 @@ static func capsule3(p: Vector3i, a: Vector3i, b: Vector3i, r: int) -> int:
 		return length3(ap.x, ap.y, ap.z) - r
 	if dot >= len2:
 		return length3(p.x - b.x, p.y - b.y, p.z - b.z) - r
-	var cx := a.x + _fdiv(ab.x * dot, len2)
-	var cy := a.y + _fdiv(ab.y * dot, len2)
-	var cz := a.z + _fdiv(ab.z * dot, len2)
+	var cx := a.x + _muldiv(ab.x, dot, len2)
+	var cy := a.y + _muldiv(ab.y, dot, len2)
+	var cz := a.z + _muldiv(ab.z, dot, len2)
 	return length3(p.x - cx, p.y - cy, p.z - cz) - r
+
+
+## floor(m * d / len2) without the product leaving int64 (m up to 2^21, 0 <= d < len2 < 2^43): d is split in
+## 2^20 limbs and the high part is reduced by len2 first. Same split in `NativeBake`.
+static func _muldiv(m: int, d: int, len2: int) -> int:
+	var d1 := d >> 20
+	var d0 := d & 0xFFFFF
+	var t := m * d1
+	var qt := _fdiv(t, len2)
+	var rt := t - qt * len2
+	return qt * 1048576 + _fdiv(rt * 1048576 + m * d0, len2)
 
 
 ## Floor division for ints of either sign (GDScript `/` truncates toward zero).

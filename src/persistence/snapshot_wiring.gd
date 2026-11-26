@@ -73,6 +73,7 @@ func build_snapshot(peer_id: int, include_own_record: bool = true,
 		"seed":      root._terrain.get_world_seed(),
 		"circumferenceKm": TerrainSlice.circumference_km(),   # Phase 238
 		"continentMask":   WorldShape.mask_enabled(),
+		"planetBakeHash":  root._terrain.planet_bake_hash(),
 		"planetBake":      root._terrain.has_planet_bake(),   # Phase 245: whether the host's rivers are the baked ones
 		# Phase 54 — the host's clock, so the client starts in step and only slews afterwards.
 		"clock":     root._clock.to_data(),
@@ -271,9 +272,12 @@ func on_world_snapshot_received(data: Dictionary) -> void:
 		# Phase 41 — adopt the host's world seed BEFORE anything is streamed (a
 		# chunk built from this machine's own random seed would be a different
 		# world, and every voxel edit the host sends would land elsewhere).
-		root._terrain.set_world_seed(int(data["seed"]))
-		if not bool(data.get("planetBake", false)):
-			root._terrain.release_planet_bake()   # the host draws its rivers from the local trace: so does this client
+		# Phase 245: a host without a bake draws its rivers from the local trace, so this client skips the bake.
+		var host_hash := str(data.get("planetBakeHash", ""))
+		root._terrain.set_world_seed(int(data["seed"]), bool(data.get("planetBake", false)))
+		if host_hash != "" and root._terrain.planet_bake_hash() != host_hash:
+			Diag.warn("Snapshot: this client's planet bake (%s) differs from the host's (%s): rivers may differ" % [
+				root._terrain.planet_bake_hash().substr(0, 12), host_hash.substr(0, 12)])
 	if data.has("clock"):
 		root._clock.from_data(data["clock"])
 	if data.has("weather"):

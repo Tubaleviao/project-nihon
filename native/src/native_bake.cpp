@@ -72,6 +72,16 @@ int64_t smooth_intersection_i(int64_t a, int64_t b, int64_t k) {
 	return std::max(a, b) + (t * t) / (4 * k);
 }
 
+// floor(m * d / len2) without the product leaving int64 (see TerrainCsg._muldiv).
+int64_t muldiv(int64_t m, int64_t d, int64_t len2) {
+	int64_t d1 = d >> 20;
+	int64_t d0 = d & 0xFFFFF;
+	int64_t t = m * d1;
+	int64_t qt = fdiv(t, len2);
+	int64_t rt = t - qt * len2;
+	return qt * 1048576 + fdiv(rt * 1048576 + m * d0, len2);
+}
+
 int64_t seg_dist2(int64_t px, int64_t py, int64_t ax, int64_t ay, int64_t bx, int64_t by) {
 	int64_t abx = bx - ax, aby = by - ay;
 	int64_t apx = px - ax, apy = py - ay;
@@ -83,8 +93,8 @@ int64_t seg_dist2(int64_t px, int64_t py, int64_t ax, int64_t ay, int64_t bx, in
 	if (dot >= len2) {
 		return length2(px - bx, py - by);
 	}
-	int64_t cx = ax + fdiv(abx * dot, len2);
-	int64_t cy = ay + fdiv(aby * dot, len2);
+	int64_t cx = ax + muldiv(abx, dot, len2);
+	int64_t cy = ay + muldiv(aby, dot, len2);
 	return length2(px - cx, py - cy);
 }
 
@@ -379,8 +389,8 @@ int64_t NativeBake::capsule3(const Vector3i &p_p, const Vector3i &p_a, const Vec
 	if (dot >= len2) {
 		return length3(int64_t(p_p.x) - p_b.x, int64_t(p_p.y) - p_b.y, int64_t(p_p.z) - p_b.z) - p_r;
 	}
-	int64_t cx = p_a.x + fdiv(abx * dot, len2);
-	int64_t cy = p_a.y + fdiv(aby * dot, len2);
-	int64_t cz = p_a.z + fdiv(abz * dot, len2);
+	int64_t cx = p_a.x + muldiv(abx, dot, len2);
+	int64_t cy = p_a.y + muldiv(aby, dot, len2);
+	int64_t cz = p_a.z + muldiv(abz, dot, len2);
 	return length3(int64_t(p_p.x) - cx, int64_t(p_p.y) - cy, int64_t(p_p.z) - cz) - p_r;
 }

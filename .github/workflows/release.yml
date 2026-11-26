@@ -168,8 +168,8 @@ jobs:
           if-no-files-found: warn
 
       - name: Bake the planet for the fabric seed
-        # Phase 245 — the bake and its SHA-256 are published beside the packages (a host that finds no
-        # bake of its own, or a client whose hash differs from its host's, reads this or bakes again).
+        # Phase 245 — the bake and its SHA-256 are published beside the packages (only
+        # published for now: the game bakes locally and nothing downloads this file; Phase 302 tracks the exchange).
         run: |
           mkdir -p build/bake
           /tmp/godot/Godot_v4.7-stable_linux.x86_64 --headless --path . --quit-after 5 -- --bake-planet build/bake | tee /tmp/bake.log

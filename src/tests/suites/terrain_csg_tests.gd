@@ -9,6 +9,7 @@ func register() -> void:
 	_run_test("csg: smooth forms match reference values and reduce to the sharp form as k → 0", _test_csg_smooth)
 	_run_test("csg: 2D shapes give the signed distance", _test_csg_shapes_2d)
 	_run_test("csg: 3D shapes give the signed distance", _test_csg_shapes_3d)
+	_run_test("csg: a 2 km diagonal capsule does not overflow int64", _test_csg_long_diagonal)
 	_run_test("csg: isqrt is exact and results repeat", _test_csg_isqrt)
 
 func _test_csg_sharp() -> void:
@@ -80,3 +81,13 @@ func _test_csg_isqrt() -> void:
 	assert_true(ok, "isqrt floors exactly")
 	assert_true(Csg.isqrt(-5) == 0, "isqrt of a negative is 0")
 	assert_true(Csg.smooth_union(123, 456, 789) == Csg.smooth_union(123, 456, 789), "repeatable")
+
+## A 2 km cell diagonal (millimetres): `ab.x * dot` is about 1.6e19 there, past int64.
+func _test_csg_long_diagonal() -> void:
+	var a := Vector2i(0, 0)
+	var b := Vector2i(2000000, 2000000)
+	var p := Vector2i(1500000, 1500000)   # on the centreline, 75% along
+	assert_true(Csg.capsule2(p, a, b, 1000) == -1000, "on the centreline of a long diagonal")
+	var q := Vector2i(1500000 + 3000, 1500000 - 3000)
+	var d := Csg.capsule2(q, a, b, 0)
+	assert_true(absi(d - 4243) <= 2, "off the centreline by 3000 mm either way: %d" % d)
