@@ -5,7 +5,9 @@
 #include <godot_cpp/variant/dictionary.hpp>
 #include <godot_cpp/variant/packed_int32_array.hpp>
 #include <godot_cpp/variant/packed_string_array.hpp>
+#include <godot_cpp/variant/array.hpp>
 #include <godot_cpp/variant/vector2i.hpp>
+#include <godot_cpp/variant/vector3i.hpp>
 
 namespace godot {
 
@@ -33,6 +35,13 @@ public:
 	int64_t smooth_union(int64_t p_a, int64_t p_b, int64_t p_k) const;
 	int64_t smooth_intersection(int64_t p_a, int64_t p_b, int64_t p_k) const;
 	int64_t smooth_subtract(int64_t p_a, int64_t p_b, int64_t p_k) const;
+	int64_t disc(const Vector2i &p_p, const Vector2i &p_c, int64_t p_r) const;
+	int64_t box2(const Vector2i &p_p, const Vector2i &p_c, const Vector2i &p_h) const;
+	int64_t polyline(const Vector2i &p_p, const Array &p_pts, const Array &p_radii, int64_t p_k) const;
+	int64_t sphere(const Vector3i &p_p, const Vector3i &p_c, int64_t p_r) const;
+	int64_t cylinder(const Vector3i &p_p, const Vector3i &p_c, int64_t p_r, int64_t p_hh) const;
+	int64_t box3(const Vector3i &p_p, const Vector3i &p_c, const Vector3i &p_h) const;
+	int64_t capsule3(const Vector3i &p_p, const Vector3i &p_a, const Vector3i &p_b, int64_t p_r) const;
 	int64_t capsule2(const Vector2i &p_p, const Vector2i &p_a, const Vector2i &p_b, int64_t p_r) const;
 };
 

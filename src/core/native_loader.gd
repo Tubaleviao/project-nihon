@@ -22,11 +22,11 @@ const NO_NATIVE_ARG := "--no-native"
 ## NativeChunkBuilder: 5 = worldgen 9's spawn plain; 6 = worldgen 10 ridges; 7 = Phase 190 coarse
 ## builds; 8 = worldgen 11 massifs (Phase 211); 9 = Phase 238 continent mask and planet-size lattices;
 ## 10 = Phase 240 `build_smooth_arrays`; 11 = Phase 241 smooth coarse builds; 12 = Phase 241 review,
-## coarse edge corners capped by the neighbours' edge tiles; 13 = `heightmap_strip_for`; 14 = `terrain_weights` (Phase 242); 15 = smooth walls to bedrock beside air (#612), coarse floors at bedrock (#614). NativeWorldShape: 1 = Phase 248 mix and noise. NativeBake: 1 = Phase 245 bake and CSG operations; 2 = thermal erosion.
+## coarse edge corners capped by the neighbours' edge tiles; 13 = `heightmap_strip_for`; 14 = `terrain_weights` (Phase 242); 15 = smooth walls to bedrock beside air (#612), coarse floors at bedrock (#614). NativeWorldShape: 1 = Phase 248 mix and noise. NativeBake: 1 = Phase 245 bake and CSG operations; 2 = thermal erosion; 3 = every CSG shape.
 const CLASSES := {
 	"NativeChunkBuilder": {"required": 15, "label": "chunk builder"},
 	"NativeWorldShape": {"required": 1, "label": "world shape"},
-	"NativeBake": {"required": 2, "label": "planet bake"},
+	"NativeBake": {"required": 3, "label": "planet bake"},
 }
 
 const REASON_NATIVE := ""
