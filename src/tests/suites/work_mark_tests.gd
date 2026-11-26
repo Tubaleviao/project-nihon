@@ -38,6 +38,8 @@ func register() -> void:
 	_run_test("work marks: the view cracks a block on its top face and drops it on the stop", _test_view_block)
 	_run_test("work marks: the view sways a tree about its foot and stands it back up on the stop", _test_view_tree)
 	_run_test("work marks: the client takes the host's packet and refuses a malformed one", _test_client_packet)
+	_run_test("work marks: #714 a strike steps the crack, kicks the tree and throws chips at the nearest mark", _test_view_strike)
+	_run_test("work marks: #714 a work_strike reaches the mark nearest the striking body", _test_strike_wiring)
 
 func _test_keys() -> void:
 	assert_eq(WorkMarks.parse_key("tree:t_1_2_3"), { "kind": "tree", "tree_id": "t_1_2_3" }, "a tree key names its tree")
@@ -254,3 +256,115 @@ func _test_client_packet() -> void:
 	assert_false(m.apply("block:1,2", 1.0, 0.0), "a malformed block key is never drawn")
 	assert_false(m.apply("tree:t1", 9999.0, 0.0), "nor a job past the cap")
 	Diag.quiet = was_quiet
+
+
+## #714 — once struck, a mark draws the progress of its last strike (the crack steps on the beat), a struck tree
+## sways harder for a moment, and each strike throws one chip burst that goes after its lifetime.
+func _test_view_strike() -> void:
+	var now := [10.0]
+	var v := _view(now)
+	var key := "block:0,0,0.00"
+	var top := WorkMarks.block_top(Vector2i(0, 0), 0.0, VoxelConsts.TILE_SIZE, VoxelConsts.STEP_HEIGHT)
+	v.apply(key, 4.0)
+	v.apply("block:40,0,0.00", 4.0)
+	assert_eq(v.strike(top + Vector3(WorkMarksView.STRIKE_REACH + 1.0, 0.0, 0.0)), "", "a strike out of reach takes no mark")
+	now[0] = 11.1
+	assert_eq(v.strike(top + Vector3(1.0, 0.0, 0.0)), key, "a strike in reach takes the nearest mark")
+	assert_eq(v.struck_at(key), 11.1, "at the strike's time")
+	var mi := v.overlay(key)
+	var at_strike := WorkMarks.crack_stage(1.1 / 4.0)
+	assert_eq(int(mi.get_meta("stage", 0)), at_strike, "the crack shows the strike's progress")
+	assert_eq(v.chips.size(), 1, "the strike throws one chip burst")
+	assert_true((v.chips[0][0] as CPUParticles3D).position.is_equal_approx(top), "at the struck face")
+	now[0] = 12.5
+	v.step()
+	assert_eq(int(mi.get_meta("stage", 0)), at_strike, "and holds it until the next strike")
+	assert_true(WorkMarks.crack_stage(2.5 / 4.0) > at_strike, "(time alone would have stepped it)")
+	v.strike(top)
+	assert_eq(int(mi.get_meta("stage", 0)), WorkMarks.crack_stage(2.5 / 4.0), "the next strike steps it")
+	assert_eq(v.chips.size(), 1, "the first burst is gone, the second strike threw its own")
+	now[0] = 12.5 + WorkMarksView.CHIP_LIFETIME + 0.01
+	v.step()
+	assert_eq(v.chips.size(), 0, "bursts go after their lifetime")
+	for i in WorkMarksView.MAX_CHIP_BURSTS + 3:
+		v.strike(top)
+	assert_eq(v.chips.size(), WorkMarksView.MAX_CHIP_BURSTS, "bursts alive at once are capped")
+	v.apply(key, 4.0)
+	assert_eq(v.struck_at(key), -1.0, "a restarted mark starts a new beat")
+	v.clear()
+	assert_eq(v.chips.size(), 0, "a clear takes the bursts with it")
+	assert_eq(v.get_child_count(), 0, "with nothing left in the scene")
+	# A struck tree kicks: its tilt right after the strike is larger than the plain sway at the same moment.
+	var trees := FakeTrees.new()
+	add_child(trees)
+	var pool := FakePool.new()
+	trees.add_child(pool)
+	trees.pool = pool
+	trees._fall = TreeFall.new(trees)
+	var tmi := pool.alloc()
+	var foot := Vector3(3.0, 2.0, -5.0)
+	trees._trees["oak1"] = { "state": "standing", "mi": tmi, "position": foot }
+	pool.set_transform(tmi, Transform3D(Basis(), foot))
+	v.tree_slice = trees
+	now[0] = 20.0
+	v.apply("tree:oak1", 3.0)
+	now[0] = 20.05
+	v.step()
+	var plain := (pool.xf[tmi] as Transform3D).basis.y.angle_to(Vector3.UP)
+	assert_eq(v.strike(foot), "tree:oak1", "a strike by the trunk takes the tree")
+	var kicked := (pool.xf[tmi] as Transform3D).basis.y.angle_to(Vector3.UP)
+	assert_true(kicked > plain * 2.0, "the struck tree sways harder (%f vs %f)" % [kicked, plain])
+	assert_eq(v.chips[-1][0].color, Color(0.45, 0.3, 0.15), "with wood chips")
+	now[0] = 20.05 + WorkMarksView.KICK_SECONDS + 0.01
+	v.step()
+	assert_true((pool.xf[tmi] as Transform3D).basis.y.angle_to(Vector3.UP) <= deg_to_rad(WorkMarks.SHAKE_DEGREES) + 0.001,
+		"and settles back to the plain sway")
+	remove_child(v)
+	v.free()
+	remove_child(trees)
+	trees.free()
+
+## #714 — the wiring places a `work_strike` at the striking body (`WorkAnimWiring.body_position`) and hands it to
+## the view; nothing happens before a mark was drawn.
+func _test_strike_wiring() -> void:
+	var gr: Node = (load("res://src/core/game_root.gd") as GDScript).new()
+	var ch := CharacterSlice.new()
+	add_child(ch)
+	gr._character = ch
+	gr._registry = PlayerRegistry.new()
+	var iid := ch.create_character_from_recipe({"skeleton": "HumanoidSkeleton"}, Vector3(1.0, 0.0, 1.0))
+	ch.set_player_character(iid)
+	gr._work_anim_wiring.root = gr
+	gr._work_mark_wiring.wire(gr)
+	GameBus.work_strike.emit(1, "mine")   # no view yet: nothing to strike, nothing made
+	assert_eq(gr._work_mark_wiring.view, null, "a strike makes no view")
+	var now := [5.0]
+	var v := _view(now)
+	gr._work_mark_wiring.view = v
+	v.apply("block:0,0,0.00", 2.0)
+	v.apply("block:9,9,0.00", 2.0)
+	now[0] = 5.5
+	GameBus.work_strike.emit(1, "mine")
+	assert_eq(v.struck_at("block:0,0,0.00"), 5.5, "the local body's strike lands on the block beside it")
+	assert_eq(v.struck_at("block:9,9,0.00"), -1.0, "not on the far one")
+	GameBus.work_strike.emit(42, "mine")
+	assert_eq(v.chips.size(), 1, "a peer with no body here strikes nothing")
+	# The worker's own mark wins over a nearer one: the host learns it from `work_mark_changed`.
+	now[0] = 5.7
+	gr._work_mark_wiring.on_mark_changed("", "block:9,9,0.00", 2.0)
+	assert_eq(gr._work_mark_wiring.peer_keys.get(1, ""), "block:9,9,0.00", "the host notes which mark its player works")
+	GameBus.work_strike.emit(1, "mine")
+	assert_eq(v.struck_at("block:9,9,0.00"), 5.7, "the strike lands on the worker's own mark, not the nearest")
+	gr._work_mark_wiring.on_mark_changed("", "block:9,9,0.00", 0.0)
+	assert_false(gr._work_mark_wiring.peer_keys.has(1), "its stop forgets it")
+	# With no known mark, the kind picks the target: a chop never steps a block's crack.
+	now[0] = 5.8
+	GameBus.work_strike.emit(1, "chop")
+	assert_eq(v.struck_at("block:0,0,0.00"), 5.5, "a chop strike passes the block beside it")
+	gr._work_mark_wiring.view = null
+	gr._work_mark_wiring.unwire()
+	remove_child(v)
+	v.free()
+	ch.free()
+	gr._registry.free()
+	gr.free()

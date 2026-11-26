@@ -374,7 +374,7 @@ static func profile_from_args(args: Array) -> String:
 	return str(args[i + 1])
 
 func _apply_profile_arg(args: Array) -> bool:
-	return _m1._apply_profile_arg(args)
+	return _m2._apply_profile_arg(args)
 
 static func has_profile(name: String) -> bool:
 	return NET_PROFILES.has(name)
@@ -447,7 +447,7 @@ func get_player_id(peer_id: int) -> String:
 	return str(_player_ids.get(peer_id, ""))
 
 func set_player_id(peer_id: int, player_id: String) -> void:
-	_m2.set_player_id(peer_id, player_id)
+	_m1.set_player_id(peer_id, player_id)
 
 func forget_player_id(peer_id: int) -> void:
 	_m1.forget_player_id(peer_id)
@@ -494,7 +494,7 @@ func get_last_known_states() -> Dictionary:
 	return _last_known_states.duplicate(true)
 
 func _evict_stale_states() -> void:
-	_m2._evict_stale_states()
+	_m1._evict_stale_states()
 
 # ---------------------------------------------------------------------------
 # Phase 29 — interest management (area of interest)
@@ -925,10 +925,10 @@ func _joiner_aoi_center(peer_id: int) -> Vector3:
 	return DEFAULT_AOI_CENTER
 
 func announce_equipment_to_aoi(peer_id: int) -> void:
-	_m2.announce_equipment_to_aoi(peer_id)
+	_m1.announce_equipment_to_aoi(peer_id)
 
 func _refresh_equipment_pairs(moved: int) -> void:
-	_m3._refresh_equipment_pairs(moved)
+	_m1._refresh_equipment_pairs(moved)
 
 func _update_equipment_pair(viewer: int, subject: int) -> void:
 	_m1._update_equipment_pair(viewer, subject)
@@ -979,7 +979,7 @@ var admin_check: Callable = Callable()
 
 func _on_remote_player_state(peer_id: int, position: Vector3) -> void:
 	TickProbe.begin("aoi_relay")
-	_m2._on_remote_player_state(peer_id, position)
+	_m1._on_remote_player_state(peer_id, position)
 	TickProbe.end()
 
 func _on_inventory_synced(owner_id: String, contents: Dictionary, durabilities: Dictionary = {}) -> void:
@@ -1218,7 +1218,7 @@ func _parse(wire: Variant) -> Variant:
 var _malformed_warn_ms := -INF
 
 func _dedup(sender: int, payload: Dictionary) -> bool:
-	return _m1._dedup(sender, payload)
+	return _m2._dedup(sender, payload)
 
 func _allow_packet(peer_id: int, now_ms: float) -> bool:
 	return _m2._allow_packet(peer_id, now_ms)
@@ -1242,7 +1242,7 @@ func _refuse_unhandshaked(sender: int, ptype: String) -> void:
 	Diag.warn("NetworkingSlice: %s from un-handshaked peer %d — dropped" % [ptype, sender])
 
 func _within_reach(sender: int, position: Vector3, reach: float) -> bool:
-	return _m3._within_reach(sender, position, reach)
+	return _m2._within_reach(sender, position, reach)
 
 ## Phase 36 — the host-side tree population, wired by game_root. A chop intent
 ## names only a tree id, so the tree's own position is the only way to check the
@@ -1269,7 +1269,7 @@ func _chop_is_in_reach(sender: int, tree_id: String) -> bool:
 	return _within_reach(sender, rec["position"], MAX_EDIT_REACH)
 
 func _named_party(raw: String) -> String:
-	return _m1._named_party(raw)
+	return _m2._named_party(raw)
 
 # ---------------------------------------------------------------------------
 # Phase 36 — identity redaction on the wire
@@ -1283,7 +1283,7 @@ func _public_handle(player_id: String) -> String:
 	return str(player_registry.public_handle(player_id))
 
 func redact_for_client(value: Variant) -> Variant:
-	return _m2.redact_for_client(value)
+	return _m3.redact_for_client(value)
 
 ## Client side: show THIS client's own handle back to its own slices as the literal
 ## "player" — the convention the local player has always had (`TradeSlice.PARTY_PLAYER`,
@@ -1301,7 +1301,7 @@ func redact_social_state(state: Dictionary) -> Dictionary:
 	return _m3.redact_social_state(state)
 
 func _map_identities(value: Variant, mapper: Callable) -> Variant:
-	return _m1._map_identities(value, mapper)
+	return _m3._map_identities(value, mapper)
 
 ## Client side: the world snapshot's identity-bearing blobs, restored to this client's
 ## own view (see IDENTIFIED_STATE_KEYS — the host half of the same list is
@@ -1402,7 +1402,7 @@ func _buffer_remote_state(peer_id: int, position: Vector3) -> void:
 	_jitter_buffer[peer_id].append({ "at_ms": at_ms, "position": position })
 
 func _sample_remote_state_at(peer_id: int, now_ms: float) -> Vector3:
-	return _m3._sample_remote_state_at(peer_id, now_ms)
+	return _m1._sample_remote_state_at(peer_id, now_ms)
 
 ## Deliver each buffered snapshot once, `jitter_buffer_ms` after it arrived. Phase 294 — the snapshots
 ## themselves, not a per-frame resample: the avatar's `RemoteMotion` track interpolates, and a state every frame
@@ -1497,4 +1497,4 @@ func _on_peer_connected(id: int) -> void:
 	GameBus.peer_connected.emit(id)
 
 func _on_peer_disconnected(id: int) -> void:
-	_m2._on_peer_disconnected(id)
+	_m1._on_peer_disconnected(id)
