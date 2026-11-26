@@ -8,6 +8,9 @@ const PLAYTEST_BOT_PATH := "res://src/tests/playtest_bot.gd"
 const STRESS_BOTS_PATH := "res://src/tests/stress_bots.gd"
 const STRESS_RECORDER_PATH := "res://src/tests/stress_recorder.gd"
 const NetworkingSlice := preload("res://src/networking/networking_slice.gd")
+const TerrainSlice := preload("res://src/terrain/terrain_slice.gd")
+const PlanetBake := preload("res://src/terrain/planet_bake.gd")
+const LocalWorlds := preload("res://src/menu/local_worlds.gd")
 const TestSuite := preload("res://src/tests/test_suite.gd")
 const NetHarness := preload("res://src/tests/net_harness.gd")
 const NetAddress := preload("res://src/networking/net_address.gd")
@@ -274,6 +277,34 @@ func run_net_harness(role: String) -> void:
 # ---------------------------------------------------------------------------
 # Automated tests
 # ---------------------------------------------------------------------------
+
+## Phase 245 — `--bake-planet <dir> [seed] [cell_m]`: bake the planet for the fabric seed (or `seed`; `cell_m`
+## overrides the 2 km cell for tests and tools), write `<dir>/planet_<seed>_v<worldgen>_<w>x<h>.bin` and its
+## `.sha256`, print `BAKE <path> <hash>` and quit (exit 1 when no file was written). Returns true when the
+## arg was given. CI publishes the files. Processing stops first: no slice is built on this boot.
+func bake_planet_if_asked(args: Array) -> bool:
+	var i := args.find("--bake-planet")
+	if i < 0:
+		return false
+	root.set_process(false)
+	root.set_physics_process(false)
+	var dir := str(args[i + 1]) if i + 1 < args.size() and not str(args[i + 1]).begins_with("--") else "bake"
+	var seed_v := int(args[i + 2]) if i + 2 < args.size() else LocalWorlds.fabric_seed()
+	var circ := float(TerrainSlice.circumference_chunks()) * TerrainSlice.CHUNK_METERS
+	var cell_m := float(args[i + 3]) if i + 3 < args.size() else PlanetBake.CELL_M
+	var w := roundi(circ / cell_m) if cell_m > 0.0 else 0
+	var h := w / 2
+	if w < 8:
+		push_error("--bake-planet: cell_m %s gives a grid under 8 cells wide" % cell_m)
+		root.get_tree().quit(1)
+		return true
+	var path := PlanetBake.file_path(dir, seed_v, TerrainSlice.WORLDGEN_VERSION, w, h)
+	var t0 := Time.get_ticks_msec()
+	var r := PlanetBake.ensure(path, seed_v, w, h, circ, PlanetBake.RIVER_FLOW)
+	print("BAKE %s %s (%d ms, %s)" % [path, r.hash, Time.get_ticks_msec() - t0, "read" if r.loaded else "baked"])
+	root.get_tree().quit(0 if FileAccess.file_exists(path) and FileAccess.file_exists(path + ".sha256") else 1)
+	return true
+
 
 func run_tests() -> void:
 	var suite := TestSuite.new()

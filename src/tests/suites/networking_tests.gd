@@ -250,7 +250,7 @@ func _test_worldgen_stamp_game_root_wiring() -> void:
 	gr._loaded_world = { "seed": 7 }
 	gr._persistence_wiring.note_worldgen_version()
 	assert_true(seen.is_empty(), "an unstamped record raises none")
-	assert_eq(gr._worldgen_stamp, TerrainSlice.WORLDGEN_VERSION, "and the next save stamps the running version")
+	assert_eq(gr._worldgen_stamp, TerrainSlice.BAKE_WORLDGEN_VERSION - 1, "and the next save stamps the last version before the bake (Phase 245: it keeps its local rivers)")
 	gr._loaded_world = { "seed": 7, "worldgenVersion": TerrainSlice.WORLDGEN_VERSION - 1 }
 	gr._persistence_wiring.note_worldgen_version()
 	assert_eq(seen, [[TerrainSlice.WORLDGEN_VERSION - 1, TerrainSlice.WORLDGEN_VERSION]], "an older stamp raises once")

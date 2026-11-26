@@ -17,6 +17,7 @@ extends RefCounted
 const TerrainSlice := preload("res://src/terrain/terrain_slice.gd")
 const WorldShape := preload("res://src/terrain/world_shape.gd")
 const ChunkRecords := preload("res://src/terrain/chunk_records.gd")
+const PlanetBake := preload("res://src/terrain/planet_bake.gd")
 
 const HYDROLOGY_VERSION := 12   ## the first `TerrainSlice.WORLDGEN_VERSION` with water
 
@@ -328,6 +329,11 @@ static func _features_in(seed_v: int, x0: float, z0: float, x1: float, z1: float
 			var lk := lake_of_cell(seed_v, cx, cz)
 			if not lk.is_empty() and _disc_touches(lk, x0, z0, x1, z1):
 				out["lakes"].append(lk)
+	# Phase 245: with a planet bake loaded the rivers are the baked ones, not the local trace.
+	var bk: Variant = _baked.get(seed_v)
+	if bk != null:
+		out["segs"].append_array(baked_segs(bk["bake"], float(bk["cell"]), x0, z0, x1, z1))
+		return out
 	# Rivers: a river of RIVER_MAX_STEPS steps reaches that far from its source cell.
 	var reach := RIVER_STEP_M * float(RIVER_MAX_STEPS) + _wmax
 	var rcx0 := floori((x0 - reach) / river_cell())
@@ -352,6 +358,56 @@ static func _features_in(seed_v: int, x0: float, z0: float, x1: float, z1: float
 			var pd: Dictionary = rv["pond"]
 			if not pd.is_empty() and _disc_touches(pd, x0, z0, x1, z1):
 				out["lakes"].append(pd)
+	return out
+
+static var _baked: Dictionary = {}   # seed → { bake: Dictionary, cell: float (m) }
+
+## Phase 245 — read this seed's rivers from `bake` (`PlanetBake.bake_planet`), whose cells are `circumference_m / w`
+## metres wide, instead of tracing them. Clears every cache. Main thread, before chunks build.
+static func use_bake(seed_v: int, bake: Dictionary, circumference_m: float) -> void:
+	_baked[seed_v] = { "bake": bake, "cell": circumference_m / float(int(bake["w"])) }
+	reset_cache()
+
+static func clear_bake(seed_v: int) -> void:
+	_baked.erase(seed_v)
+	reset_cache()
+
+static func clear_all_bakes() -> void:
+	_baked.clear()
+
+static func has_bake(seed_v: int) -> bool:
+	return _baked.has(seed_v)
+
+## The river segments (`[ax, az, bx, bz, surf_a, surf_b, half_end, half_start]`, as `water_at` reads them) of the baked
+## river cells that touch the box: each river cell runs to the cell it drains to, its width from its flow, its surface
+## the baked filled height less half a metre. Pure.
+static func baked_segs(bake: Dictionary, cell: float, x0: float, z0: float, x1: float, z1: float) -> Array:
+	var out := []
+	var w: int = bake["w"]
+	var h: int = bake["h"]
+	var half_h := cell * float(h) * 0.5
+	var pad := _wmax * 4.0 + cell
+	var river: PackedInt32Array = bake["river"]
+	var dir: PackedInt32Array = bake["dir"]
+	var flow: PackedInt32Array = bake["flow"]
+	var height: PackedInt32Array = bake["height"]
+	for cz in range(maxi(floori((z0 + half_h - pad) / cell), 0), mini(floori((z1 + half_h + pad) / cell), h - 1) + 1):
+		for cx in range(floori((x0 - pad) / cell), floori((x1 + pad) / cell) + 1):
+			var xi := posmod(cx, w)
+			var i := cz * w + xi
+			var d := dir[i]
+			if river[i] == 0 or d < 0:
+				continue
+			var ax := (float(cx) + 0.5) * cell
+			var az := (float(cz) + 0.5) * cell - half_h
+			var bx := ax + float((d % w) - xi) * cell
+			var bz := az + float(d / w - cz) * cell
+			var wa := clampf(float(PlanetBake.river_width_mm(flow[i])) * 0.001, _wmin, _wmax * 4.0)
+			var wb := clampf(float(PlanetBake.river_width_mm(flow[d])) * 0.001, _wmin, _wmax * 4.0)
+			var hw := maxf(wa, wb) * 0.5
+			if maxf(ax, bx) + hw < x0 or minf(ax, bx) - hw > x1 or maxf(az, bz) + hw < z0 or minf(az, bz) - hw > z1:
+				continue
+			out.append([ax, az, bx, bz, float(height[i]) * 0.001 - 0.5, float(height[d]) * 0.001 - 0.5, hw, wa * 0.5])
 	return out
 
 static func _disc_touches(d: Dictionary, x0: float, z0: float, x1: float, z1: float) -> bool:

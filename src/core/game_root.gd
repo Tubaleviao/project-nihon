@@ -282,7 +282,7 @@ func _ready() -> void:
 	# Phase 36 — the role flags are read FIRST, because they decide whether the
 	# automated suite runs on this boot (see should_run_tests).
 	_boot_wiring.parse_network_args()
-	if _boot_wiring.start_stress_bots() or _boot_wiring.start_registry():
+	if _boot_wiring.start_stress_bots() or _boot_wiring.start_registry() or _boot_wiring.bake_planet_if_asked(OS.get_cmdline_user_args()):
 		return   # Phase 162 — a crowd of stress bots / Phase 298 — a server-list registry, not a game
 	# Phase 131 — saved language, else the OS locale, else English. (Phase 225 options: menu path only.)
 	LocaleSettings.apply_startup()

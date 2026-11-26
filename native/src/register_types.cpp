@@ -1,5 +1,6 @@
 #include "register_types.h"
 
+#include "native_bake.h"
 #include "native_chunk_builder.h"
 #include "native_world_shape.h"
 
@@ -13,6 +14,7 @@ void initialize_nihon_native(ModuleInitializationLevel p_level) {
 	}
 	GDREGISTER_CLASS(NativeChunkBuilder);
 	GDREGISTER_CLASS(NativeWorldShape);   // Phase 248
+	GDREGISTER_CLASS(NativeBake);   // Phase 245
 }
 
 void uninitialize_nihon_native(ModuleInitializationLevel p_level) {

@@ -477,6 +477,10 @@ func _drop_at_feet(player_id: String, item: String, quantity: int) -> void:
 
 func note_worldgen_version() -> void:
 	root._worldgen_stamp = PersistenceSlice.worldgen_stamp_for_save(root._loaded_world, TerrainSlice.WORLDGEN_VERSION)
+	# Phase 245 — a pre-stamp world was generated before the bake and keeps its local rivers (`keep_local_rivers`
+	# in the boot path): stamp it with the last version without the bake so the next load keeps them too.
+	if not root._loaded_world.is_empty() and PersistenceSlice.worldgen_version_of(root._loaded_world) < 0:
+		root._worldgen_stamp = TerrainSlice.BAKE_WORLDGEN_VERSION - 1
 	if PersistenceSlice.check_worldgen_version(root._loaded_world, TerrainSlice.WORLDGEN_VERSION):
 		GameBus.worldgen_version_mismatch.emit(root._worldgen_stamp, TerrainSlice.WORLDGEN_VERSION)
 	var running_fp := TerrainSlice.worldgen_fingerprint()
@@ -520,6 +524,8 @@ func load_world_records() -> void:
 	root._peer_wiring.wire_colonization()
 	if root._loaded_world.is_empty():
 		print("[Server] no world record at %s — booting a fresh world" % root._persistence.world_path())
+		# Phase 245 — the fresh world's seed is adopted through `set_world_seed`, so the host bakes the rivers a client will bake.
+		root._terrain.set_world_seed(root._terrain.get_world_seed())
 	else:
 		# Phase 41 — adopt the recorded world seed BEFORE any chunk is built or any
 		# edit is migrated: the ground a save was written against is the ground a
@@ -527,11 +533,13 @@ func load_world_records() -> void:
 		# the tile's natural height, which comes from this noise field.
 		TerrainSlice.adopt_record_circumference(root._loaded_world)   # Phase 238
 		var recorded_seed: Variant = root._loaded_world.get("seed", null)
+		# Phase 245 — a world recorded before the bake keeps its local rivers: its recorded chunks never change.
+		var keep_local_rivers := PersistenceSlice.worldgen_version_of(root._loaded_world) < TerrainSlice.BAKE_WORLDGEN_VERSION
 		if recorded_seed != null:
-			root._terrain.set_world_seed(int(recorded_seed))
+			root._terrain.set_world_seed(int(recorded_seed), not keep_local_rivers)
 			print("[Server] world seed %d restored from the world record" % int(recorded_seed))
 		else:
-			root._terrain.seed_adopted = true
+			root._terrain.set_world_seed(root._terrain.get_world_seed(), not keep_local_rivers)
 			print("[Server] world record carries no seed (format %d) — adopting the fresh seed %d" % [
 				int(root._loaded_world.get("version", PersistenceSlice.LEGACY_WORLD_FORMAT_VERSION)),
 				root._terrain.get_world_seed()])

@@ -19,7 +19,7 @@ const SHARED_REVEALED_DIR := "user://saves/client"
 
 ## The boot user args that skip the main menu: every role and run flag CI and the tools pass.
 const MENU_SKIP_ARGS := ["--server", "--client", "--run-tests", "--quit-after-boot", "--playtest-bot",
-	"--net-harness", "--friend", "--stress-bots", "--stress-host", "--stress-watch", "--registry"]
+	"--net-harness", "--friend", "--stress-bots", "--stress-host", "--stress-watch", "--registry", "--bake-planet"]
 
 ## Phase 224 (#599) — `--menu-join <addr>`: the net harness's third process. It is NOT a menu-skip flag: the
 ## boot opens the real main menu, then joins `addr` through the menu's own path (`MainMenu.join_choice` →
