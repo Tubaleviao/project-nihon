@@ -811,6 +811,8 @@ erosion, and continents come straight from noise.
 - A world-gen change: bump `WORLDGEN_VERSION` (only unrecorded land changes, per the stable-world
   rule; `frontier.gd` blends at recorded borders).
 
+**Progress (autopilot, 2026-11-26).** Done on `autopilot/1126-fd9b55-next`: `terrain_csg.gd`, the GDScript bake reference `planet_bake.gd` (fill, D8 flow, rivers, bytes, hash, save/load, carve profile), and the `NativeBake` twin with parity tests (a 1000 x 500 grid bakes natively in about 0.1 s). Open: erosion and the biome field, the CSG native shapes beyond `capsule2`, the runtime read and carve replacing Phase 217's trace, the `WORLDGEN_VERSION` bump, host/client distribution, CI publishing and the playtest steps.
+
 **Acceptance criteria**
 - A suite test bakes a small planet (a test circumference) twice and gets identical bytes, and the
   same bytes from the GDScript reference and the native bake.
