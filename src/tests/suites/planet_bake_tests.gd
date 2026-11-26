@@ -11,6 +11,8 @@ func register() -> void:
 	_run_test("bake: the same grid bakes to identical bytes twice", _test_bake_deterministic)
 	_run_test("bake: every river cell reaches the sea and never flows uphill", _test_bake_rivers_reach_sea)
 	_run_test("bake: river width grows with flow", _test_bake_width_grows)
+	_run_test("bake: a corrupted or truncated file is refused by its hash", _test_bake_corrupt_refused)
+	_run_test("bake: a carved river lies below the water with soft banks", _test_bake_carve)
 
 ## A hill-and-sea grid: a ridge with noise-free integer bumps, sea on the east side.
 func _grid() -> PackedInt32Array:
@@ -61,3 +63,35 @@ func _test_bake_width_grows() -> void:
 		prev = wd
 	assert_true(ok, "monotonic")
 	assert_true(Bake.river_width_mm(100) == 10000, "sqrt law")
+
+func _test_bake_corrupt_refused() -> void:
+	var bytes := Bake.to_bytes(Bake.bake(_grid(), W, H, SEA, 12))
+	var good := Bake.hash_hex(bytes)
+	var ok := Bake.from_bytes(bytes, good)
+	assert_true(not ok.is_empty() and ok.w == W and ok.h == H, "good file loads")
+	var bad := bytes.duplicate()
+	bad[100] = bad[100] ^ 0xFF
+	assert_true(Bake.from_bytes(bad, good).is_empty(), "flipped byte refused")
+	assert_true(Bake.from_bytes(bytes, "00").is_empty(), "wrong hash refused")
+	assert_true(Bake.from_bytes(bytes.slice(0, 20), good).is_empty(), "truncated refused")
+
+func _test_bake_carve() -> void:
+	# 50 segments of varied direction and width: the centreline lies below the water, banks step <= 0.5 m.
+	var ok_centre := true
+	var ok_bank := true
+	for s in 50:
+		var a := Vector2i(s * 1300, s * 700)
+		var b := a + Vector2i(40000 + s * 500, (s % 7 - 3) * 9000)
+		var width := Bake.river_width_mm(4 + s * 3)
+		var water := 3000
+		var ground := 6000 + (s % 5) * 400
+		var mid := (a + b) / 2
+		ok_centre = ok_centre and Bake.carved_height(ground, mid, a, b, width, water, 2000, 1500) < water
+		var prev := Bake.carved_height(ground, mid, a, b, width, water, 2000, 1500)
+		for step in range(1, 60):
+			var q := Vector2i(mid.x, mid.y + step * 500)
+			var hq := Bake.carved_height(ground, q, a, b, width, water, 2000, 1500)
+			ok_bank = ok_bank and absi(hq - prev) <= 500
+			prev = hq
+	assert_true(ok_centre, "centreline below the water surface")
+	assert_true(ok_bank, "no bank step over 0.5 m")
