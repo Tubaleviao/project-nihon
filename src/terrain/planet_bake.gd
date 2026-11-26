@@ -10,6 +10,7 @@ extends RefCounted
 
 const NativeLoaderScript := preload("res://src/core/native_loader.gd")
 const WorldShape := preload("res://src/terrain/world_shape.gd")
+const Csg := preload("res://src/terrain/terrain_csg.gd")
 const NO_DIR := -1
 const DX := [-1, 0, 1, -1, 1, -1, 0, 1]
 const DZ := [-1, -1, -1, 0, 0, 1, 1, 1]
@@ -173,7 +174,7 @@ static func _steepest(f: PackedInt32Array, w: int, h: int, i: int, sea_mm: int) 
 
 ## River width in mm from the flow: grows with the square root of the flow.
 static func river_width_mm(flow: int) -> int:
-	return 1000 * TerrainCsg.isqrt(maxi(flow, 0))
+	return 1000 * Csg.isqrt(maxi(flow, 0))
 
 
 ## The bake's bytes: header (w, h, sea) then height, flow and river per cell, little endian int32.
@@ -227,9 +228,9 @@ static func from_bytes(bytes: PackedByteArray, expected_hash: String) -> Diction
 ## The ground height (mm) at `p` after carving the river segment a→b into `ground_mm`: a channel whose
 ## floor lies `depth_mm` under `water_mm`, half `width_mm` wide, with 45° banks blended by `k_mm`.
 static func carved_height(ground_mm: int, p: Vector2i, a: Vector2i, b: Vector2i, width_mm: int, water_mm: int, depth_mm: int, k_mm: int) -> int:
-	var d := TerrainCsg.capsule2(p, a, b, width_mm / 2)
+	var d := Csg.capsule2(p, a, b, width_mm / 2)
 	var cut := water_mm - depth_mm + maxi(d, 0)
-	return TerrainCsg.smooth_union(ground_mm, cut, k_mm)
+	return Csg.smooth_union(ground_mm, cut, k_mm)
 
 
 ## The base height grid, in mm, sampled from `WorldShape.height` at the centre of each `cell_m` cell:

@@ -3,6 +3,7 @@ extends "res://src/tests/test_support.gd"
 ## and width that grows with flow.
 
 const Bake := preload("res://src/terrain/planet_bake.gd")
+const Csg := preload("res://src/terrain/terrain_csg.gd")
 const W := 48
 const H := 32
 const SEA := 0
@@ -127,19 +128,19 @@ func _test_bake_native_parity() -> void:
 	var op: Array = []
 	for i in 3000:
 		op.append([rng.randi_range(-30000, 30000), rng.randi_range(-30000, 30000), rng.randi_range(-3, 4000)])
-	assert_native_parity("NativeBake", "smooth_union", op, TerrainCsg.smooth_union)
-	assert_native_parity("NativeBake", "smooth_intersection", op, TerrainCsg.smooth_intersection)
-	assert_native_parity("NativeBake", "smooth_subtract", op, TerrainCsg.smooth_subtract)
+	assert_native_parity("NativeBake", "smooth_union", op, Csg.smooth_union)
+	assert_native_parity("NativeBake", "smooth_intersection", op, Csg.smooth_intersection)
+	assert_native_parity("NativeBake", "smooth_subtract", op, Csg.smooth_subtract)
 	var sq: Array = []
 	for i in 3000:
 		sq.append([rng.randi_range(-5, 1 << 50)])
-	assert_native_parity("NativeBake", "isqrt", sq, TerrainCsg.isqrt)
+	assert_native_parity("NativeBake", "isqrt", sq, Csg.isqrt)
 	var caps: Array = []
 	for i in 3000:
 		caps.append([Vector2i(rng.randi_range(-90000, 90000), rng.randi_range(-90000, 90000)), Vector2i(rng.randi_range(-90000, 90000), rng.randi_range(-90000, 90000)),
 			Vector2i(rng.randi_range(-90000, 90000), rng.randi_range(-90000, 90000)), rng.randi_range(0, 5000)])
 	caps.append([Vector2i(5, 5), Vector2i(1, 1), Vector2i(1, 1), 100])
-	assert_native_parity("NativeBake", "capsule2", caps, TerrainCsg.capsule2)
+	assert_native_parity("NativeBake", "capsule2", caps, Csg.capsule2)
 	var v2 := func() -> Vector2i: return Vector2i(rng.randi_range(-90000, 90000), rng.randi_range(-90000, 90000))
 	var v3 := func() -> Vector3i: return Vector3i(rng.randi_range(-90000, 90000), rng.randi_range(-90000, 90000), rng.randi_range(-90000, 90000))
 	var dc: Array = []
@@ -158,13 +159,13 @@ func _test_bake_native_parity() -> void:
 		b3.append([v3.call(), v3.call(), Vector3i(rng.randi_range(0, 9000), rng.randi_range(0, 9000), rng.randi_range(0, 9000))])
 		c3.append([v3.call(), v3.call(), v3.call(), rng.randi_range(0, 5000)])
 	c3.append([Vector3i(5, 5, 5), Vector3i(1, 1, 1), Vector3i(1, 1, 1), 100])
-	assert_native_parity("NativeBake", "disc", dc, TerrainCsg.disc)
-	assert_native_parity("NativeBake", "box2", bx, TerrainCsg.box2)
-	assert_native_parity("NativeBake", "polyline", pl, TerrainCsg.polyline)
-	assert_native_parity("NativeBake", "sphere", sp, TerrainCsg.sphere)
-	assert_native_parity("NativeBake", "cylinder", cy, TerrainCsg.cylinder)
-	assert_native_parity("NativeBake", "box3", b3, TerrainCsg.box3)
-	assert_native_parity("NativeBake", "capsule3", c3, TerrainCsg.capsule3)
+	assert_native_parity("NativeBake", "disc", dc, Csg.disc)
+	assert_native_parity("NativeBake", "box2", bx, Csg.box2)
+	assert_native_parity("NativeBake", "polyline", pl, Csg.polyline)
+	assert_native_parity("NativeBake", "sphere", sp, Csg.sphere)
+	assert_native_parity("NativeBake", "cylinder", cy, Csg.cylinder)
+	assert_native_parity("NativeBake", "box3", b3, Csg.box3)
+	assert_native_parity("NativeBake", "capsule3", c3, Csg.capsule3)
 
 func _test_bake_planet_file() -> void:
 	var circ := float(TerrainSlice.circumference_chunks()) * 32.0

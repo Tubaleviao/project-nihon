@@ -278,13 +278,16 @@ func run_net_harness(role: String) -> void:
 # Automated tests
 # ---------------------------------------------------------------------------
 
-## Phase 245 — `--bake-planet <dir> [seed]`: bake the planet for the fabric seed (or `seed`), write
-## `[cell_m]` overrides the 2 km cell (tests, tools). `<dir>/planet_<seed>_v<worldgen>_<w>x<h>.bin` and its `.sha256`, print `BAKE <path> <hash>` and
-## quit (exit 1 when no file was written). Returns true when the arg was given. CI publishes the files.
+## Phase 245 — `--bake-planet <dir> [seed] [cell_m]`: bake the planet for the fabric seed (or `seed`; `cell_m`
+## overrides the 2 km cell for tests and tools), write `<dir>/planet_<seed>_v<worldgen>_<w>x<h>.bin` and its
+## `.sha256`, print `BAKE <path> <hash>` and quit (exit 1 when no file was written). Returns true when the
+## arg was given. CI publishes the files. Processing stops first: no slice is built on this boot.
 func bake_planet_if_asked(args: Array) -> bool:
 	var i := args.find("--bake-planet")
 	if i < 0:
 		return false
+	root.set_process(false)
+	root.set_physics_process(false)
 	var dir := str(args[i + 1]) if i + 1 < args.size() else "bake"
 	var seed_v := int(args[i + 2]) if i + 2 < args.size() else LocalWorlds.fabric_seed()
 	var circ := float(TerrainSlice.circumference_chunks()) * TerrainSlice.CHUNK_METERS
