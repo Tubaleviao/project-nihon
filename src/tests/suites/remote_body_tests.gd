@@ -10,7 +10,7 @@ const HeldItemWiring := preload("res://src/character/held_item_wiring.gd")
 const CreationRules := preload("res://src/character/creation_rules.gd")
 const RelayBatch := preload("res://src/networking/relay_batch.gd")
 const AvatarBuilder := preload("res://src/character/avatar_builder.gd")
-const Part3 := preload("res://src/character/character_part_3.gd")
+const CharacterAvatar := preload("res://src/character/character_avatar.gd")
 
 const LOOK := { "name": "Akira", "gender": "feminine", "hair": "hair_f_bob", "hairColor": 129 }
 const LOOK_M := { "name": "Kenji", "gender": "masculine", "hair": "hair_m_spiky", "hairColor": 41 }
@@ -132,9 +132,9 @@ func _test_nameplate_on_head() -> void:
 		var head := skel.find_bone("Head") if skel != null else -1
 		assert_true(head >= 0, "the rig has a head bone")
 		if head >= 0:
-			var head_y: float = (Part3._to_root(skel, inst["root"]) * skel.get_bone_global_rest(head).origin).y
+			var head_y: float = (CharacterAvatar._to_root(skel, inst["root"]) * skel.get_bone_global_rest(head).origin).y
 			assert_true(label.position.y > head_y, "the plate (%.2f m) is above the head bone (%.2f m)" % [label.position.y, head_y])
-			assert_true(label.position.y < Part3.NAMEPLATE_HEIGHT, "and closer than the fixed %.1f m over a chibi body" % Part3.NAMEPLATE_HEIGHT)
+			assert_true(label.position.y < CharacterAvatar.NAMEPLATE_HEIGHT, "and closer than the fixed %.1f m over a chibi body" % CharacterAvatar.NAMEPLATE_HEIGHT)
 	_free_client(r)
 
 
@@ -255,7 +255,7 @@ func _test_built_once() -> void:
 	var iid: String = r["w"].ensure_remote_avatar(5, Vector3.ZERO)
 	GameBus.character_appearance_changed.disconnect(on_built)
 	assert_eq(built[0], 0, "no rebuild through dress_peer after the body was built in its look")
-	assert_eq(str(ch._instances[iid].get("look_key", "")), Part3.look_key(LOOK), "the look key is recorded")
+	assert_eq(str(ch._instances[iid].get("look_key", "")), CharacterAvatar.look_key(LOOK), "the look key is recorded")
 	_free_client(r)
 
 ## The host reads each player's look once for a crowd of new pairs, and a changed look replaces it.

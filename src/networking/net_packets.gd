@@ -1,5 +1,5 @@
 extends RefCounted
-## Methods moved verbatim out of `networking_slice.gd` (Phase 154). `sl` is the owning slice; each moved method keeps a forwarder there.
+## Packets: the network profile, the client-to-host router `_route_c2h`, the `send_*` helpers for combat, work, gestures, held items, carcasses and admin, the intent forwarders and block-edit validation. Methods moved verbatim out of `networking_slice.gd` (Phase 154, renamed Phase 257). `sl` is the owning slice; each moved method keeps a forwarder there. Does not hold: state relay and looks (`net_relay.gd`) or the host session (`net_session.gd`).
 
 const HeldItem := preload("res://src/character/held_item.gd")
 var sl: Node

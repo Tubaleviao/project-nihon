@@ -113,6 +113,10 @@ const MAX_SUITE_LINES := 3000
 ## the list is empty and stays that way (split the file instead).
 const MAX_SOURCE_LINES := 1500
 const SOURCE_LINE_ALLOW_LIST: Array = []
+## Phase 257 — a file within this many lines of the cap says, in its first `HEADER_LINES` lines, which split is planned.
+const SPLIT_MARGIN := 50
+const HEADER_LINES := 40
+const SPLIT_MARKER := "Planned split:"
 const SUITE_DIR := "res://src/tests/suites"
 const FILTER_ARG := "--test-filter="
 
@@ -146,6 +150,33 @@ static func oversized_source_files(dir: String, cap: int, allow: Array, skip_tes
 		if skip_tests and d == "tests":
 			continue
 		out.append_array(oversized_source_files(dir.path_join(d), cap, allow, skip_tests))
+	return out
+
+## Phase 257 — the names and headroom audit. Lists, as "path (reason)", every non-test `.gd` under `dir` whose
+## name matches `_part_<n>` or ends in a digit (a file is named for its responsibility, not its slice number), and
+## every one within `margin` lines of `cap` whose first `HEADER_LINES` lines lack `SPLIT_MARKER` (a file that
+## close to the cap must say which split is planned for it).
+static func misnamed_source_files(dir: String, cap: int, margin: int = SPLIT_MARGIN, skip_tests: bool = true) -> Array:
+	var out: Array = []
+	var digit_end := RegEx.create_from_string("[0-9]$")
+	var part_name := RegEx.create_from_string("_part_[0-9]+")
+	for f in DirAccess.get_files_at(dir):
+		if not f.ends_with(".gd"):
+			continue
+		var path := dir.path_join(f)
+		var stem := f.trim_suffix(".gd")
+		if part_name.search(stem) != null or digit_end.search(stem) != null:
+			out.append("%s (named by number, name it for what it does)" % path)
+			continue
+		var text := FileAccess.get_file_as_string(path)
+		var all_lines := text.trim_suffix("\n").split("\n")
+		var header := "\n".join(all_lines.slice(0, HEADER_LINES))
+		if all_lines.size() > cap - margin and not header.contains(SPLIT_MARKER):
+			out.append("%s (%d lines, within %d of the cap: its header must say `%s`)" % [path, all_lines.size(), margin, SPLIT_MARKER])
+	for d in DirAccess.get_directories_at(dir):
+		if skip_tests and d == "tests":
+			continue
+		out.append_array(misnamed_source_files(dir.path_join(d), cap, margin, skip_tests))
 	return out
 
 ## `.gd` files in the suite directory that `SUITES` does not list.

@@ -10,6 +10,7 @@ func register() -> void:
 	_run_test("runner: an unregistered _test_* in a suite file is reported", _test_runner_unregistered_audit)
 	_run_test("runner: every suite file is listed and under the line cap", _test_runner_suite_files_listed_and_capped)
 	_run_test("runner: no source file under src/ is over the line cap", _test_runner_source_size_audit)
+	_run_test("runner: no source file is named by number or sits at the cap without a planned split", _test_runner_source_name_audit)
 	_run_test("playtest: report percentiles and hitch counts", _test_playtest_report_percentiles_and_hitches)
 	_run_test("playtest: p95 process budget gate", _test_playtest_budget_gate)
 	_run_test("playtest: step failure, hard frame and missing step fail the run", _test_playtest_report_verdicts)
@@ -87,6 +88,29 @@ func _test_runner_source_size_audit() -> void:
 	f.close()
 	assert_eq(Runner.oversized_source_files(dir, Runner.MAX_SOURCE_LINES, []), [], "a file of exactly the cap passes")
 	DirAccess.remove_absolute(dir.path_join("big.gd"))
+	DirAccess.remove_absolute(dir)
+
+# Phase 257 — no source file is named by number, and a file near the cap names its planned split.
+func _test_runner_source_name_audit() -> void:
+	assert_eq(Runner.misnamed_source_files("res://src", Runner.MAX_SOURCE_LINES), [], "no src/ file is named by number or sits at the cap without a planned split")
+	var dir := "user://name_audit_fixture"
+	DirAccess.make_dir_recursive_absolute(dir)
+	for name in ["split_part_2.gd", "thing2.gd", "ok_name.gd"]:
+		var f := FileAccess.open(dir.path_join(name), FileAccess.WRITE)
+		f.store_string("extends Node\n")
+		f.close()
+	var hits := Runner.misnamed_source_files(dir, Runner.MAX_SOURCE_LINES)
+	assert_eq(hits.size(), 2, "a `_part_N` name and a name ending in a digit are both reported")
+	var near := FileAccess.open(dir.path_join("near_cap.gd"), FileAccess.WRITE)
+	near.store_string("extends Node\n" + "x\n".repeat(Runner.MAX_SOURCE_LINES - 10))
+	near.close()
+	assert_eq(Runner.misnamed_source_files(dir, Runner.MAX_SOURCE_LINES).size(), 3, "a file within the margin of the cap without a planned split is reported")
+	near = FileAccess.open(dir.path_join("near_cap.gd"), FileAccess.WRITE)
+	near.store_string("extends Node\n## %s the rest goes to other.gd.\n" % Runner.SPLIT_MARKER + "x\n".repeat(Runner.MAX_SOURCE_LINES - 10))
+	near.close()
+	assert_eq(Runner.misnamed_source_files(dir, Runner.MAX_SOURCE_LINES).size(), 2, "its header naming the split clears it")
+	for name in ["split_part_2.gd", "thing2.gd", "ok_name.gd", "near_cap.gd"]:
+		DirAccess.remove_absolute(dir.path_join(name))
 	DirAccess.remove_absolute(dir)
 
 # Phase 134 — the playtest bot's report maths.

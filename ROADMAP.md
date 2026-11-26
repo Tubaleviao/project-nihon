@@ -22,7 +22,7 @@ issues are open. Burn them down first (fix, fold into the next phase, or close w
 
 ## Phase index
 
-Phases 1–225, 238–244, 248–250, 252–256, 259–276, 281–283, 289 are done (200 and 201 were aborted). Their specs and acceptance criteria, and the
+Phases 1–225, 238–244, 248–250, 252–257, 259–276, 281–283, 289 are done (200 and 201 were aborted). Their specs and acceptance criteria, and the
 introductions of the arcs they belonged to, are archived in
 [docs/roadmap-history/](docs/roadmap-history/README.md).
 
@@ -39,18 +39,17 @@ work in order.
 
 | Priority | Phase | Title |
 |---|---|---|
-| 1 | 257 | Split files named by what they do |
-| 2 | 245 | The planet bake: continents, rivers with flow, erosion and biomes at 2 km |
-| 3 | 232 | Water that holds up: lake shores, the river seam and mounts at fords |
-| 4 | 300 | Digging with a brush: one dig moves a shovelful, not a slab |
-| 5 | 301 | Shaping the ground: fill, flatten and smooth, and a dug surface that shows what it is |
-| 6 | 247 | Ground cover: grass and bushes by biome |
-| 7 | 235 | Roads |
-| 8 | 234 | Boats |
-| 9 | 258 | The public wiki and the community channels |
-| 10 | 299 | Many registries: signed entries, gossip and no single owner |
-| 11 | 236 | Changing hair style and colour (parked: picked up only when un-parked) |
-| 12 | 251 | A human playtest: what would make the game fun (a standing checkpoint, when the owner has time) |
+| 1 | 245 | The planet bake: continents, rivers with flow, erosion and biomes at 2 km |
+| 2 | 232 | Water that holds up: lake shores, the river seam and mounts at fords |
+| 3 | 300 | Digging with a brush: one dig moves a shovelful, not a slab |
+| 4 | 301 | Shaping the ground: fill, flatten and smooth, and a dug surface that shows what it is |
+| 5 | 247 | Ground cover: grass and bushes by biome |
+| 6 | 235 | Roads |
+| 7 | 234 | Boats |
+| 8 | 258 | The public wiki and the community channels |
+| 9 | 299 | Many registries: signed entries, gossip and no single owner |
+| 10 | 236 | Changing hair style and colour (parked: picked up only when un-parked) |
+| 11 | 251 | A human playtest: what would make the game fun (a standing checkpoint, when the owner has time) |
 
 Why this order:
 
@@ -63,7 +62,7 @@ Why this order:
   discovery on the Join screen.
 - **298 done.** The server list: a `--registry` role, `--public` hosts that heartbeat to it, and the Join screen's
   Public servers tab. With 297 it makes finding a server the normal way to play instead of typing an address.
-- **257 before the big world work.** A rename of the numbered `*_part_N.gd` files is cheap now and makes
+- **257 done.** A rename of the numbered `*_part_N.gd` files is cheap now and makes
   the terrain and net code easier to read for 245 onward.
 - **245 → 232 → 300 → 301 → 247 → 235 → 234: the world.** Phase 245 replaces Phase 217's river trace, so 232's
   river-seam fix applies to the baked rivers (its lake-shore and ford work stays as written). Phase 245 also
@@ -241,7 +240,7 @@ latest was the stress job finding a largest passing crowd of 0 for `cluster`, `c
 exists but no tag has ever been pushed, so no one but the owner has ever run a build. The working
 tree carried an unignored `.claude/` folder of 600 MB, eight untracked `.uid` files, two lockfiles
 and a submodule pointer rewound three commits. The 1,500-line cap on source files is met by nine
-files named `*_part_1.gd`, `*_part_2.gd`, `*_part_3.gd`, split by line count rather than by what
+files named `*_part_1.gd`, `*_part_2.gd`, `*_part_3.gd`, split by line count rather than by what (renamed in Phase 257)
 they do. The deployed wiki deferred since Phase 9 is still deferred, and the repository has no
 `CONTRIBUTING.md` and no Discussions, although the constitution's `CommunityOwnsTheFuture` principle
 says decisions are proposed publicly.
@@ -253,7 +252,7 @@ says decisions are proposed publicly.
 | 254 | Repository hygiene: `.uid` files tracked, one lockfile, nothing stray | Done ([phases-254.md](docs/roadmap-history/phases-254.md)) |
 | 255 | The first release: `v0.1.0` from the release workflow | Done ([phases-255.md](docs/roadmap-history/phases-255.md)) |
 | 256 | A binary wire format for the hot packets | Done ([phases-256.md](docs/roadmap-history/phases-256.md)) |
-| 257 | Split files named by what they do | Open |
+| 257 | Split files named by what they do | Done ([phases-257.md](docs/roadmap-history/phases-257.md)) |
 | 258 | The public wiki and the community channels | Open |
 
 ### Next: the first hour, from nothing (Phases 259–266)
@@ -267,7 +266,7 @@ and a forge (the tutorial's `first_stations` and `first_tools` chapters). A dig 
 only after the host applies it and the chunk is re-meshed on a worker. Dropping from the inventory
 drops one unit, or the whole stack with Shift (`ui_slice.gd` `finish_world_drop`). The world avatar
 is the `models/player_rig.glb` rig (`attach_default_rig`), while the creation screen and the
-Character window's doll are built by the older procedural body (`character_part_2.gd`
+Character window's doll are built by the older procedural body (`character_body_actions.gd`
 `_make_visual`), which draws hair as one box tinted by the colour and ignores the chosen style; the
 per-style hair meshes (`models/characters/hair/<id>.glb.raw`) are generated but never loaded.
 
@@ -772,7 +771,7 @@ Attached meshes and collision land on the main thread as whole nodes.
 - The playtest `flight` step: ground under the body in at least as many samples as the current floor,
   and the worker ms per crossing no worse than its budget.
 
-**Implemented** (pure policy in `src/terrain/chunk_stream_policy.gd`; wiring in `chunk_part_1.gd`): the
+**Implemented** (pure policy in `src/terrain/chunk_stream_policy.gd`; wiring in `chunk_build_queue.gd`): the
 lead is `ceil(speed × 1.5 s / 32 m)` chunks, capped at 6, queued in a 45° cone along the body's
 velocity; the steady worker cap starts at half the cores and moves once a second inside
 [2, cores − 1]; `apply_finished_builds` stops at `ATTACH_BUDGET_MS` (3 ms) except for the chunk under
@@ -982,29 +981,6 @@ findings come back as new phases.
   order). Findings: other players are drawn as shapes, not people; other players and creatures jump instead of
   walking; a right click moves the pointer up-left; the market shows the seller's id. The owner also dropped
   the tool concept for equipment categories and traits.
-
-## Phase 257 — Split files named by what they do
-
-Phase 154's 1,500-line cap is met: seven files sit at 1,497–1,500 lines and nine are named by
-number (`net_part_1.gd`, `net_part_2.gd`, `net_part_3.gd`, `ui_part_1.gd`, `ui_part_2.gd`,
-`chunk_part_1.gd`, `character_part_1.gd`, `character_part_2.gd`, `character_part_3.gd`; 4,038
-lines). The split satisfies the cap's letter: a reader must know which part holds a function, which
-is harder than one long file. The cap stays; the parts get names.
-
-- Each `*_part_N.gd` is renamed for its responsibility (for example `net_part_2.gd` →
-  `net_player_state.gd` if that is what it holds) and its header comment says what belongs there and
-  what does not. Functions that landed in a part only because the slice was full move to the file
-  whose name fits.
-- The suite's source audit (`MAX_SOURCE_LINES`) also refuses any `.gd` whose name matches
-  `_part_\d+` or ends in a digit, and refuses a file within 50 lines of the cap unless its header
-  names the split that is planned for it.
-- `CLAUDE.md`'s architecture section names the new files where it names the slices.
-
-**Acceptance criteria**
-- No file under `src/` matches `_part_\d+\.gd`; the audit test proves it rejects a fixture that
-  does.
-- The suite, the net harness and the playtest bot pass unchanged (a rename is behaviour-free).
-- `grep -c` of the old names in `src/`, `tools/`, `docs/` and `CLAUDE.md` is 0.
 
 ## Phase 258 — The public wiki and the community channels
 
@@ -1439,7 +1415,7 @@ and `UISlice` prints that handle in `ui.listing` as it is.
   votes, clan rolls): a check lists the UI strings that format a player field and fails one that prints a handle.
 - The market window shows "(you)" on the viewer's own listings (new key in both locales).
 
-**Done.** `NetPart3.redact_blob` names the players in the copy a client is sent (a listing's `seller_name`, a
+**Done.** `NetSession.redact_blob` names the players in the copy a client is sent (a listing's `seller_name`, a
 proposal's `author_name`, a trade's `names` by party) from `PlayerRegistry.character_name` at send time, then
 redacts ids to handles; the market, governance and trade broadcasts and the join snapshot all go through it, and the
 listen host's own "player" literal crosses as the host's handle (a client used to read the host's listings as its own).

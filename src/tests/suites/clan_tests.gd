@@ -321,7 +321,7 @@ func _test_clan_wire() -> void:
 	assert_true(GameBus.clan_intent.is_connected(c._m2.forward_clan_intent), "the networking slice forwards clan intents")
 	c._m2.forward_clan_intent("leave", {}, "")
 	c.free()
-	var src := FileAccess.get_file_as_string("res://src/networking/net_part_2.gd")
+	var src := FileAccess.get_file_as_string("res://src/networking/net_packets.gd")
 	var at := src.find("\"clan_intent\":")
 	assert_true(at >= 0, "the host routes clan intents")
 	var body := src.substr(at, src.find("\"tame_intent\":") - at)

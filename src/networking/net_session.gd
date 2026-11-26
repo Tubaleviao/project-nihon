@@ -1,5 +1,5 @@
 extends RefCounted
-## Methods moved verbatim out of `networking_slice.gd` (Phase 154). `sl` is the owning slice; each moved method keeps a forwarder there.
+## The host session: hosting, the registry heartbeat, the status server, hello and snapshots, teleports, redaction, the host-to-client router `_route_h2c` and the character roster. Methods moved verbatim out of `networking_slice.gd` (Phase 154, renamed Phase 257). `sl` is the owning slice; each moved method keeps a forwarder there. Does not hold: the client-to-host router and packet senders (`net_packets.gd`) or state relay and looks (`net_relay.gd`).
 
 const HeldItem := preload("res://src/character/held_item.gd")
 const ComboChain := preload("res://src/battle/combo_chain.gd")

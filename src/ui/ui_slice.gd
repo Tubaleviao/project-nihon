@@ -7,7 +7,7 @@ extends Node
 ## never touches the mouse: the pointer is always free (Phase 85) and only
 ## held-right-click captures it for the camera. A click on a window is consumed
 ## by the window, so no attack/mine slips through an open menu.
-##
+## Planned split: the next window builders go to ui_windows.gd, the next sheet/HUD ones to ui_sheet_hud.gd.
 ## Plug contract (GameBus signals consumed / emitted):
 ##   IN  : inventory_changed, item_picked_up, block_mined, block_placed,
 ##         craft_resolved, research_resolved, technology_unlocked
@@ -90,11 +90,11 @@ const SLOT_SIZE := Vector2(72, 72)
 const INVENTORY_COLUMNS := 5
 
 ## Set by game_root after instantiation.
-const UiPart1 := preload("res://src/ui/ui_part_1.gd")
-const UiPart2 := preload("res://src/ui/ui_part_2.gd")
-var _m2 := UiPart2.new(self)
+const UiSheetHud := preload("res://src/ui/ui_sheet_hud.gd")
+const UiWindows := preload("res://src/ui/ui_windows.gd")
+var _m2 := UiWindows.new(self)
 
-var _m1 := UiPart1.new(self)
+var _m1 := UiSheetHud.new(self)
 var _crafting := preload("res://src/ui/ui_crafting.gd").new(self)   # Phase 269
 
 var inventory_slice: Node = null
@@ -215,7 +215,7 @@ var _creation_layer: CanvasLayer = null
 ## Phase 264 — how many of a stack a world drop lets go of; built on first use.
 var drop_dialog: Control = null
 var _creation_state: Dictionary = { "state": CreationRules.STATE_NONE }
-var _creation_known: bool = false   # Phase 221: set once the authority's state arrived (see ui_part_2)
+var _creation_known: bool = false   # Phase 221: set once the authority's state arrived (see ui_windows)
 var _sheet_create_button: Button = null
 
 ## Phase 224 — the Esc menu (built on first open) and the open windows in opening order (Esc closes the top one).
@@ -366,7 +366,7 @@ func _on_drag_end() -> void:
 	if vp.gui_get_hovered_control() == null:
 		finish_world_drop(payload, Input.is_key_pressed(KEY_SHIFT))
 
-## A drag that ended in the world (Phase 264: a stack above one asks how many first). See `ui_part_1.gd`.
+## A drag that ended in the world (Phase 264: a stack above one asks how many first). See `ui_sheet_hud.gd`.
 func finish_world_drop(payload: Dictionary, whole_stack: bool) -> String: return _m1.finish_world_drop(payload, whole_stack)
 func open_drop_dialog(item_id: String, qty: int) -> String: return _m1.open_drop_dialog(item_id, qty)
 func is_drop_dialog_open() -> bool: return drop_dialog != null and drop_dialog.is_open()
@@ -462,7 +462,7 @@ func _close_all_windows() -> void:
 	_drag_key = ""
 	refresh_hud()
 
-## Phase 224 — the Esc menu and Esc's order (field, top window, menu): see `ui_part_2.gd`.
+## Phase 224 — the Esc menu and Esc's order (field, top window, menu): see `ui_windows.gd`.
 func handle_escape() -> String: return _m2.handle_escape()
 func close_top_window() -> bool: return _m2.close_top_window()
 func is_pause_menu_open() -> bool: return pause_menu != null and pause_menu.is_open()
@@ -871,7 +871,7 @@ func _on_slot_gui_input(event: InputEvent, item_id: String, actions: Array) -> v
 	if not (event is InputEventMouseButton) or not event.pressed:
 		return
 	if event.button_index == MOUSE_BUTTON_LEFT and event.double_click:
-		dispatch_item_action(item_id, UiPart2.primary_action(actions))   # "" (nothing to do) is refused
+		dispatch_item_action(item_id, UiWindows.primary_action(actions))   # "" (nothing to do) is refused
 		return
 	if event.button_index != MOUSE_BUTTON_RIGHT:
 		return
@@ -906,7 +906,7 @@ static func friend_code_text(handle: String) -> String:
 # Phase 181 — character creation
 # ---------------------------------------------------------------------------
 
-## Show the creation screen (built on first use, bodies in ui_part_2; `from_sheet`: Back and Esc close it).
+## Show the creation screen (built on first use, bodies in ui_windows; `from_sheet`: Back and Esc close it).
 func show_creation(state: Dictionary = {}, from_sheet: bool = false) -> void: _m2.show_creation(state, from_sheet)
 func hide_creation() -> void: _m2.hide_creation()
 func is_creation_open() -> bool: return creation_screen != null and creation_screen.visible

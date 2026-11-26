@@ -352,7 +352,7 @@ func _test_materials_above_stone() -> void:
 		assert_true(int(pl["floors"]) <= Limits.max_floors(Limits.rank_of(mat)), "project %s fits its block's class" % key)
 
 func _test_audit_no_client_values() -> void:
-	var net := FileAccess.get_file_as_string("res://src/networking/net_part_2.gd")
+	var net := FileAccess.get_file_as_string("res://src/networking/net_packets.gd")
 	assert_true(net.length() > 0, "the client → host routing is readable")
 	for field: String in ["base", "reach", "carry", "floor", "floors", "supported", "span", "structuralClass", "class"]:
 		assert_false(net.contains("payload.get(\"%s\"" % field), "no client payload's \"%s\" is read" % field)

@@ -22,7 +22,7 @@ const VoxelCoarse := preload("res://src/terrain/voxel_coarse.gd")
 const NativeBuilder := preload("res://src/terrain/native_builder.gd")
 
 var sl: Node   # the ChunkManager
-var m1: RefCounted   # its ChunkPart1
+var m1: RefCounted   # its ChunkBuildQueue
 var enabled := true
 ## The suite may run on the GDScript builder.
 var without_native := false

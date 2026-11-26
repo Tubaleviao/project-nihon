@@ -1,5 +1,5 @@
 extends RefCounted
-## Methods moved verbatim out of `ui_slice.gd` (Phase 154). `sl` is the owning slice; each moved method keeps a forwarder there.
+## The HUD, the character sheet and drags: `_build_hud`/`_build_ui`/`_build_window`, the Character window (attributes, equipment, doll, titles, skill page), drop dialogs and the market content builder. Methods moved verbatim out of `ui_slice.gd` (Phase 154, renamed Phase 257). `sl` is the owning slice; each moved method keeps a forwarder there. Does not hold: the inventory, technology, crafting, trade, creation and pause windows (`ui_windows.gd`).
 
 const UiIcons := preload("res://src/ui/ui_icons.gd")
 const TitleRules := preload("res://src/character/title_rules.gd")

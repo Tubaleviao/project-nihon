@@ -191,8 +191,8 @@ func _test_mount_clamp() -> void:
 	n._route_c2h(5, { "type": "player_moved", "position": [0.0, 2.0, 0.0] })
 	n._route_c2h(5, { "type": "player_moved", "position": [500.0, 2.0, 0.0] })
 	var at: Vector3 = n.get_last_known_state(5)
-	assert_true(at.x <= 9.0 * NetworkingSlice.NetPart2.SPEED_BUDGET_SECONDS + 0.5, "a report far above the mounted speed is clamped (got %s)" % at)
-	assert_true(at.x > 4.5 * NetworkingSlice.NetPart2.SPEED_BUDGET_SECONDS, "the mounted budget is the factor times the walking budget (got %s)" % at)
+	assert_true(at.x <= 9.0 * NetworkingSlice.NetPackets.SPEED_BUDGET_SECONDS + 0.5, "a report far above the mounted speed is clamped (got %s)" % at)
+	assert_true(at.x > 4.5 * NetworkingSlice.NetPackets.SPEED_BUDGET_SECONDS, "the mounted budget is the factor times the walking budget (got %s)" % at)
 	n.free()
 	_drop(m)
 

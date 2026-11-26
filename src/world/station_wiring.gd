@@ -2,7 +2,7 @@ extends "res://src/core/wiring.gd"
 ## Station wiring (Phase 268) — a station item placed from the hotbar and a placed station picked up again.
 ##
 ## Every placement and pick-up is a `station_intent` the host decides: the host's own player emits it here, a
-## client's travels to the host (net_part_2 binds the sender), and the result is a `station_resolved` the host turns
+## client's travels to the host (net_packets binds the sender), and the result is a `station_resolved` the host turns
 ## into a notice. A chest or door goes on through `ChestWiring.place_for`, a bed through the bed's own intent, and
 ## every other type is paid for here. The host then tells every client about the station (`station_added`,
 ## `station_gone`), so a placement shows on the other machines without waiting for a snapshot.

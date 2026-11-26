@@ -1,5 +1,5 @@
 extends RefCounted
-## Methods moved verbatim out of `character_slice.gd` (Phase 154). `sl` is the owning slice; each moved method keeps a forwarder there.
+## What a body does: equipment visuals, `_make_visual`, attack/work/gesture/hit clips, seat lift and remote-body driving. Methods moved verbatim out of `character_slice.gd` (Phase 154, renamed Phase 257). `sl` is the owning slice; each moved method keeps a forwarder there. Does not hold: appearance recipes (`character_appearance.gd`) or the avatar sync and nameplates (`character_avatar.gd`).
 
 var sl: Node
 
