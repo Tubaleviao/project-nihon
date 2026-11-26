@@ -9,6 +9,7 @@ extends RefCounted
 ## Still to come on this base (Phase 245): erosion, the biome field, the native twin and the runtime read.
 
 const NativeLoaderScript := preload("res://src/core/native_loader.gd")
+const WorldShape := preload("res://src/terrain/world_shape.gd")
 const NO_DIR := -1
 const DX := [-1, 0, 1, -1, 1, -1, 0, 1]
 const DZ := [-1, -1, -1, 0, 0, 1, 1, 1]
@@ -184,3 +185,45 @@ static func carved_height(ground_mm: int, p: Vector2i, a: Vector2i, b: Vector2i,
 	var d := TerrainCsg.capsule2(p, a, b, width_mm / 2)
 	var cut := water_mm - depth_mm + maxi(d, 0)
 	return TerrainCsg.smooth_union(ground_mm, cut, k_mm)
+
+
+## The base height grid, in mm, sampled from `WorldShape.height` at the centre of each `cell_m` cell:
+## `w` cells round the circumference `circumference_m` and `h` cells from pole to pole.
+static func base_grid(seed_v: int, w: int, h: int, circumference_m: float) -> PackedInt32Array:
+	var out := PackedInt32Array()
+	out.resize(w * h)
+	var cell := circumference_m / float(w)
+	var half := cell * float(h) * 0.5
+	for z in h:
+		for x in w:
+			var m: float = WorldShape.height(seed_v, (float(x) + 0.5) * cell, (float(z) + 0.5) * cell - half, circumference_m)
+			out[z * w + x] = roundi(m * 1000.0)
+	return out
+
+
+## Bake the planet for `seed_v` on a `w` x `h` grid; `river_flow` is the flow that makes a river.
+static func bake_planet(seed_v: int, w: int, h: int, circumference_m: float, river_flow: int) -> Dictionary:
+	return bake(base_grid(seed_v, w, h, circumference_m), w, h, 0, river_flow)
+
+
+## Write the bake and its hash (`<path>` and `<path>.sha256`); false on an I/O error.
+static func save(b: Dictionary, path: String) -> bool:
+	var bytes := to_bytes(b)
+	var f := FileAccess.open(path, FileAccess.WRITE)
+	if f == null:
+		return false
+	f.store_buffer(bytes)
+	f.close()
+	var hf := FileAccess.open(path + ".sha256", FileAccess.WRITE)
+	if hf == null:
+		return false
+	hf.store_string(hash_hex(bytes))
+	hf.close()
+	return true
+
+
+## Read a saved bake: empty when the file or hash is missing, or the hash does not match.
+static func load_file(path: String) -> Dictionary:
+	if not FileAccess.file_exists(path) or not FileAccess.file_exists(path + ".sha256"):
+		return {}
+	return from_bytes(FileAccess.get_file_as_bytes(path), FileAccess.get_file_as_string(path + ".sha256").strip_edges())

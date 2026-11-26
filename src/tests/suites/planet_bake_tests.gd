@@ -13,6 +13,7 @@ func register() -> void:
 	_run_test("bake: river width grows with flow", _test_bake_width_grows)
 	_run_test("bake: a corrupted or truncated file is refused by its hash", _test_bake_corrupt_refused)
 	_run_test("bake: the native bake and CSG operations equal the GDScript reference", _test_bake_native_parity)
+	_run_test("bake: the planet bakes from the world shape, saves and reloads, and a damaged file is refused", _test_bake_planet_file)
 	_run_test("bake: a carved river lies below the water with soft banks", _test_bake_carve)
 
 ## A hill-and-sea grid: a ridge with noise-free integer bumps, sea on the east side.
@@ -135,3 +136,23 @@ func _test_bake_native_parity() -> void:
 			Vector2i(rng.randi_range(-90000, 90000), rng.randi_range(-90000, 90000)), rng.randi_range(0, 5000)])
 	caps.append([Vector2i(5, 5), Vector2i(1, 1), Vector2i(1, 1), 100])
 	assert_native_parity("NativeBake", "capsule2", caps, TerrainCsg.capsule2)
+
+func _test_bake_planet_file() -> void:
+	var circ := float(TerrainSlice.circumference_chunks()) * 32.0
+	var a := Bake.bake_planet(12345, 64, 32, circ, 20)
+	var b := Bake.bake_planet(12345, 64, 32, circ, 20)
+	assert_true(Bake.to_bytes(a) == Bake.to_bytes(b), "the planet bakes to the same bytes twice")
+	var c := Bake.bake_planet(54321, 64, 32, circ, 20)
+	assert_true(Bake.to_bytes(a) != Bake.to_bytes(c), "another seed bakes another planet")
+	var path := "user://test_planet_bake.bin"
+	assert_true(Bake.save(a, path), "saved")
+	var back := Bake.load_file(path)
+	assert_true(not back.is_empty() and back.height == a.height and back.flow == a.flow, "reloads equal")
+	var raw := FileAccess.get_file_as_bytes(path)
+	raw[40] = raw[40] ^ 0x55
+	var f := FileAccess.open(path, FileAccess.WRITE)
+	f.store_buffer(raw)
+	f.close()
+	assert_true(Bake.load_file(path).is_empty(), "a damaged file is refused")
+	DirAccess.remove_absolute(path)
+	DirAccess.remove_absolute(path + ".sha256")
