@@ -222,6 +222,13 @@ static func from_bytes(bytes: PackedByteArray, expected_hash: String) -> Diction
 	out.height = height
 	out.flow = flow
 	out.river = river
+	# `dir` is not stored: it is the steepest descent over the filled heights, so it is rebuilt here
+	# exactly as `bake_gd` computes it (`Hydrology.baked_segs` reads it).
+	var dir := PackedInt32Array()
+	dir.resize(w * h)
+	for i in w * h:
+		dir[i] = _steepest(height, w, h, i, out.sea_mm)
+	out.dir = dir
 	return out
 
 

@@ -177,7 +177,7 @@ func _test_bake_planet_file() -> void:
 	var path := "user://test_planet_bake.bin"
 	assert_true(Bake.save(a, path), "saved")
 	var back := Bake.load_file(path)
-	assert_true(not back.is_empty() and back.height == a.height and back.flow == a.flow, "reloads equal")
+	assert_true(not back.is_empty() and back.height == a.height and back.flow == a.flow and back.river == a.river and back.dir == a.dir, "reloads equal, its flow directions rebuilt")
 	var raw := FileAccess.get_file_as_bytes(path)
 	raw[40] = raw[40] ^ 0x55
 	var f := FileAccess.open(path, FileAccess.WRITE)
