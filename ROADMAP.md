@@ -807,6 +807,7 @@ erosion, and continents come straight from noise.
   shape brushes) and 235 (road cut and fill) reuse it.
 - Continents come from Phase 238's mask (open continents only); a closed site bakes as ocean until it
   is opened, and opening one re-bakes the planet under the bumped `WORLDGEN_VERSION`.
+- Progress: the GDScript `src/terrain/terrain_csg.gd` (fixed-point operations and 2D/3D shapes) and its reference-value suite are in; the native twin, the bake, the carve and the CI asset are open.
 - Built on the Phase 248 native base (fixed-point helpers, parity harness).
 - A world-gen change: bump `WORLDGEN_VERSION` (only unrecorded land changes, per the stable-world
   rule; `frontier.gd` blends at recorded borders).
