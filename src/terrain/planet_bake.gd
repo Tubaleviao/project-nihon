@@ -6,7 +6,7 @@ extends RefCounted
 ## lowest index), flow accumulates from the top down, and cells whose flow reaches a threshold are river
 ## cells. Heights are integer millimetres, so every machine bakes the same bytes.
 ##
-## Phase 302 added hydraulic erosion; still to come: the biome field.
+## Phase 302 added hydraulic erosion; the biome field is stored in the bake (`biome_field`); still to come: macro height from the bake, the progress screen and the host's copy.
 
 const NativeLoaderScript := preload("res://src/core/native_loader.gd")
 const WorldShape := preload("res://src/terrain/world_shape.gd")
@@ -244,7 +244,8 @@ static func river_width_mm(flow: int) -> int:
 static func to_bytes(b: Dictionary) -> PackedByteArray:
 	var out := PackedByteArray()
 	var n: int = b.w * b.h
-	out.resize(12 + n * 12)
+	var biome: PackedByteArray = b.get("biome", PackedByteArray())
+	out.resize(12 + n * 12 + (n if biome.size() == n else 0))
 	out.encode_s32(0, b.w)
 	out.encode_s32(4, b.h)
 	out.encode_s32(8, b.sea_mm)
@@ -252,6 +253,9 @@ static func to_bytes(b: Dictionary) -> PackedByteArray:
 		out.encode_s32(12 + i * 12, b.height[i])
 		out.encode_s32(16 + i * 12, b.flow[i])
 		out.encode_s32(20 + i * 12, b.river[i])
+	if biome.size() == n:   # Phase 302: one biome byte per cell, after the cells
+		for i in n:
+			out[12 + n * 12 + i] = biome[i]
 	return out
 
 
@@ -269,7 +273,7 @@ static func from_bytes(bytes: PackedByteArray, expected_hash: String) -> Diction
 		return {}
 	var w := bytes.decode_s32(0)
 	var h := bytes.decode_s32(4)
-	if w <= 0 or h <= 0 or bytes.size() != 12 + w * h * 12:
+	if w <= 0 or h <= 0 or (bytes.size() != 12 + w * h * 12 and bytes.size() != 12 + w * h * 13):
 		return {}
 	var out := { "w": w, "h": h, "sea_mm": bytes.decode_s32(8) }
 	var height := PackedInt32Array()
@@ -282,6 +286,8 @@ static func from_bytes(bytes: PackedByteArray, expected_hash: String) -> Diction
 		height[i] = bytes.decode_s32(12 + i * 12)
 		flow[i] = bytes.decode_s32(16 + i * 12)
 		river[i] = bytes.decode_s32(20 + i * 12)
+	if bytes.size() == 12 + w * h * 13:
+		out.biome = bytes.slice(12 + w * h * 12)
 	out.height = height
 	out.flow = flow
 	out.river = river
@@ -318,8 +324,35 @@ static func base_grid(seed_v: int, w: int, h: int, circumference_m: float) -> Pa
 
 
 ## Bake the planet for `seed_v` on a `w` x `h` grid; `river_flow` is the flow that makes a river.
+## The result carries the biome field (Phase 302), read from the eroded heights.
 static func bake_planet(seed_v: int, w: int, h: int, circumference_m: float, river_flow: int) -> Dictionary:
-	return bake(base_grid(seed_v, w, h, circumference_m), w, h, roundi(WorldShape.sea_level() * 1000.0), river_flow)
+	var b := bake(base_grid(seed_v, w, h, circumference_m), w, h, roundi(WorldShape.sea_level() * 1000.0), river_flow)
+	b["biome"] = biome_field(b, seed_v, circumference_m, load("res://src/terrain/terrain_slice.gd").BIOME_KEYS)
+	return b
+
+
+## The biome of every cell (Phase 302): the climate rules (`ClimateField.biome_for_chunk`) read at the cell
+## centre with the eroded height as the altitude above the sea, stored as the index into `keys`. Cells
+## are `circumference_m / w` wide; the chunk read is the one holding the cell centre.
+static func biome_field(b: Dictionary, seed_v: int, circumference_m: float, keys: Array) -> PackedByteArray:
+	var ts: GDScript = load("res://src/terrain/terrain_slice.gd")   # loaded late: TerrainSlice preloads this file
+	var cf: GDScript = load("res://src/terrain/climate_field.gd")
+	var w: int = b.w
+	var h: int = b.h
+	var cell := circumference_m / float(w)
+	var half := cell * float(h) * 0.5
+	var circ_chunks := maxi(1, roundi(circumference_m / ts.CHUNK_METERS))
+	var out := PackedByteArray()
+	out.resize(w * h)
+	for z in h:
+		var cz := (float(z) + 0.5) * cell - half
+		var chunk_z := floori(cz / ts.CHUNK_METERS)
+		var lat: float = ts.latitude_of(chunk_z)
+		for x in w:
+			var chunk := Vector2i(floori((float(x) + 0.5) * cell / ts.CHUNK_METERS), chunk_z)
+			var alt := float(int(b.height[z * w + x]) - int(b.sea_mm)) * 0.001
+			out[z * w + x] = maxi(0, keys.find(cf.biome_for_chunk(seed_v, chunk, keys, lat, alt, circ_chunks)))
+	return out
 
 
 ## Write the bake and its hash (`<path>` and `<path>.sha256`); false on an I/O error.

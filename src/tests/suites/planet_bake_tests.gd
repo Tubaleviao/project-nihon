@@ -18,6 +18,7 @@ func register() -> void:
 	_run_test("bake: the planet bakes from the world shape, saves and reloads, and a damaged file is refused", _test_bake_planet_file)
 	_run_test("bake: thermal erosion softens slopes, keeps sea and mass, and the native twin matches", _test_bake_erosion)
 	_run_test("bake: hydraulic erosion is deterministic, lowers river channels, keeps every river reaching the sea, and the native twin matches", _test_bake_hydraulic)
+	_run_test("bake: every cell of a baked planet has a biome that matches the climate rules, and the biome byte survives the file", _test_bake_biomes)
 	_run_test("bake: hydrology reads the baked rivers and carves the ground below their water", _test_bake_hydrology)
 	_run_test("bake: ensure loads a good file, and bakes again when it is damaged or not the host's", _test_bake_ensure)
 	_run_test("bake: the bake-only boot skips the main menu and the file name carries seed and version", _test_bake_cli)
@@ -270,6 +271,35 @@ func _test_bake_hydraulic() -> void:
 		assert_eq(bad, 0, "native hydraulic erosion equals the reference")
 
 
+func _test_bake_biomes() -> void:
+	var circ := 16.0 * PlanetBake.CELL_M
+	var bk := Bake.bake_planet(7, 16, 8, circ, 6)
+	var biome: PackedByteArray = bk["biome"]
+	var keys: Array = TerrainSliceScript.BIOME_KEYS
+	assert_eq(biome.size(), 16 * 8, "one biome byte per cell")
+	var valid := true
+	for v in biome:
+		valid = valid and int(v) < keys.size()
+	assert_true(valid, "every cell has a biome of the key list")
+	assert_eq(biome, Bake.biome_field(bk, 7, circ, keys), "the field is deterministic")
+	# Spot check against the climate rules: a cell is the biome the climate picks at its centre and eroded height.
+	var cell := circ / 16.0
+	var half := cell * 4.0
+	var bad := 0
+	for i in [0, 21, 50, 77, 100, 127]:
+		var cz := (float(i / 16) + 0.5) * cell - half
+		var chunk := Vector2i(floori((float(i % 16) + 0.5) * cell / TerrainSliceScript.CHUNK_METERS), floori(cz / TerrainSliceScript.CHUNK_METERS))
+		var alt := float(int(bk["height"][i]) - int(bk["sea_mm"])) * 0.001
+		var want: String = ClimateFieldScript.biome_for_chunk(7, chunk, keys, TerrainSliceScript.latitude_of(chunk.y), alt, roundi(circ / TerrainSliceScript.CHUNK_METERS))
+		if keys[int(biome[i])] != want:
+			bad += 1
+	assert_eq(bad, 0, "the field matches the climate rules")
+	var back := Bake.from_bytes(Bake.to_bytes(bk), Bake.hash_hex(Bake.to_bytes(bk)))
+	assert_eq(back.get("biome", PackedByteArray()), biome, "the biome byte survives to_bytes and from_bytes")
+
+
+const TerrainSliceScript := preload("res://src/terrain/terrain_slice.gd")
+const ClimateFieldScript := preload("res://src/terrain/climate_field.gd")
 const Hydrology := preload("res://src/terrain/hydrology.gd")
 
 func _test_bake_hydrology() -> void:
