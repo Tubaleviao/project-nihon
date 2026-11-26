@@ -16,7 +16,7 @@ const VoxelMesh := preload("res://src/terrain/voxel_mesh.gd")
 const TerrainSliceScript := preload("res://src/terrain/terrain_slice.gd")
 
 ## Bump when the mesh builders' output changes shape (a stale mesh is a miss).
-const MESHER_VERSION := 1
+const MESHER_VERSION := 2   # 2: walls beside air reach bedrock (#612), coarse floors at bedrock (#614)
 const DEFAULT_MAX_BYTES := 512 * 1024 * 1024
 
 var root: String

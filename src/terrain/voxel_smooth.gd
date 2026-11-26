@@ -259,7 +259,7 @@ class _Mesher extends RefCounted:
 				_sample_column(ci, natural)
 
 	## A coarse build's columns: one run from bedrock to each cell's top, in that cell's colours (a cell at
-	## or below bedrock holds none). The padding repeats the nearest edge column; `edge_tops`, when given
+	## or below bedrock holds a floor one level thick). The padding repeats the nearest edge column; `edge_tops`, when given
 	## ((n + 2)² row-major, the ring one cell out), caps the corners on the edge plane (`pad_caps`).
 	func load_columns(cols: Dictionary) -> void:
 		var tops: PackedFloat64Array = cols["tops"]
@@ -271,10 +271,10 @@ class _Mesher extends RefCounted:
 			for tx in range(n):
 				var i := tz * n + tx
 				var ci := (tz + PAD) * span + (tx + PAD)
-				var runs: Array = []
-				if tops[i] > BEDROCK_DEPTH:
-					runs.append({ "bottom": BEDROCK_DEPTH, "top": tops[i], "color": c_colors[i],
-						"top_color": top_colors[i], "soil_color": soil_colors[i], "soil_depth": soil_depths[i] })
+				# #614: a cell at or below bedrock still gets a floor one level thick. A coarse build makes no upright
+				# quads, so a cell with no run would be a hole in the ground; with one, its fan rises to its corners.
+				var runs: Array = [{ "bottom": BEDROCK_DEPTH, "top": maxf(tops[i], BEDROCK_DEPTH + grid), "color": c_colors[i],
+					"top_color": top_colors[i], "soil_color": soil_colors[i], "soil_depth": soil_depths[i] }]
 				col_runs[ci] = runs
 				col_known[ci] = 1
 				_sample_column(ci, runs)
@@ -373,8 +373,9 @@ class _Mesher extends RefCounted:
 				_side_edges(tx, tz, ci, ci + span, own, 1)
 
 	## The horizontal edges from column `ci` to its +X (`axis` 0) or +Z (1) neighbour `ni`, over the levels
-	## either column's density changes on. Past both ranges they are constant, so nothing crosses there
-	## that does not cross at the nearer end.
+	## either column's density changes on. Past both ranges they are constant. Above them both are air; below
+	## them a column reads its lowest sample, so when one side is still solid there and the other is air (an
+	## unknown or dug-out column beside ground on bedrock), every level down to bedrock crosses (#612).
 	func _side_edges(tx: int, tz: int, ci: int, ni: int, own: Vector2i, axis: int) -> void:
 		var other := _range(ni)
 		var lo := own.x
@@ -390,6 +391,8 @@ class _Mesher extends RefCounted:
 		var b_vals: PackedFloat32Array = col_vals[ni]
 		var b_lo := col_lo[ni]
 		var b_n := b_vals.size() - 1
+		if (a_vals[0] < 0.0) != (b_vals[0] < 0.0):
+			lo = mini(lo, floori(BEDROCK_DEPTH / grid))   # the world's floor on this build's grid
 		for j in range(lo, hi + 1):
 			var a := a_vals[clampi(j - a_lo, 0, a_n)]
 			if (a < 0.0) != (b_vals[clampi(j - b_lo, 0, b_n)] < 0.0):

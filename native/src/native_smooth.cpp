@@ -173,7 +173,7 @@ public:
 		col_vals.assign(span * span, std::vector<float>());
 	}
 
-	// A coarse build's columns: one run from bedrock to each cell's top (none at or below bedrock); the
+	// A coarse build's columns: one run from bedrock to each cell's top (a floor one level thick at or below bedrock); the
 	// padding repeats the nearest edge column.
 	void load_columns(const PackedFloat64Array &tops, const PackedColorArray &c_colors, const PackedColorArray &top_colors,
 			const PackedColorArray &soil_colors, const PackedFloat64Array &soil_depths, const PackedFloat64Array &edge_tops) {
@@ -182,16 +182,15 @@ public:
 			for (int tx = 0; tx < n; tx++) {
 				int i = tz * n + tx;
 				int ci = (tz + PAD) * span + (tx + PAD);
-				if (tops[i] > BEDROCK_DEPTH) {
-					SRun r;
-					r.bottom = BEDROCK_DEPTH;
-					r.top = tops[i];
-					r.color = c_colors[i];
-					r.top_color = top_colors[i];
-					r.soil_color = soil_colors[i];
-					r.soil_depth = soil_depths[i];
-					col_runs[ci].push_back(r);
-				}
+				// #614: a cell at or below bedrock still gets a floor one level thick, or it would be a hole.
+				SRun r;
+				r.bottom = BEDROCK_DEPTH;
+				r.top = std::max(double(tops[i]), BEDROCK_DEPTH + grid);
+				r.color = c_colors[i];
+				r.top_color = top_colors[i];
+				r.soil_color = soil_colors[i];
+				r.soil_depth = soil_depths[i];
+				col_runs[ci].push_back(r);
 				col_known[ci] = 1;
 				sample_column(ci);
 			}
@@ -353,6 +352,10 @@ public:
 		const std::vector<float> &b_vals = col_vals[ni];
 		int64_t b_lo = col_lo[ni];
 		int64_t b_n = int64_t(b_vals.size()) - 1;
+		// #612: below both ranges each column reads its lowest sample; solid beside air crosses down to bedrock.
+		if ((double(a_vals[0]) < 0.0) != (double(b_vals[0]) < 0.0)) {
+			lo = std::min(lo, floori(BEDROCK_DEPTH / grid)); // the world's floor on this build's grid
+		}
 		for (int64_t j = lo; j <= hi; j++) {
 			double a = a_vals[std::clamp<int64_t>(j - a_lo, 0, a_n)];
 			double b = b_vals[std::clamp<int64_t>(j - b_lo, 0, b_n)];

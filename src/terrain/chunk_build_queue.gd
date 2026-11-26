@@ -753,3 +753,51 @@ func build_cap() -> int:
 	if sl.adaptive_workers and sl.is_moving_fast():
 		return maxi(sl.max_builds_in_flight, ChunkStreamPolicy.worker_ceiling(OS.get_processor_count()))
 	return sl.max_builds_in_flight
+
+## A new generation record for `canon` (host: `_record_generation`; `chunk_pos` is the chunk as streamed): the trees
+## take its budget, and the built coarse chunks round it rebuild when it moved their edge (`coarse_edge_moved`).
+func on_chunk_recorded(chunk_pos: Vector2i, canon: Vector2i, rec: Dictionary) -> void:
+	if sl.tree_slice != null and sl.tree_slice.has_method("on_chunk_recorded"):
+		sl.tree_slice.on_chunk_recorded(canon)
+	rebuild_coarse_around(chunk_pos, rec)
+
+## #614 — a coarse chunk caps the corners on its edge with its neighbours' border tiles (`VoxelCoarse.edge_tops`),
+## read once when it was built. An unrecorded neighbour's tiles come from the plain generator, and a record
+## differs from that only where `Frontier` blended it toward older records (after a worldgen bump). Then every
+## built coarse chunk round `chunk_pos` rebuilds, or its skirt could stop short of the new border ground and
+## leave a slit. `seen` (chunk -> true) is shared by a caller applying several records at once, so a chunk next to
+## two of them is asked once. Returns how many were asked to rebuild.
+func rebuild_coarse_around(chunk_pos: Vector2i, rec: Dictionary, seen: Dictionary = {}) -> int:
+	if not coarse_edge_moved(chunk_pos, rec):
+		return 0
+	# A coarse build still on a worker gathered the old border too: `request_rebuild` supersedes it.
+	var in_flight := {}
+	for entry: Dictionary in sl._builds.values():
+		if int(entry.get("disk_lod", 1)) > 1:
+			in_flight[str(entry.get("key", ""))] = true
+	var count := 0
+	for dz in range(-1, 2):
+		for dx in range(-1, 2):
+			var n := chunk_pos + Vector2i(dx, dz)
+			if (dx != 0 or dz != 0) and not seen.has(n) and (sl.chunk_lod(n) > 1 or in_flight.has(sl._chunk_key(n))):
+				seen[n] = true
+				sl.request_rebuild(n)
+				count += 1
+	return count
+
+## Whether `rec`'s corner heights differ from the plain generator's for `chunk_pos`: the heightmap a coarse
+## neighbour built before the record read. Cheap (four corners), and false on a world with one generator version.
+func coarse_edge_moved(chunk_pos: Vector2i, rec: Dictionary) -> bool:
+	var hs: Variant = rec.get("h", null)
+	if not (hs is Array) or (hs as Array).size() != 4 or sl.terrain_slice == null \
+			or not sl.terrain_slice.has_method("get_world_seed"):
+		return false
+	var canon := TerrainSliceScript.wrap_chunk(chunk_pos)
+	var seed_v := int(sl.terrain_slice.get_world_seed())
+	var i := 0
+	for c in [Vector2i(0, 0), Vector2i(1, 0), Vector2i(0, 1), Vector2i(1, 1)]:   # `generation_record`'s corner order
+		var plain := snappedf(TerrainSliceScript.generated_corner_height(canon + c, seed_v), TerrainSliceScript.GEN_HEIGHT_STEP)
+		if not is_equal_approx(float(hs[i]), plain):
+			return true
+		i += 1
+	return false

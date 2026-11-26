@@ -26,6 +26,7 @@ func register() -> void:
 	_run_test("smooth ground: an edit two tiles from a chunk edge rebuilds the neighbour that reads it", _test_seam_reach)
 	_run_test("smooth ground: a block on a cliff edge walls down to the lower neighbour's ground", _test_cliff_skirt)
 	_run_test("smooth ground: a diagonal push into a block's face still allows the step-up", _test_diagonal_step)
+	_run_test("smooth ground: a wall beside an unknown or dug-out column reaches bedrock, natively too (#612)", _test_wall_to_bedrock)
 	# The native build_runs cfg this suite's resolves snapshot is dropped, so a later suite fills its own.
 	NativeBuilder.forget_memo("build_runs")
 
@@ -484,3 +485,31 @@ func _test_warm_meshers() -> void:
 	smooth._voxel_mesh_script = kept if kept != null else mesh
 	var src := FileAccess.get_file_as_string("res://src/terrain/chunk_build_queue.gd")
 	assert_eq(src.count("VoxelMesh.warm_meshers()"), 2, "both chunk build dispatches warm the meshers on the main thread")
+
+## #612 — ground on bedrock beside an air column is solid beside air at every level down to the floor, so its wall
+## must reach bedrock. Before, the wall stopped a few levels under the known column's top and left a hole below.
+## Two cases: the east ring unknown (no runs streamed), and a 2x2 pit dug to bedrock inside the chunk.
+func _test_wall_to_bedrock() -> void:
+	var cases: Array = []
+	cases.append([Vector2i.ZERO, _flat_heightmap(2.0), _table(func(gx, _z): return [] if gx >= 64 else [_ground(2.0)]), false])
+	cases.append([Vector2i.ZERO, _flat_heightmap(2.0),
+		_table(func(gx, gz): return [] if gx >= 30 and gx < 32 and gz >= 30 and gz < 32 else [_ground(2.0)]), false])
+	var floor_y := VoxelConsts.BEDROCK_DEPTH
+	for i in cases.size():
+		var c: Array = cases[i]
+		var built := VoxelSmooth.build_natural_arrays_gd(c[0], c[1], c[2], c[3])
+		var lowest := INF
+		for p: Vector3 in (built["vertices"] as PackedVector3Array):
+			var in_wall := p.x > 31.5 if i == 0 else (p.x > 14.5 and p.x < 16.5 and p.z > 14.5 and p.z < 16.5)
+			if in_wall:
+				lowest = minf(lowest, p.y)
+		assert_true(lowest <= floor_y + VoxelSmooth.GRID, "case %d: the wall reaches bedrock (lowest vertex %.2f m)" % [i, lowest])
+	# A control: a cliff between two known grounds walls down to the lower one only, never to bedrock.
+	var cliff := [Vector2i.ZERO, _flat_heightmap(2.0), _table(func(gx, _z): return [_ground(-10.0 if gx >= 32 else 2.0)]), false]
+	cases.append(cliff)
+	var lowest_cliff := INF
+	for p: Vector3 in (VoxelSmooth.build_natural_arrays_gd(cliff[0], cliff[1], cliff[2], cliff[3])["vertices"] as PackedVector3Array):
+		lowest_cliff = minf(lowest_cliff, p.y)
+	assert_true(lowest_cliff > -12.0, "a cliff between known grounds stops at the lower ground (lowest vertex %.2f m)" % lowest_cliff)
+	assert_native_parity("NativeChunkBuilder", "build_smooth_arrays", cases, VoxelSmooth.build_natural_arrays_gd,
+		VoxelSmooth.build_natural_arrays, "build_smooth_arrays")
