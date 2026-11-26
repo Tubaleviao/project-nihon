@@ -520,6 +520,8 @@ func load_world_records() -> void:
 	root._peer_wiring.wire_colonization()
 	if root._loaded_world.is_empty():
 		print("[Server] no world record at %s — booting a fresh world" % root._persistence.world_path())
+		# Phase 245 — the fresh world's seed is adopted through `set_world_seed`, so the host bakes the rivers a client will bake.
+		root._terrain.set_world_seed(root._terrain.get_world_seed())
 	else:
 		# Phase 41 — adopt the recorded world seed BEFORE any chunk is built or any
 		# edit is migrated: the ground a save was written against is the ground a
@@ -531,10 +533,13 @@ func load_world_records() -> void:
 			root._terrain.set_world_seed(int(recorded_seed))
 			print("[Server] world seed %d restored from the world record" % int(recorded_seed))
 		else:
-			root._terrain.seed_adopted = true
+			root._terrain.set_world_seed(root._terrain.get_world_seed())
 			print("[Server] world record carries no seed (format %d) — adopting the fresh seed %d" % [
 				int(root._loaded_world.get("version", PersistenceSlice.LEGACY_WORLD_FORMAT_VERSION)),
 				root._terrain.get_world_seed()])
+		# Phase 245 — a world recorded before the bake keeps its local rivers: its recorded chunks never change.
+		if PersistenceSlice.worldgen_version_of(root._loaded_world) < TerrainSlice.BAKE_WORLDGEN_VERSION:
+			root._terrain.release_planet_bake()
 		root._station.apply_station_data(root._loaded_world.get("stations", []))
 		root._station.restore_next_id(int(root._loaded_world.get("station_next_id", 0)))
 		if root._settlements != null:

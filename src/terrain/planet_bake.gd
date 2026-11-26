@@ -6,7 +6,7 @@ extends RefCounted
 ## lowest index), flow accumulates from the top down, and cells whose flow reaches a threshold are river
 ## cells. Heights are integer millimetres, so every machine bakes the same bytes.
 ##
-## Still to come on this base (Phase 245): erosion, the biome field, the native twin and the runtime read.
+## Still to come (Phase 302): hydraulic erosion and the biome field.
 
 const NativeLoaderScript := preload("res://src/core/native_loader.gd")
 const WorldShape := preload("res://src/terrain/world_shape.gd")
@@ -14,13 +14,13 @@ const Csg := preload("res://src/terrain/terrain_csg.gd")
 const NO_DIR := -1
 const DX := [-1, 0, 1, -1, 1, -1, 0, 1]
 const DZ := [-1, -1, -1, 0, 0, 1, 1, 1]
-## Thermal erosion: passes, the steepest slope (mm of height per cell) a slope keeps, and the share
-## (1/ERODE_SHARE) of the excess that slides down per pass.
 ## The bake grid: cell size in metres, and the flow (cells draining through) that makes a river.
 const CELL_M := 2000.0
 const RIVER_FLOW := 40
 ## The largest grid a world bakes at creation (the 2,000 km planet is 500,000 cells).
 const MAX_CELLS := 1000000
+## Thermal erosion: passes, the steepest slope (mm of height per cell) a slope keeps, and the share
+## (1/ERODE_SHARE) of the excess that slides down per pass.
 const ERODE_PASSES := 6
 const ERODE_TALUS_MM := 2400
 const ERODE_SHARE := 8
@@ -108,18 +108,15 @@ static func _fill(base: PackedInt32Array, w: int, h: int, sea_mm: int) -> Packed
 	var out := base.duplicate()
 	var done := PackedByteArray()
 	done.resize(n)
-	var heap: Array = []   # sorted insertion by (height << 24 | index); small grids only matter for the reference
+	var heap := PackedInt64Array()   # binary min-heap of (height << 24 | index); keys are unique, so the pop order is total
 	for i in n:
 		var x := i % w
 		var z := i / w
 		if base[i] <= sea_mm or x == 0 or z == 0 or x == w - 1 or z == h - 1:
 			done[i] = 1
-			heap.append((maxi(base[i], sea_mm) << 24) | i if base[i] <= sea_mm else (base[i] << 24) | i)
-	heap.sort()
-	var head := 0
-	while head < heap.size():
-		var key: int = heap[head]
-		head += 1
+			_heap_push(heap, ((maxi(base[i], sea_mm) << 24) | i) if base[i] <= sea_mm else ((base[i] << 24) | i))
+	while heap.size() > 0:
+		var key := _heap_pop(heap)
 		var c := key & 0xFFFFFF
 		var ch := key >> 24
 		var cx := c % w
@@ -135,18 +132,41 @@ static func _fill(base: PackedInt32Array, w: int, h: int, sea_mm: int) -> Packed
 			done[j] = 1
 			if out[j] <= ch:
 				out[j] = ch + 1
-			# Insert keeping the queue ordered (binary search from head).
-			var nk: int = (out[j] << 24) | j
-			var lo := head
-			var hi := heap.size()
-			while lo < hi:
-				var mid := (lo + hi) >> 1
-				if heap[mid] < nk:
-					lo = mid + 1
-				else:
-					hi = mid
-			heap.insert(lo, nk)
+			_heap_push(heap, (out[j] << 24) | j)
 	return out
+
+
+static func _heap_push(heap: PackedInt64Array, key: int) -> void:
+	heap.append(key)
+	var i := heap.size() - 1
+	while i > 0:
+		var parent := (i - 1) >> 1
+		if heap[parent] <= key:
+			break
+		heap[i] = heap[parent]
+		i = parent
+	heap[i] = key
+
+
+static func _heap_pop(heap: PackedInt64Array) -> int:
+	var top := heap[0]
+	var last := heap[heap.size() - 1]
+	heap.resize(heap.size() - 1)
+	var n := heap.size()
+	if n > 0:
+		var i := 0
+		while true:
+			var l := 2 * i + 1
+			if l >= n:
+				break
+			var r := l + 1
+			var m := r if r < n and heap[r] < heap[l] else l
+			if heap[m] >= last:
+				break
+			heap[i] = heap[m]
+			i = m
+		heap[i] = last
+	return top
 
 
 static func _steepest(f: PackedInt32Array, w: int, h: int, i: int, sea_mm: int) -> int:
@@ -256,7 +276,7 @@ static func base_grid(seed_v: int, w: int, h: int, circumference_m: float) -> Pa
 
 ## Bake the planet for `seed_v` on a `w` x `h` grid; `river_flow` is the flow that makes a river.
 static func bake_planet(seed_v: int, w: int, h: int, circumference_m: float, river_flow: int) -> Dictionary:
-	return bake(base_grid(seed_v, w, h, circumference_m), w, h, 0, river_flow)
+	return bake(base_grid(seed_v, w, h, circumference_m), w, h, roundi(WorldShape.sea_level() * 1000.0), river_flow)
 
 
 ## Write the bake and its hash (`<path>` and `<path>.sha256`); false on an I/O error.
@@ -293,7 +313,7 @@ static func file_path(dir: String, seed_v: int, worldgen_version: int, w: int, h
 static func ensure(path: String, seed_v: int, w: int, h: int, circumference_m: float, river_flow: int, expected_hash: String = "") -> Dictionary:
 	var b := load_file(path)
 	if not b.is_empty():
-		var hash_now := hash_hex(to_bytes(b))
+		var hash_now := FileAccess.get_file_as_string(path + ".sha256").strip_edges()   # from_bytes already checked it
 		if expected_hash == "" or hash_now == expected_hash:
 			return { "bake": b, "hash": hash_now, "loaded": true }
 	b = bake_planet(seed_v, w, h, circumference_m, river_flow)

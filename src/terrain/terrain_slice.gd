@@ -46,6 +46,8 @@ const HEIGHT_SCALE := 5.0    # world units peak-to-valley of the small-scale DET
 ## and massif lattices rescaled to the small circumference. Worlds saved earlier keep their own circumference.
 ## 14 = Phase 245 the planet bake: rivers are the baked ones (`Hydrology.use_bake`, thermal erosion and flow on a 2 km grid) instead of the local trace.
 const WORLDGEN_VERSION := 14
+## The first worldgen version whose rivers are the planet bake's; a world recorded earlier keeps the local trace.
+const BAKE_WORLDGEN_VERSION := 14
 
 ## Phase 106 — a hash of every fabric parameter world-gen reads that `WORLDGEN_VERSION` cannot see:
 ## the `WorldSystem` shape fields (`sea`, `min/max height`, `oceanShare`, `ridgeAmplitude`,
@@ -260,6 +262,8 @@ func set_world_seed(seed_v: int) -> void:
 ## bakes itself from the seed it adopted (the bake is deterministic, so it equals the host's) and a damaged
 ## file is baked again. Off under `--run-tests`, whose many seeds would each pay for a bake.
 func _adopt_planet_bake(seed_v: int) -> void:
+	if Hydrology.has_bake(seed_v):
+		Hydrology.clear_bake(seed_v)   # a bake registered for an earlier circumference must not outlive this call
 	if "--run-tests" in OS.get_cmdline_user_args():
 		return
 	var circ := float(circumference_chunks()) * CHUNK_METERS
@@ -271,6 +275,15 @@ func _adopt_planet_bake(seed_v: int) -> void:
 	var r := PlanetBake.ensure(path, seed_v, w, h, circ, PlanetBake.RIVER_FLOW)
 	Hydrology.use_bake(seed_v, r.bake, circ)
 	print("[World] planet bake %s (%s)" % [str(r.hash).substr(0, 12), "read" if r.loaded else "baked"])
+
+## True while the rivers of the current seed are the baked ones.
+func has_planet_bake() -> bool:
+	return Hydrology.has_bake(_world_seed)
+
+## Go back to the local river trace: a world recorded before `BAKE_WORLDGEN_VERSION` keeps its rivers
+## (the stable-world rule), and a client follows a host that has no bake.
+func release_planet_bake() -> void:
+	Hydrology.clear_bake(_world_seed)
 
 ## The seed this world is generating from (see set_world_seed).
 func get_world_seed() -> int:

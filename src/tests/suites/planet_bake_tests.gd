@@ -12,6 +12,7 @@ func register() -> void:
 	_run_test("bake: the same grid bakes to identical bytes twice", _test_bake_deterministic)
 	_run_test("bake: every river cell reaches the sea and never flows uphill", _test_bake_rivers_reach_sea)
 	_run_test("bake: river width grows with flow", _test_bake_width_grows)
+	_run_test("bake: release_planet_bake drops the seed's bake (old worlds, hosts without one)", _test_bake_release)
 	_run_test("bake: a corrupted or truncated file is refused by its hash", _test_bake_corrupt_refused)
 	_run_test("bake: the native bake and CSG operations equal the GDScript reference", _test_bake_native_parity)
 	_run_test("bake: the planet bakes from the world shape, saves and reloads, and a damaged file is refused", _test_bake_planet_file)
@@ -255,6 +256,16 @@ func _test_bake_hydrology() -> void:
 	assert_true(ok and checked > 0, "%d baked segments hold water above a carved bed and run downhill" % checked)
 	assert_true(Hydrology.baked_segs(bk, cell, 1.0e9, 1.0e9, 1.0e9 + 10.0, 1.0e9 + 10.0).is_empty(), "a box beyond the poles has no rivers")
 	assert_true(not Hydrology.has_bake(7), "no bake loaded by default")
+
+
+func _test_bake_release() -> void:
+	var t := TerrainSlice.new()
+	var b: Dictionary = Bake.bake_planet(9, 24, 12, 400000.0, 12)
+	Hydrology.use_bake(t.get_world_seed(), b, 400000.0)
+	assert_true(t.has_planet_bake(), "the slice sees its seed's bake")
+	t.release_planet_bake()
+	assert_true(not t.has_planet_bake() and not Hydrology.has_bake(t.get_world_seed()), "release returns to the local trace")
+	t.free()
 
 
 func _test_bake_ensure() -> void:
