@@ -25,6 +25,9 @@ public:
 	// `PlanetBake.bake`.
 	Dictionary bake(const PackedInt32Array &p_base, int64_t p_w, int64_t p_h, int64_t p_sea_mm, int64_t p_river_flow) const;
 
+	// `PlanetBake.erode`.
+	PackedInt32Array erode(const PackedInt32Array &p_base, int64_t p_w, int64_t p_h, int64_t p_sea_mm) const;
+
 	// `TerrainCsg` operations and the shapes the bake's carve uses.
 	int64_t isqrt(int64_t p_n) const;
 	int64_t smooth_union(int64_t p_a, int64_t p_b, int64_t p_k) const;

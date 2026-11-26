@@ -14,6 +14,7 @@ func register() -> void:
 	_run_test("bake: a corrupted or truncated file is refused by its hash", _test_bake_corrupt_refused)
 	_run_test("bake: the native bake and CSG operations equal the GDScript reference", _test_bake_native_parity)
 	_run_test("bake: the planet bakes from the world shape, saves and reloads, and a damaged file is refused", _test_bake_planet_file)
+	_run_test("bake: thermal erosion softens slopes, keeps sea and mass, and the native twin matches", _test_bake_erosion)
 	_run_test("bake: a carved river lies below the water with soft banks", _test_bake_carve)
 
 ## A hill-and-sea grid: a ridge with noise-free integer bumps, sea on the east side.
@@ -156,3 +157,39 @@ func _test_bake_planet_file() -> void:
 	assert_true(Bake.load_file(path).is_empty(), "a damaged file is refused")
 	DirAccess.remove_absolute(path)
 	DirAccess.remove_absolute(path + ".sha256")
+
+
+func _test_bake_erosion() -> void:
+	var g := _grid()
+	var e: PackedInt32Array = Bake.erode(g, W, H, SEA)
+	assert_eq(e, Bake.erode(g, W, H, SEA), "erosion is deterministic")
+	var steep_before := 0
+	var steep_after := 0
+	var mass_before := 0
+	var mass_after := 0
+	for z in H:
+		for x in range(W - 1):
+			var i := z * W + x
+			if g[i] > SEA and g[i + 1] > SEA:
+				steep_before = maxi(steep_before, absi(g[i] - g[i + 1]))
+				steep_after = maxi(steep_after, absi(e[i] - e[i + 1]))
+	for i in W * H:
+		if g[i] <= SEA:
+			assert_eq(e[i], g[i], "a sea cell never changes")
+		else:
+			mass_before += g[i]
+			mass_after += e[i]
+	assert_true(steep_after <= steep_before, "the steepest step did not grow (%d -> %d)" % [steep_before, steep_after])
+	assert_true(absi(mass_after - mass_before) <= W * H, "land mass is conserved within integer rounding")
+	if NativeLoaderScript.use_native("NativeBake", "erode"):
+		var rng := RandomNumberGenerator.new()
+		rng.seed = 2452
+		var bad := 0
+		for t in 6:
+			var r := PackedInt32Array()
+			r.resize(W * H)
+			for i in W * H:
+				r[i] = rng.randi_range(-8000, 90000)
+			if NativeLoaderScript.instance("NativeBake").call("erode", r, W, H, SEA) != Bake.erode(r, W, H, SEA):
+				bad += 1
+		assert_eq(bad, 0, "native erosion equals the reference")

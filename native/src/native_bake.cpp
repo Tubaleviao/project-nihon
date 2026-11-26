@@ -88,6 +88,57 @@ int64_t seg_dist2(int64_t px, int64_t py, int64_t ax, int64_t ay, int64_t bx, in
 	return length2(px - cx, py - cy);
 }
 
+constexpr int ERODE_PASSES = 6;
+constexpr int64_t ERODE_TALUS_MM = 2400;
+constexpr int64_t ERODE_SHARE = 8;
+
+// `PlanetBake.erode`.
+PackedInt32Array erode(const PackedInt32Array &base, int64_t w, int64_t h, int64_t sea) {
+	int64_t n = w * h;
+	std::vector<int32_t> cur(n), delta(n);
+	for (int64_t i = 0; i < n; i++) {
+		cur[i] = base[i];
+	}
+	constexpr int KX[4] = { -1, 1, 0, 0 };
+	constexpr int KZ[4] = { 0, 0, -1, 1 };
+	for (int pass = 0; pass < ERODE_PASSES; pass++) {
+		std::fill(delta.begin(), delta.end(), 0);
+		for (int64_t z = 0; z < h; z++) {
+			for (int64_t x = 0; x < w; x++) {
+				int64_t i = z * w + x;
+				if (cur[i] <= sea) {
+					continue;
+				}
+				for (int k = 0; k < 4; k++) {
+					int64_t nx = x + KX[k], nz = z + KZ[k];
+					if (nx < 0 || nz < 0 || nx >= w || nz >= h) {
+						continue;
+					}
+					int64_t j = nz * w + nx;
+					if (cur[j] <= sea) {
+						continue;
+					}
+					int64_t drop = int64_t(cur[i]) - cur[j];
+					if (drop > ERODE_TALUS_MM) {
+						int32_t amount = int32_t((drop - ERODE_TALUS_MM) / ERODE_SHARE);
+						delta[i] -= amount;
+						delta[j] += amount;
+					}
+				}
+			}
+		}
+		for (int64_t i = 0; i < n; i++) {
+			cur[i] += delta[i];
+		}
+	}
+	PackedInt32Array out;
+	out.resize(n);
+	for (int64_t i = 0; i < n; i++) {
+		out[i] = cur[i];
+	}
+	return out;
+}
+
 std::vector<int32_t> fill(const PackedInt32Array &base, int64_t w, int64_t h, int64_t sea) {
 	int64_t n = w * h;
 	std::vector<int32_t> out(n);
@@ -140,7 +191,8 @@ int64_t steepest(const std::vector<int32_t> &f, int64_t w, int64_t h, int64_t i,
 			continue;
 		}
 		int64_t j = nz * w + nx;
-		int64_t drop = (int64_t(f[i]) - f[j]) * 1000 / ((DX[k] != 0 && DZ[k] != 0) ? 1414 : 1000);
+		int64_t den = (DX[k] != 0 && DZ[k] != 0) ? 1414 : 1000;
+		int64_t drop = f[i] > f[j] ? ((int64_t(f[i]) - f[j]) * 1000 + den - 1) / den : 0;
 		if (drop > best_drop) {
 			best_drop = drop;
 			best = j;
@@ -155,6 +207,7 @@ void NativeBake::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("version"), &NativeBake::version);
 	ClassDB::bind_method(D_METHOD("functions"), &NativeBake::functions);
 	ClassDB::bind_method(D_METHOD("bake", "base", "w", "h", "sea_mm", "river_flow"), &NativeBake::bake);
+	ClassDB::bind_method(D_METHOD("erode", "base", "w", "h", "sea_mm"), &NativeBake::erode);
 	ClassDB::bind_method(D_METHOD("isqrt", "n"), &NativeBake::isqrt);
 	ClassDB::bind_method(D_METHOD("smooth_union", "a", "b", "k"), &NativeBake::smooth_union);
 	ClassDB::bind_method(D_METHOD("smooth_intersection", "a", "b", "k"), &NativeBake::smooth_intersection);
@@ -163,12 +216,13 @@ void NativeBake::_bind_methods() {
 }
 
 int NativeBake::version() const {
-	return 1;   // 1 = Phase 245: bake and the CSG operations
+	return 2;   // 1 = Phase 245: bake and the CSG operations; 2 = thermal erosion
 }
 
 PackedStringArray NativeBake::functions() const {
 	PackedStringArray out;
 	out.push_back("bake");
+	out.push_back("erode");
 	out.push_back("isqrt");
 	out.push_back("smooth_union");
 	out.push_back("smooth_intersection");
@@ -179,7 +233,7 @@ PackedStringArray NativeBake::functions() const {
 
 Dictionary NativeBake::bake(const PackedInt32Array &p_base, int64_t p_w, int64_t p_h, int64_t p_sea_mm, int64_t p_river_flow) const {
 	int64_t n = p_w * p_h;
-	std::vector<int32_t> filled = fill(p_base, p_w, p_h, p_sea_mm);
+	std::vector<int32_t> filled = fill(erode(p_base, p_w, p_h, p_sea_mm), p_w, p_h, p_sea_mm);
 	std::vector<int32_t> dir(n);
 	for (int64_t i = 0; i < n; i++) {
 		dir[i] = int32_t(steepest(filled, p_w, p_h, i, p_sea_mm));
@@ -228,6 +282,10 @@ Dictionary NativeBake::bake(const PackedInt32Array &p_base, int64_t p_w, int64_t
 	d["flow"] = pf;
 	d["river"] = pr;
 	return d;
+}
+
+PackedInt32Array NativeBake::erode(const PackedInt32Array &p_base, int64_t p_w, int64_t p_h, int64_t p_sea_mm) const {
+	return ::erode(p_base, p_w, p_h, p_sea_mm);
 }
 
 int64_t NativeBake::isqrt(int64_t p_n) const {

@@ -13,6 +13,11 @@ const WorldShape := preload("res://src/terrain/world_shape.gd")
 const NO_DIR := -1
 const DX := [-1, 0, 1, -1, 1, -1, 0, 1]
 const DZ := [-1, -1, -1, 0, 0, 1, 1, 1]
+## Thermal erosion: passes, the steepest slope (mm of height per cell) a slope keeps, and the share
+## (1/ERODE_SHARE) of the excess that slides down per pass.
+const ERODE_PASSES := 6
+const ERODE_TALUS_MM := 2400
+const ERODE_SHARE := 8
 
 ## `base`: row-major heights in mm, `w` x `h` cells. Cells at or below `sea_mm` are sea.
 ## Returns { w, h, sea_mm, height (filled, mm), dir, flow, river (id per cell, 0 = none) }.
@@ -25,7 +30,7 @@ static func bake(base: PackedInt32Array, w: int, h: int, sea_mm: int, river_flow
 ## The GDScript reference the native bake is held equal to.
 static func bake_gd(base: PackedInt32Array, w: int, h: int, sea_mm: int, river_flow: int) -> Dictionary:
 	var n := w * h
-	var filled := _fill(base, w, h, sea_mm)
+	var filled := _fill(erode(base, w, h, sea_mm), w, h, sea_mm)
 	var dir := PackedInt32Array()
 	dir.resize(n)
 	for i in n:
@@ -56,6 +61,39 @@ static func bake_gd(base: PackedInt32Array, w: int, h: int, sea_mm: int, river_f
 			c = dir[c]
 		river[i] = c + 1
 	return { "w": w, "h": h, "sea_mm": sea_mm, "height": filled, "dir": dir, "flow": flow, "river": river }
+
+
+## Thermal erosion in integer maths: each pass, every land cell sheds `(drop - talus) / ERODE_SHARE` to
+## each of its four lower land neighbours whose drop exceeds the talus. All moves of a pass are computed
+## from the heights at its start and summed, so the result does not depend on visiting order. Sea cells
+## and cells at or below the sea never change; mass is conserved among land cells.
+static func erode(base: PackedInt32Array, w: int, h: int, sea_mm: int) -> PackedInt32Array:
+	var cur := base.duplicate()
+	var delta := PackedInt32Array()
+	delta.resize(w * h)
+	for _pass in ERODE_PASSES:
+		delta.fill(0)
+		for z in h:
+			for x in w:
+				var i := z * w + x
+				if cur[i] <= sea_mm:
+					continue
+				for k in 4:
+					var nx := x + (-1 if k == 0 else (1 if k == 1 else 0))
+					var nz := z + (-1 if k == 2 else (1 if k == 3 else 0))
+					if nx < 0 or nz < 0 or nx >= w or nz >= h:
+						continue
+					var j := nz * w + nx
+					if cur[j] <= sea_mm:
+						continue
+					var drop := cur[i] - cur[j]
+					if drop > ERODE_TALUS_MM:
+						var amount := (drop - ERODE_TALUS_MM) / ERODE_SHARE
+						delta[i] -= amount
+						delta[j] += amount
+		for i in w * h:
+			cur[i] += delta[i]
+	return cur
 
 
 ## Priority flood: raise every depression to its spill height (+1 mm per step so water keeps a gradient).
@@ -119,7 +157,9 @@ static func _steepest(f: PackedInt32Array, w: int, h: int, i: int, sea_mm: int) 
 			continue
 		var j := nz * w + nx
 		# Diagonals are sqrt(2) further: compare drop * 1000 / distance (1000 or 1414).
-		var drop := (f[i] - f[j]) * 1000 / (1414 if DX[k] != 0 and DZ[k] != 0 else 1000)
+		# Rounded up, so a 1 mm drop down a diagonal still counts as downhill.
+		var den := 1414 if DX[k] != 0 and DZ[k] != 0 else 1000
+		var drop := ((f[i] - f[j]) * 1000 + den - 1) / den if f[i] > f[j] else 0
 		if drop > best_drop:
 			best_drop = drop
 			best = j
