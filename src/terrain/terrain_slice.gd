@@ -44,7 +44,8 @@ const HEIGHT_SCALE := 5.0    # world units peak-to-valley of the small-scale DET
 ## land and on land recorded at version 12 or later; land recorded earlier stays dry.
 ## 13 = Phase 238 one world: a 2,000 km planet with one open continent (`WorldShape.continent_mask`); ridge
 ## and massif lattices rescaled to the small circumference. Worlds saved earlier keep their own circumference.
-const WORLDGEN_VERSION := 13
+## 14 = Phase 245 the planet bake: rivers are the baked ones (`Hydrology.use_bake`, thermal erosion and flow on a 2 km grid) instead of the local trace.
+const WORLDGEN_VERSION := 14
 
 ## Phase 106 — a hash of every fabric parameter world-gen reads that `WORLDGEN_VERSION` cannot see:
 ## the `WorldSystem` shape fields (`sea`, `min/max height`, `oceanShare`, `ridgeAmplitude`,
@@ -91,6 +92,7 @@ const ChunkRecords := preload("res://src/terrain/chunk_records.gd")
 const SeamWrap := preload("res://src/terrain/seam_wrap.gd")
 const NativeBuilder := preload("res://src/terrain/native_builder.gd")
 const Hydrology := preload("res://src/terrain/hydrology.gd")
+const PlanetBake := preload("res://src/terrain/planet_bake.gd")
 
 ## The starting area is flattened into a plain field so the player can walk
 ## freely from spawn without jumping. Spawn centre + radius + flat height below.
@@ -251,6 +253,24 @@ func set_world_seed(seed_v: int) -> void:
 	_corner_caches.clear()
 	_corner_mutex.unlock()
 	_noise.seed = seed_v
+	_adopt_planet_bake(seed_v)
+
+## Phase 245 — the planet bake for this seed: read from `user://bake/` when its hash checks out, else baked
+## now (about 6 s natively) and saved, then handed to `Hydrology` so the rivers are the baked ones. A client
+## bakes itself from the seed it adopted (the bake is deterministic, so it equals the host's) and a damaged
+## file is baked again. Off under `--run-tests`, whose many seeds would each pay for a bake.
+func _adopt_planet_bake(seed_v: int) -> void:
+	if "--run-tests" in OS.get_cmdline_user_args():
+		return
+	var circ := float(circumference_chunks()) * CHUNK_METERS
+	var w := roundi(circ / PlanetBake.CELL_M)
+	var h := w / 2
+	if w < 8 or w * h > PlanetBake.MAX_CELLS:   # an older, larger planet keeps the local river trace
+		return
+	var path := PlanetBake.file_path("user://bake", seed_v, WORLDGEN_VERSION, w, h)
+	var r := PlanetBake.ensure(path, seed_v, w, h, circ, PlanetBake.RIVER_FLOW)
+	Hydrology.use_bake(seed_v, r.bake, circ)
+	print("[World] planet bake %s (%s)" % [str(r.hash).substr(0, 12), "read" if r.loaded else "baked"])
 
 ## The seed this world is generating from (see set_world_seed).
 func get_world_seed() -> int:

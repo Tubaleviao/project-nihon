@@ -18,6 +18,8 @@ const DZ := [-1, -1, -1, 0, 0, 1, 1, 1]
 ## The bake grid: cell size in metres, and the flow (cells draining through) that makes a river.
 const CELL_M := 2000.0
 const RIVER_FLOW := 40
+## The largest grid a world bakes at creation (the 2,000 km planet is 500,000 cells).
+const MAX_CELLS := 1000000
 const ERODE_PASSES := 6
 const ERODE_TALUS_MM := 2400
 const ERODE_SHARE := 8
