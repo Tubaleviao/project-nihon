@@ -15,6 +15,8 @@ func register() -> void:
 	_run_test("bake: the native bake and CSG operations equal the GDScript reference", _test_bake_native_parity)
 	_run_test("bake: the planet bakes from the world shape, saves and reloads, and a damaged file is refused", _test_bake_planet_file)
 	_run_test("bake: thermal erosion softens slopes, keeps sea and mass, and the native twin matches", _test_bake_erosion)
+	_run_test("bake: hydrology reads the baked rivers and carves the ground below their water", _test_bake_hydrology)
+	_run_test("bake: ensure loads a good file, and bakes again when it is damaged or not the host's", _test_bake_ensure)
 	_run_test("bake: a carved river lies below the water with soft banks", _test_bake_carve)
 
 ## A hill-and-sea grid: a ridge with noise-free integer bumps, sea on the east side.
@@ -218,3 +220,56 @@ func _test_bake_erosion() -> void:
 			if NativeLoaderScript.instance("NativeBake").call("erode", r, W, H, SEA) != Bake.erode(r, W, H, SEA):
 				bad += 1
 		assert_eq(bad, 0, "native erosion equals the reference")
+
+
+const Hydrology := preload("res://src/terrain/hydrology.gd")
+
+func _test_bake_hydrology() -> void:
+	var bk := Bake.bake(_grid(), W, H, SEA, 12)
+	var cell := 2000.0
+	var half := cell * H * 0.5
+	var segs: Array = Hydrology.baked_segs(bk, cell, 0.0, -half, cell * W, half)
+	var rivers := 0
+	for i in W * H:
+		if bk.river[i] != 0 and bk.dir[i] >= 0:
+			rivers += 1
+	assert_true(rivers > 0, "the bake has rivers")
+	assert_eq(segs.size(), rivers, "one segment per baked river cell")
+	var checked := 0
+	var ok := true
+	for sg in segs:
+		var f := { "lakes": [], "segs": [sg] }
+		var mx: float = (sg[0] + sg[2]) * 0.5
+		var mz: float = (sg[1] + sg[3]) * 0.5
+		var wt := Hydrology.water_at(f, mx, mz)
+		if wt.is_empty():
+			ok = false
+			continue
+		# Ground at the centreline is carved to the bed, which lies under the surface; banks end at the waterline.
+		ok = ok and float(wt["bed"]) < float(wt["surface"]) and sg[4] >= sg[5]
+		checked += 1
+		if checked >= 50:
+			break
+	assert_true(ok and checked > 0, "%d baked segments hold water above a carved bed and run downhill" % checked)
+	assert_true(Hydrology.baked_segs(bk, cell, 1.0e9, 1.0e9, 1.0e9 + 10.0, 1.0e9 + 10.0).is_empty(), "a box beyond the poles has no rivers")
+	assert_true(not Hydrology.has_bake(7), "no bake loaded by default")
+
+
+func _test_bake_ensure() -> void:
+	var dir := "user://bake_test_%d" % Time.get_ticks_usec()
+	var path: String = Bake.file_path(dir, 5, 14, 24, 16)
+	var a: Dictionary = Bake.ensure(path, 5, 24, 16, 400000.0, 12)
+	assert_true(not a.loaded, "the first call bakes")
+	var b: Dictionary = Bake.ensure(path, 5, 24, 16, 400000.0, 12, a.hash)
+	assert_true(b.loaded and b.hash == a.hash, "the second reads the file and its hash matches")
+	var c: Dictionary = Bake.ensure(path, 5, 24, 16, 400000.0, 12, "00" + a.hash.substr(2))
+	assert_true(not c.loaded and c.hash == a.hash, "a hash the host did not announce is refused and re-baked")
+	var f := FileAccess.open(path, FileAccess.READ_WRITE)
+	f.seek(20)
+	f.store_8(0xAB)
+	f.close()
+	var d: Dictionary = Bake.ensure(path, 5, 24, 16, 400000.0, 12, a.hash)
+	assert_true(not d.loaded and d.hash == a.hash, "a damaged file is refused and re-baked to the same bytes")
+	for fn in [path, path + ".sha256"]:
+		DirAccess.remove_absolute(fn)
+	DirAccess.remove_absolute(ProjectSettings.globalize_path(dir))

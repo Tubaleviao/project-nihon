@@ -267,3 +267,23 @@ static func load_file(path: String) -> Dictionary:
 	if not FileAccess.file_exists(path) or not FileAccess.file_exists(path + ".sha256"):
 		return {}
 	return from_bytes(FileAccess.get_file_as_bytes(path), FileAccess.get_file_as_string(path + ".sha256").strip_edges())
+
+
+## The bake file for a world: `<dir>/planet_<seed>_v<worldgen version>_<w>x<h>.bin`.
+static func file_path(dir: String, seed_v: int, worldgen_version: int, w: int, h: int) -> String:
+	return "%s/planet_%d_v%d_%dx%d.bin" % [dir, seed_v, worldgen_version, w, h]
+
+
+## The bake at `path`, or a fresh one when the file is missing, damaged or (when `expected_hash` is given, as a
+## client does with the host's hash) not the one the host announced; a fresh bake is saved to `path`.
+## Returns { bake, hash, loaded } (`loaded`: read from the file, not baked now).
+static func ensure(path: String, seed_v: int, w: int, h: int, circumference_m: float, river_flow: int, expected_hash: String = "") -> Dictionary:
+	var b := load_file(path)
+	if not b.is_empty():
+		var hash_now := hash_hex(to_bytes(b))
+		if expected_hash == "" or hash_now == expected_hash:
+			return { "bake": b, "hash": hash_now, "loaded": true }
+	b = bake_planet(seed_v, w, h, circumference_m, river_flow)
+	DirAccess.make_dir_recursive_absolute(path.get_base_dir())
+	save(b, path)
+	return { "bake": b, "hash": hash_hex(to_bytes(b)), "loaded": false }
