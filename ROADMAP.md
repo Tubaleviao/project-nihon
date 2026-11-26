@@ -850,6 +850,11 @@ machine bakes its own copy.
 - **The host's copy:** a client asks the host for the bake's hash, downloads the bake from the host
   (or bakes it itself from the seed) and checks the hash either way.
 
+**Progress (in flight):** hydraulic erosion (`PlanetBake.hydraulic`, native twin, `NativeBake` 4) and the biome
+byte per cell (`PlanetBake.biome_field`, stored after the cells) are in with their suite tests. Still open: macro
+height from the bake and the soft-bank carve at runtime (with the `WORLDGEN_VERSION` bump), the progress screen, the
+host's bake hash download, the carve and net harness tests, and the release/playtest checks.
+
 **Acceptance criteria**
 - Suite tests: hydraulic erosion is deterministic and identical in GDScript and native; it lowers
   river channels and keeps every river reaching the sea or a lake.
