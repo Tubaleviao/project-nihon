@@ -12,11 +12,16 @@ const WorkMarksView := preload("res://src/world/work_marks_view.gd")
 var view: WorkMarksView = null
 ## Host: how many marks it sent to peers (the suite reads it).
 var sent := 0
+## #714 — peer -> the mark key that peer works, where this machine knows it: every hold on the host (from
+## `work_mark_changed`), the local player's own on a client (from `work_started`). A strike takes that mark.
+var peer_keys: Dictionary = {}
 
 func _connect_all() -> void:
 	connect_bus(GameBus.work_mark_changed, on_mark_changed)
 	connect_bus(GameBus.work_mark_synced, on_mark_synced)
 	connect_bus(GameBus.work_strike, on_work_strike)
+	connect_bus(GameBus.work_started, _on_own_work_started)
+	connect_bus(GameBus.peer_disconnected, func(peer: int) -> void: peer_keys.erase(peer))
 
 func unwire() -> void:
 	super.unwire()
@@ -33,6 +38,7 @@ func unwire() -> void:
 func on_mark_changed(player_id: String, key: String, duration: float) -> void:
 	if root._is_client:
 		return
+	_note_peer_key(_peer_of(player_id), key, duration)
 	_draw(key, duration)
 	if root._networking == null or not root._networking.is_host():
 		return
@@ -48,6 +54,27 @@ func on_mark_synced(key: String, duration: float) -> void:
 		return
 	_draw(key, duration)
 
+## The local player's work answer names its target: its strikes take that mark.
+func _on_own_work_started(key: String, duration: float, _action: String, _material: String) -> void:
+	_note_peer_key(_local_peer(), key, duration)
+
+func _note_peer_key(peer: int, key: String, duration: float) -> void:
+	if peer <= 0:
+		return
+	if duration > 0.0:
+		peer_keys[peer] = key
+	elif str(peer_keys.get(peer, "")) == key:
+		peer_keys.erase(peer)
+
+func _local_peer() -> int:
+	return root.multiplayer.get_unique_id() if root._is_client and root.is_inside_tree() else 1
+
+## The peer of `player_id` on the host: 1 for this machine's own player, 0 when unknown.
+func _peer_of(player_id: String) -> int:
+	if player_id == "" or player_id == "player" or root._registry == null or player_id == root._registry.local_player_id:
+		return 1
+	return int(root._registry.get_peer_id(player_id))
+
 ## #714 — a body's work clip reached its impact marker: the mark nearest that body takes the beat (crack step,
 ## tree kick, chips). Nothing to do before this machine has drawn a mark.
 func on_work_strike(peer: int, kind: String) -> void:
@@ -55,7 +82,7 @@ func on_work_strike(peer: int, kind: String) -> void:
 		return
 	var at: Variant = root._work_anim_wiring.body_position(peer)
 	if at is Vector3:
-		view.strike(at, kind)
+		view.strike(at, kind, str(peer_keys.get(peer, "")))
 
 func _draw(key: String, duration: float) -> void:
 	var v := ensure_view()

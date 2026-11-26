@@ -75,8 +75,10 @@ func _character_of(peer: int) -> String:
 func body_position(peer: int) -> Variant:
 	if peer == _local_peer() and root._player != null:
 		return root._player.get_position()
+	if root._character == null:
+		return null
 	var iid := _character_of(peer)
-	return root._character.get_character_position(iid) if iid != "" and root._character != null else null
+	return root._character.get_character_position(iid) if iid != "" else null
 
 ## The local player asked to work on a target: remember it, the body turns to face it when the work starts.
 var _face_target: Variant = null

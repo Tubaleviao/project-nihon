@@ -349,6 +349,18 @@ func _test_strike_wiring() -> void:
 	assert_eq(v.struck_at("block:9,9,0.00"), -1.0, "not on the far one")
 	GameBus.work_strike.emit(42, "mine")
 	assert_eq(v.chips.size(), 1, "a peer with no body here strikes nothing")
+	# The worker's own mark wins over a nearer one: the host learns it from `work_mark_changed`.
+	now[0] = 5.7
+	gr._work_mark_wiring.on_mark_changed("", "block:9,9,0.00", 2.0)
+	assert_eq(gr._work_mark_wiring.peer_keys.get(1, ""), "block:9,9,0.00", "the host notes which mark its player works")
+	GameBus.work_strike.emit(1, "mine")
+	assert_eq(v.struck_at("block:9,9,0.00"), 5.7, "the strike lands on the worker's own mark, not the nearest")
+	gr._work_mark_wiring.on_mark_changed("", "block:9,9,0.00", 0.0)
+	assert_false(gr._work_mark_wiring.peer_keys.has(1), "its stop forgets it")
+	# With no known mark, the kind picks the target: a chop never steps a block's crack.
+	now[0] = 5.8
+	GameBus.work_strike.emit(1, "chop")
+	assert_eq(v.struck_at("block:0,0,0.00"), 5.5, "a chop strike passes the block beside it")
 	gr._work_mark_wiring.view = null
 	gr._work_mark_wiring.unwire()
 	remove_child(v)

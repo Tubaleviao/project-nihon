@@ -80,14 +80,24 @@ func step() -> void:
 		else:
 			_crack(key, target, now)
 
-## #714 — a work strike landed by a body standing at `at` (unshifted world frame). The nearest mark within
-## `STRIKE_REACH` takes the beat. Returns the key struck, "" when no mark is in reach.
-func strike(at: Vector3, kind: String = "") -> String:
+## #714 — a work strike landed by a body standing at `at` (unshifted world frame). `key`, when this machine knows
+## which mark the striker works (its own hold, or any hold on the host), takes the beat; otherwise the nearest mark
+## within `STRIKE_REACH` of the kind's target (a tree for `chop`, a block for `mine`/`dig`) does. Returns the key
+## struck, "" when none.
+func strike(at: Vector3, kind: String = "", key: String = "") -> String:
 	var now: float = clock.call()
 	var best := ""
 	var best_d := STRIKE_REACH * STRIKE_REACH
 	var best_p := Vector3.ZERO
-	for k in marks.keys():
+	var want := "tree" if kind == "chop" else ("block" if kind == "mine" or kind == "dig" else "")
+	if key != "" and marks.has(key):
+		var kp: Variant = mark_point(key)
+		if kp is Vector3 and (kp as Vector3).distance_squared_to(at) <= best_d:
+			best = key
+			best_p = kp
+	for k in marks.keys() if best == "" else []:
+		if want != "" and WorkMarks.parse_key(str(k))["kind"] != want:
+			continue
 		var p: Variant = mark_point(str(k))
 		if p == null:
 			continue
