@@ -12,6 +12,7 @@ func register() -> void:
 	_run_test("bake: every river cell reaches the sea and never flows uphill", _test_bake_rivers_reach_sea)
 	_run_test("bake: river width grows with flow", _test_bake_width_grows)
 	_run_test("bake: a corrupted or truncated file is refused by its hash", _test_bake_corrupt_refused)
+	_run_test("bake: the native bake and CSG operations equal the GDScript reference", _test_bake_native_parity)
 	_run_test("bake: a carved river lies below the water with soft banks", _test_bake_carve)
 
 ## A hill-and-sea grid: a ridge with noise-free integer bumps, sea on the east side.
@@ -95,3 +96,42 @@ func _test_bake_carve() -> void:
 			prev = hq
 	assert_true(ok_centre, "centreline below the water surface")
 	assert_true(ok_bank, "no bank step over 0.5 m")
+
+func _test_bake_native_parity() -> void:
+	var bases: Array = [_grid()]
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 245
+	for t in 3:
+		var g := PackedInt32Array()
+		g.resize(W * H)
+		for i in W * H:
+			g[i] = rng.randi_range(-8000, 90000)
+		bases.append(g)
+	var cases: Array = []
+	for g in bases:
+		cases.append([g, W, H, SEA, 12])
+		cases.append([g, W, H, 20000, 5])
+	var mism := 0
+	if NativeLoaderScript.use_native("NativeBake", "bake"):
+		for c: Array in cases:
+			var a: Dictionary = Bake.bake_gd(c[0], c[1], c[2], c[3], c[4])
+			var b: Dictionary = NativeLoaderScript.instance("NativeBake").callv("bake", c)
+			if a.height != b.height or a.dir != b.dir or a.flow != b.flow or a.river != b.river:
+				mism += 1
+		assert_eq(mism, 0, "native bake equals the reference on %d grids" % cases.size())
+	var op: Array = []
+	for i in 3000:
+		op.append([rng.randi_range(-30000, 30000), rng.randi_range(-30000, 30000), rng.randi_range(-3, 4000)])
+	assert_native_parity("NativeBake", "smooth_union", op, TerrainCsg.smooth_union)
+	assert_native_parity("NativeBake", "smooth_intersection", op, TerrainCsg.smooth_intersection)
+	assert_native_parity("NativeBake", "smooth_subtract", op, TerrainCsg.smooth_subtract)
+	var sq: Array = []
+	for i in 3000:
+		sq.append([rng.randi_range(-5, 1 << 50)])
+	assert_native_parity("NativeBake", "isqrt", sq, TerrainCsg.isqrt)
+	var caps: Array = []
+	for i in 3000:
+		caps.append([Vector2i(rng.randi_range(-90000, 90000), rng.randi_range(-90000, 90000)), Vector2i(rng.randi_range(-90000, 90000), rng.randi_range(-90000, 90000)),
+			Vector2i(rng.randi_range(-90000, 90000), rng.randi_range(-90000, 90000)), rng.randi_range(0, 5000)])
+	caps.append([Vector2i(5, 5), Vector2i(1, 1), Vector2i(1, 1), 100])
+	assert_native_parity("NativeBake", "capsule2", caps, TerrainCsg.capsule2)

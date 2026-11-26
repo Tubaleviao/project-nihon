@@ -8,6 +8,7 @@ extends RefCounted
 ##
 ## Still to come on this base (Phase 245): erosion, the biome field, the native twin and the runtime read.
 
+const NativeLoaderScript := preload("res://src/core/native_loader.gd")
 const NO_DIR := -1
 const DX := [-1, 0, 1, -1, 1, -1, 0, 1]
 const DZ := [-1, -1, -1, 0, 0, 1, 1, 1]
@@ -15,6 +16,13 @@ const DZ := [-1, -1, -1, 0, 0, 1, 1, 1]
 ## `base`: row-major heights in mm, `w` x `h` cells. Cells at or below `sea_mm` are sea.
 ## Returns { w, h, sea_mm, height (filled, mm), dir, flow, river (id per cell, 0 = none) }.
 static func bake(base: PackedInt32Array, w: int, h: int, sea_mm: int, river_flow: int) -> Dictionary:
+	if NativeLoaderScript.use_native("NativeBake", "bake"):   # same bytes, computed in C++
+		return NativeLoaderScript.instance("NativeBake").call("bake", base, w, h, sea_mm, river_flow)
+	return bake_gd(base, w, h, sea_mm, river_flow)
+
+
+## The GDScript reference the native bake is held equal to.
+static func bake_gd(base: PackedInt32Array, w: int, h: int, sea_mm: int, river_flow: int) -> Dictionary:
 	var n := w * h
 	var filled := _fill(base, w, h, sea_mm)
 	var dir := PackedInt32Array()
