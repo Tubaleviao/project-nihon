@@ -229,6 +229,7 @@ var local_crossings: int = 0
 ## Phase 190 — the level `chunk` is built at: 1 full, a `VoxelCoarse.STEPS` value coarse, 0 not built.
 func chunk_lod(chunk_pos: Vector2i) -> int:
 	return _near.lod_of(_chunk_key(chunk_pos)) if _built.has(_chunk_key(chunk_pos)) else 0
+func rebuild_coarse_around(chunk_pos: Vector2i, rec: Dictionary) -> int: return _m1.rebuild_coarse_around(chunk_pos, rec)   # #614
 
 ## Set by game_root before the slices enter the tree.
 var terrain_slice: Node = null
@@ -662,8 +663,7 @@ func _record_generation(chunk_pos: Vector2i) -> void:
 	if ChunkRecords.set_record(canon, rec):
 		_pending_records[ChunkRecords.key_of(canon)] = { "gen": rec }
 		records_created += 1
-		if tree_slice != null and tree_slice.has_method("on_chunk_recorded"):
-			tree_slice.on_chunk_recorded(canon)
+		_m1.on_chunk_recorded(chunk_pos, canon, rec)   # trees, and #614: coarse neighbours whose edge it moved
 
 ## Phase 126 — whether a record for `canon` can be made right now: the regions `Frontier` reads around it
 ## are resident (a world with no region streamer, as in an isolated rig, always can).
@@ -834,7 +834,7 @@ func rebuild_seam_neighbours(chunk_pos: Vector2i) -> void:
 				complete = false
 			continue
 		if _near.lod_of(nkey) > 1 and _near.lod_for(n) > 1:
-			continue   # Phase 190: a coarse chunk reads no neighbour data and skirts its edges, a rebuild would be identical
+			continue   # a coarse chunk reads only its neighbours' heightmaps, which an edit never changes (#614: records do)
 		request_rebuild(n)
 	if complete:
 		_seam_revision[key] = rev

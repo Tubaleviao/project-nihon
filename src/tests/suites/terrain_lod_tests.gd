@@ -6,6 +6,7 @@ extends "res://src/tests/test_support.gd"
 const VoxelCoarse := preload("res://src/terrain/voxel_coarse.gd")
 const VoxelMesh := preload("res://src/terrain/voxel_mesh.gd")
 const NearRing := preload("res://src/terrain/near_ring.gd")
+const ChunkBuildQueue := preload("res://src/terrain/chunk_build_queue.gd")
 
 ## The largest amount a coarse level's mean top may stand above the full chunk's mean natural top, in
 ## metres. A cell stands at the highest of its tiles, so it is never below; on the probe chunks the
@@ -23,6 +24,8 @@ func register() -> void:
 	_run_test("lod: edited ground, lod off and a dedicated server build full", _test_lod_full_cases)
 	_run_test("lod: a coarse chunk's trees and creatures wait for its upgrade, a peer's window's do not", _test_lod_contents_wait_for_upgrade)
 	_run_test("lod: after a landing the chunk under the body is first in the upgrade queue", _test_lod_landing_upgrade_first)
+	_run_test("lod: a coarse cell at bedrock is still covered, natively too (#614)", _test_lod_bedrock_cell_covered)
+	_run_test("lod: a record off the generator rebuilds the coarse chunks round it, a plain one does not (#614)", _test_lod_record_rebuilds_coarse)
 
 func _probe_chunks() -> Array:
 	var pole := TerrainSlice.pole_chunks()
@@ -487,3 +490,73 @@ func _test_lod_landing_upgrade_first() -> void:
 	_wait_for_builds(cm)
 	assert_eq(cm.chunk_lod(under), VoxelCoarse.FULL, "upgraded")
 	_free_rig(rig)
+
+## #614 — a coarse build makes no upright quads, so a cell with no run (its ground at or below bedrock) was a hole
+## through the ground. It now keeps a floor one level thick, whose fan rises to the corners round it.
+func _test_lod_bedrock_cell_covered() -> void:
+	var chunk := Vector2i(3, 2)
+	var input := _coarse_input(chunk, 424242)
+	var cases: Array = []
+	for step: int in VoxelCoarse.STEPS:
+		var hm: Array = []
+		hm.resize(64 * 64)
+		hm.fill(4.0)
+		for tz in range(32, 32 + step):   # one whole cell under bedrock
+			for tx in range(32, 32 + step):
+				hm[tz * 64 + tx] = VoxelCoarse.BEDROCK_DEPTH - 1.0
+		cases.append([chunk, hm, input, step, true])
+		var cell := TerrainSlice.TILE_SIZE * step
+		var built := VoxelCoarse.build_coarse_arrays_gd(chunk, hm, input, step, true)
+		assert_true(_soup_covers(built["collision"], Vector2(32 * TerrainSlice.TILE_SIZE + cell * 0.5, 32 * TerrainSlice.TILE_SIZE + cell * 0.5)),
+			"step %d: the bedrock cell's middle is covered" % step)
+	assert_native_parity("NativeChunkBuilder", "build_coarse_arrays", cases, VoxelCoarse.build_coarse_arrays_gd,
+		VoxelCoarse.build_coarse_arrays, "build_coarse_arrays (bedrock cell)")
+
+## Whether a triangle of `soup` covers `p` (x, z) seen from above.
+func _soup_covers(soup: PackedVector3Array, p: Vector2) -> bool:
+	for t in range(0, soup.size() - 2, 3):
+		var a := Vector2(soup[t].x, soup[t].z)
+		var b := Vector2(soup[t + 1].x, soup[t + 1].z)
+		var c := Vector2(soup[t + 2].x, soup[t + 2].z)
+		var d1 := (p - a).cross(b - a)
+		var d2 := (p - b).cross(c - b)
+		var d3 := (p - c).cross(a - c)
+		if not ((d1 < 0.0 or d2 < 0.0 or d3 < 0.0) and (d1 > 0.0 or d2 > 0.0 or d3 > 0.0)):
+			return true
+	return false
+
+## A stand-in for the chunk manager the build queue reads: every chunk built coarse, rebuilds counted.
+class _CoarseManager extends Node:
+	var terrain_slice: Node = null
+	var tree_slice: Node = null
+	var rebuilt: Array = []
+	func chunk_lod(_c: Vector2i) -> int:
+		return 2
+	func request_rebuild(c: Vector2i, _priority: int = 0) -> void:
+		rebuilt.append(c)
+
+class _Seeded extends Node:
+	var seed_v := 0
+	func get_world_seed() -> int:
+		return seed_v
+
+## #614 — a coarse chunk's edge corners read its neighbours' border tiles once, at build. A record whose corners
+## differ from the plain generator (a frontier blend after a worldgen bump) rebuilds the 8 coarse chunks round it;
+## a plain record, the common case, rebuilds nothing.
+func _test_lod_record_rebuilds_coarse() -> void:
+	var seed_v := 424242
+	var mgr := _CoarseManager.new()
+	var seeded := _Seeded.new()
+	seeded.seed_v = seed_v
+	mgr.terrain_slice = seeded
+	var q := ChunkBuildQueue.new(mgr)
+	var chunk := Vector2i(5, -3)
+	var plain := TerrainSlice.generation_record(chunk, seed_v)
+	assert_eq(q.rebuild_coarse_around(chunk, plain), 0, "a plain record rebuilds nothing")
+	var moved := plain.duplicate(true)
+	moved["h"][3] = float(moved["h"][3]) + 4.0
+	assert_eq(q.rebuild_coarse_around(chunk, moved), 8, "a moved record rebuilds the 8 chunks round it")
+	assert_true(mgr.rebuilt.has(chunk + Vector2i(1, 1)) and not mgr.rebuilt.has(chunk), "the neighbours, not the chunk itself")
+	assert_eq(q.rebuild_coarse_around(chunk, {}), 0, "no record, no rebuild")
+	seeded.free()
+	mgr.free()
