@@ -295,9 +295,10 @@ func on_world_snapshot_received(data: Dictionary) -> void:
 				if not rebuilt.has(c) and root._chunk_manager.is_chunk_built(c):
 					rebuilt[c] = true
 					root._chunk_manager.request_rebuild(c)
-			# #614: a record that moved a chunk's edge off the generator also rebuilds the coarse chunks round it.
+			# #614: a record that moved a chunk's edge off the generator also rebuilds the coarse chunks round it,
+			# each once (`rebuilt` is shared, so one already rebuilt above is not asked again).
 			for c in gen_result["changed"]:
-				root._chunk_manager.rebuild_coarse_around(c, ChunkRecords.get_record(TerrainSlice.wrap_chunk(c)))
+				root._chunk_manager.rebuild_coarse_around(c, ChunkRecords.get_record(TerrainSlice.wrap_chunk(c)), rebuilt)
 		if int(gen_result["dropped"]) > 0 or int(gen_result["refused"]) > 0:
 			Diag.warn("GameRoot: generation records: %d applied, %d dropped, %d refused" % [
 				int(gen_result["applied"]), int(gen_result["dropped"]), int(gen_result["refused"])])

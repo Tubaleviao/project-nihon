@@ -46,8 +46,6 @@ const int PAD = 2;
 const int SPAN = CHUNK_SIZE + 2 * PAD;
 const double TOP_BAND = 0.3;
 const int64_t LEVEL_OFFSET = 1024;
-// The world's floor on the full grid: a wall beside an air column reaches down to it (#612).
-const int64_t BEDROCK_LEVEL = int64_t(BEDROCK_DEPTH / GRID);
 
 const int EDGES[12][2] = { { 0, 1 }, { 2, 3 }, { 4, 5 }, { 6, 7 }, { 0, 2 }, { 1, 3 }, { 4, 6 }, { 5, 7 }, { 0, 4 }, { 1, 5 }, { 2, 6 }, { 3, 7 } };
 
@@ -356,7 +354,7 @@ public:
 		int64_t b_n = int64_t(b_vals.size()) - 1;
 		// #612: below both ranges each column reads its lowest sample; solid beside air crosses down to bedrock.
 		if ((double(a_vals[0]) < 0.0) != (double(b_vals[0]) < 0.0)) {
-			lo = std::min(lo, BEDROCK_LEVEL);
+			lo = std::min(lo, floori(BEDROCK_DEPTH / grid)); // the world's floor on this build's grid
 		}
 		for (int64_t j = lo; j <= hi; j++) {
 			double a = a_vals[std::clamp<int64_t>(j - a_lo, 0, a_n)];

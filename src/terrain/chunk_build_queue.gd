@@ -765,15 +765,22 @@ func on_chunk_recorded(chunk_pos: Vector2i, canon: Vector2i, rec: Dictionary) ->
 ## read once when it was built. An unrecorded neighbour's tiles come from the plain generator, and a record
 ## differs from that only where `Frontier` blended it toward older records (after a worldgen bump). Then every
 ## built coarse chunk round `chunk_pos` rebuilds, or its skirt could stop short of the new border ground and
-## leave a slit. Returns how many were asked to rebuild.
-func rebuild_coarse_around(chunk_pos: Vector2i, rec: Dictionary) -> int:
+## leave a slit. `seen` (chunk -> true) is shared by a caller applying several records at once, so a chunk next to
+## two of them is asked once. Returns how many were asked to rebuild.
+func rebuild_coarse_around(chunk_pos: Vector2i, rec: Dictionary, seen: Dictionary = {}) -> int:
 	if not coarse_edge_moved(chunk_pos, rec):
 		return 0
+	# A coarse build still on a worker gathered the old border too: `request_rebuild` supersedes it.
+	var in_flight := {}
+	for entry: Dictionary in sl._builds.values():
+		if int(entry.get("disk_lod", 1)) > 1:
+			in_flight[str(entry.get("key", ""))] = true
 	var count := 0
 	for dz in range(-1, 2):
 		for dx in range(-1, 2):
 			var n := chunk_pos + Vector2i(dx, dz)
-			if (dx != 0 or dz != 0) and sl.chunk_lod(n) > 1:
+			if (dx != 0 or dz != 0) and not seen.has(n) and (sl.chunk_lod(n) > 1 or in_flight.has(sl._chunk_key(n))):
+				seen[n] = true
 				sl.request_rebuild(n)
 				count += 1
 	return count

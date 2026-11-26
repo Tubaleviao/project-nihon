@@ -530,8 +530,12 @@ class _CoarseManager extends Node:
 	var terrain_slice: Node = null
 	var tree_slice: Node = null
 	var rebuilt: Array = []
+	var built_lod := 2
+	var _builds: Dictionary = {}
 	func chunk_lod(_c: Vector2i) -> int:
-		return 2
+		return built_lod
+	func _chunk_key(c: Vector2i) -> String:
+		return "%d,%d" % [c.x, c.y]
 	func request_rebuild(c: Vector2i, _priority: int = 0) -> void:
 		rebuilt.append(c)
 
@@ -558,5 +562,14 @@ func _test_lod_record_rebuilds_coarse() -> void:
 	assert_eq(q.rebuild_coarse_around(chunk, moved), 8, "a moved record rebuilds the 8 chunks round it")
 	assert_true(mgr.rebuilt.has(chunk + Vector2i(1, 1)) and not mgr.rebuilt.has(chunk), "the neighbours, not the chunk itself")
 	assert_eq(q.rebuild_coarse_around(chunk, {}), 0, "no record, no rebuild")
+	var seen := {}
+	q.rebuild_coarse_around(chunk, moved, seen)
+	assert_eq(q.rebuild_coarse_around(chunk + Vector2i(1, 0), moved, seen), 4, "a second record next to it asks only the 4 chunks not asked yet")
+	# A coarse build still on a worker read the old border: it is superseded too. A full one is left alone.
+	mgr.built_lod = 0
+	mgr._builds = { 1: { "key": mgr._chunk_key(chunk + Vector2i(0, 1)), "disk_lod": 2 }, 2: { "key": mgr._chunk_key(chunk + Vector2i(1, 0)), "disk_lod": 1 } }
+	mgr.rebuilt.clear()
+	assert_eq(q.rebuild_coarse_around(chunk, moved), 1, "only the coarse build in flight is asked again")
+	assert_eq(mgr.rebuilt, [chunk + Vector2i(0, 1)], "the coarse one, south of the record")
 	seeded.free()
 	mgr.free()

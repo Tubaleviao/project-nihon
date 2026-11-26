@@ -73,8 +73,6 @@ const PLACED_SKIRT := 0.5
 const TOP_BAND := 0.3
 ## Offsets a cell's level into a non-negative vertex key (BEDROCK_DEPTH / GRID is -192).
 const LEVEL_OFFSET := 1024
-## The level of the world's floor on the full grid: a wall beside an air column reaches down to it (#612).
-const BEDROCK_LEVEL := int(BEDROCK_DEPTH / GRID)
 
 ## `voxel_mesh.gd` preloads this script, so it cannot be a `const` here. Resolved on the main thread
 ## (`warm`, through `VoxelMesh.warm_meshers` from `VoxelSlice._ready` and every chunk build dispatch), so the
@@ -394,7 +392,7 @@ class _Mesher extends RefCounted:
 		var b_lo := col_lo[ni]
 		var b_n := b_vals.size() - 1
 		if (a_vals[0] < 0.0) != (b_vals[0] < 0.0):
-			lo = mini(lo, BEDROCK_LEVEL)
+			lo = mini(lo, floori(BEDROCK_DEPTH / grid))   # the world's floor on this build's grid
 		for j in range(lo, hi + 1):
 			var a := a_vals[clampi(j - a_lo, 0, a_n)]
 			if (a < 0.0) != (b_vals[clampi(j - b_lo, 0, b_n)] < 0.0):

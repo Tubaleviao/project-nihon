@@ -504,5 +504,12 @@ func _test_wall_to_bedrock() -> void:
 			if in_wall:
 				lowest = minf(lowest, p.y)
 		assert_true(lowest <= floor_y + VoxelSmooth.GRID, "case %d: the wall reaches bedrock (lowest vertex %.2f m)" % [i, lowest])
+	# A control: a cliff between two known grounds walls down to the lower one only, never to bedrock.
+	var cliff := [Vector2i.ZERO, _flat_heightmap(2.0), _table(func(gx, _z): return [_ground(-10.0 if gx >= 32 else 2.0)]), false]
+	cases.append(cliff)
+	var lowest_cliff := INF
+	for p: Vector3 in (VoxelSmooth.build_natural_arrays_gd(cliff[0], cliff[1], cliff[2], cliff[3])["vertices"] as PackedVector3Array):
+		lowest_cliff = minf(lowest_cliff, p.y)
+	assert_true(lowest_cliff > -12.0, "a cliff between known grounds stops at the lower ground (lowest vertex %.2f m)" % lowest_cliff)
 	assert_native_parity("NativeChunkBuilder", "build_smooth_arrays", cases, VoxelSmooth.build_natural_arrays_gd,
 		VoxelSmooth.build_natural_arrays, "build_smooth_arrays")

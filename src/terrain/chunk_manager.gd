@@ -229,7 +229,7 @@ var local_crossings: int = 0
 ## Phase 190 — the level `chunk` is built at: 1 full, a `VoxelCoarse.STEPS` value coarse, 0 not built.
 func chunk_lod(chunk_pos: Vector2i) -> int:
 	return _near.lod_of(_chunk_key(chunk_pos)) if _built.has(_chunk_key(chunk_pos)) else 0
-func rebuild_coarse_around(chunk_pos: Vector2i, rec: Dictionary) -> int: return _m1.rebuild_coarse_around(chunk_pos, rec)   # #614
+func rebuild_coarse_around(chunk_pos: Vector2i, rec: Dictionary, seen: Dictionary = {}) -> int: return _m1.rebuild_coarse_around(chunk_pos, rec, seen)   # #614
 
 ## Set by game_root before the slices enter the tree.
 var terrain_slice: Node = null
