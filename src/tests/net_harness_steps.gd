@@ -1074,6 +1074,7 @@ func remote_player_body(h: Node) -> void:
 const WALK_STATES := 30
 const WALK_MPS := 4.5
 const WALK_MAX_STEP_M := 0.25
+const WALK_PROFILE_MAX_STEP_M := 0.75
 const WALK_WINDOW_MS := 100.0
 func remote_walk_smooth(h: Node) -> void:
 	const STEP := "remote_walk_smooth"
@@ -1146,7 +1147,10 @@ func remote_walk_smooth(h: Node) -> void:
 	# none on a clean link.
 	var carried_m: float = WALK_MPS * float(RemoteMotionRules.rules()["players"]["extrapolateMaxMs"]) / 1000.0
 	var back_ok: bool = int(rec["back"]) == 0 or (h._root._networking.net_profile != "" and float(rec.get("retreat", 0.0)) <= carried_m + 0.1)
-	var smooth: bool = float(rec["worst"]) <= WALK_MAX_STEP_M and back_ok
+	# A lossy link's stall is caught up by playing the backlog (RemoteMotion, by design), a burst the 100 ms window
+	# still reads as a faster pace: a profiled link allows up to WALK_PROFILE_MAX_STEP_M, a clean one the strict bound.
+	var max_step: float = WALK_PROFILE_MAX_STEP_M if h._root._networking.net_profile != "" else WALK_MAX_STEP_M
+	var smooth: bool = float(rec["worst"]) <= max_step and back_ok
 	h._report(STEP, h.verdict(done and smooth, true), "walked_smooth" if done and smooth else (
 		"not_walked_%.1fm" % float(rec["far"]) if not done else "step_%.3fm_per_16ms_back_%d_in_%d_frames_%s_retreat_%.2fm" % [float(rec["worst"]), int(rec["back"]), int(rec["frames"]), str(rec.get("worst_at", "")), float(rec.get("retreat", 0.0))]))
 
