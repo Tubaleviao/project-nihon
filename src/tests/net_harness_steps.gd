@@ -1074,6 +1074,7 @@ func remote_player_body(h: Node) -> void:
 const WALK_STATES := 30
 const WALK_MPS := 4.5
 const WALK_MAX_STEP_M := 0.25
+const WALK_WINDOW_MS := 100.0
 func remote_walk_smooth(h: Node) -> void:
 	const STEP := "remote_walk_smooth"
 	var interval: float = RemoteMotionRules.player_send_interval_s()
@@ -1098,7 +1099,7 @@ func remote_walk_smooth(h: Node) -> void:
 		return
 	var host_id: int = h._root._networking.HOST_PEER_ID
 	var announced := {}
-	var rec := { "start": null, "prev": null, "us": 0, "worst": 0.0, "frames": 0, "far": 0.0, "still_us": 0, "back": 0 }
+	var rec := { "start": null, "prev": null, "us": 0, "worst": 0.0, "frames": 0, "far": 0.0, "still_us": 0, "back": 0, "hist": [] }
 	var walked := func() -> bool:
 		h._announce_ready("walk", announced)
 		var iid: String = h._root._character.get_peer_character(host_id)
@@ -1109,11 +1110,21 @@ func remote_walk_smooth(h: Node) -> void:
 		if rec["start"] == null:
 			rec["start"] = at
 		if rec["prev"] != null:
-			var frame_ms := maxf(float(now - int(rec["us"])) / 1000.0, 16.0)
+			# This node's poll and the avatar's tick run in one frame in either order, so one frame's step can be
+			# the previous frame's travel: a long frame then a short one reads as a burst. The pace is measured
+			# over at least WALK_WINDOW_MS instead, which a real burst (a backlog played in a frame) still exceeds.
+			var hist: Array = rec["hist"]
+			hist.append([now, at])
+			while hist.size() > 2 and float(now - int((hist[1] as Array)[0])) / 1000.0 >= WALK_WINDOW_MS:
+				hist.pop_front()
+			var span_ms := float(now - int((hist[0] as Array)[0])) / 1000.0
+			if span_ms >= WALK_WINDOW_MS:
+				var moved_m: float = ((at as Vector3) - ((hist[0] as Array)[1] as Vector3)).length()
+				var win_step: float = moved_m * 16.0 / span_ms
+				if win_step > float(rec["worst"]):
+					rec["worst_at"] = "frame%d_%.0fms_%.2fm_from_%.1f" % [int(rec["frames"]), span_ms, moved_m, (rec["prev"] as Vector3).x - (rec["start"] as Vector3).x]
+				rec["worst"] = maxf(float(rec["worst"]), win_step)
 			var step: float = (at as Vector3).distance_to(rec["prev"])
-			if step * 16.0 / frame_ms > float(rec["worst"]):
-				rec["worst_at"] = "frame%d_%.0fms_%.2fm_from_%.1f" % [int(rec["frames"]), frame_ms, step, (rec["prev"] as Vector3).x - (rec["start"] as Vector3).x]
-			rec["worst"] = maxf(float(rec["worst"]), step * 16.0 / frame_ms)
 			rec["frames"] = int(rec["frames"]) + 1
 			# The walk is along +X: a frame back along it is a fault, until the last metre, where the body carried
 			# past the final state (at most one send interval) eases back to it once the host stops.
