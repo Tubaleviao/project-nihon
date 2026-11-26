@@ -17,6 +17,7 @@ func register() -> void:
 	_run_test("bake: the native bake and CSG operations equal the GDScript reference", _test_bake_native_parity)
 	_run_test("bake: the planet bakes from the world shape, saves and reloads, and a damaged file is refused", _test_bake_planet_file)
 	_run_test("bake: thermal erosion softens slopes, keeps sea and mass, and the native twin matches", _test_bake_erosion)
+	_run_test("bake: hydraulic erosion is deterministic, lowers river channels, keeps every river reaching the sea, and the native twin matches", _test_bake_hydraulic)
 	_run_test("bake: hydrology reads the baked rivers and carves the ground below their water", _test_bake_hydrology)
 	_run_test("bake: ensure loads a good file, and bakes again when it is damaged or not the host's", _test_bake_ensure)
 	_run_test("bake: the bake-only boot skips the main menu and the file name carries seed and version", _test_bake_cli)
@@ -223,6 +224,50 @@ func _test_bake_erosion() -> void:
 			if NativeLoaderScript.instance("NativeBake").call("erode", r, W, H, SEA) != Bake.erode(r, W, H, SEA):
 				bad += 1
 		assert_eq(bad, 0, "native erosion equals the reference")
+
+
+func _test_bake_hydraulic() -> void:
+	var g := _grid()
+	var th: PackedInt32Array = Bake.erode(g, W, H, SEA)
+	var hy: PackedInt32Array = Bake.hydraulic(th, W, H, SEA, 12)
+	assert_eq(hy, Bake.hydraulic(th, W, H, SEA, 12), "hydraulic erosion is deterministic")
+	var lowered := 0
+	for i in W * H:
+		assert_true(hy[i] <= th[i], "erosion never raises a cell")
+		if th[i] <= SEA:
+			assert_eq(hy[i], th[i], "a sea cell never changes")
+		else:
+			assert_true(hy[i] > SEA, "land stays above the sea")
+		if hy[i] < th[i]:
+			lowered += 1
+	assert_true(lowered > 0, "some river channel was cut")
+	# Rivers of the eroded bake still reach the sea and never run uphill.
+	var bk := Bake.bake(g, W, H, SEA, 12)
+	var rivers := 0
+	for i in W * H:
+		if int(bk["river"][i]) == 0:
+			continue
+		rivers += 1
+		var c := i
+		var guard := 0
+		while int(bk["dir"][c]) != Bake.NO_DIR and int(bk["height"][c]) > SEA and guard < W * H:
+			assert_true(int(bk["height"][int(bk["dir"][c])]) <= int(bk["height"][c]), "a river never flows uphill")
+			c = int(bk["dir"][c])
+			guard += 1
+		assert_true(int(bk["height"][c]) <= SEA, "a river reaches the sea")
+	assert_true(rivers > 0, "the grid has rivers")
+	if NativeLoaderScript.use_native("NativeBake", "hydraulic"):
+		var rng := RandomNumberGenerator.new()
+		rng.seed = 3022
+		var bad := 0
+		for t in 6:
+			var r := PackedInt32Array()
+			r.resize(W * H)
+			for i in W * H:
+				r[i] = rng.randi_range(-8000, 90000)
+			if NativeLoaderScript.instance("NativeBake").call("hydraulic", r, W, H, SEA, 12) != Bake.hydraulic(r, W, H, SEA, 12):
+				bad += 1
+		assert_eq(bad, 0, "native hydraulic erosion equals the reference")
 
 
 const Hydrology := preload("res://src/terrain/hydrology.gd")

@@ -29,6 +29,8 @@ public:
 
 	// `PlanetBake.erode`.
 	PackedInt32Array erode(const PackedInt32Array &p_base, int64_t p_w, int64_t p_h, int64_t p_sea_mm) const;
+	// `PlanetBake.hydraulic`.
+	PackedInt32Array hydraulic(const PackedInt32Array &p_base, int64_t p_w, int64_t p_h, int64_t p_sea_mm, int64_t p_river_flow) const;
 
 	// `TerrainCsg` operations and the shapes the bake's carve uses.
 	int64_t isqrt(int64_t p_n) const;

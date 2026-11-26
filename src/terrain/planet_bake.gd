@@ -6,7 +6,7 @@ extends RefCounted
 ## lowest index), flow accumulates from the top down, and cells whose flow reaches a threshold are river
 ## cells. Heights are integer millimetres, so every machine bakes the same bytes.
 ##
-## Still to come (Phase 302): hydraulic erosion and the biome field.
+## Phase 302 added hydraulic erosion; still to come: the biome field.
 
 const NativeLoaderScript := preload("res://src/core/native_loader.gd")
 const WorldShape := preload("res://src/terrain/world_shape.gd")
@@ -24,6 +24,11 @@ const MAX_CELLS := 1000000
 const ERODE_PASSES := 6
 const ERODE_TALUS_MM := 2400
 const ERODE_SHARE := 8
+## Hydraulic erosion (Phase 302): passes, and the most a river cell is cut per pass (mm). A cell cuts
+## `min(HYDRO_CUT_MM * flow / river_flow, ...)` down to one mm above its downstream neighbour.
+const HYDRO_PASSES := 4
+const HYDRO_CUT_MM := 600
+const HYDRO_MAX_CUT_MM := 6000
 
 ## `base`: row-major heights in mm, `w` x `h` cells. Cells at or below `sea_mm` are sea.
 ## Returns { w, h, sea_mm, height (filled, mm), dir, flow, river (id per cell, 0 = none) }.
@@ -36,26 +41,13 @@ static func bake(base: PackedInt32Array, w: int, h: int, sea_mm: int, river_flow
 ## The GDScript reference the native bake is held equal to.
 static func bake_gd(base: PackedInt32Array, w: int, h: int, sea_mm: int, river_flow: int) -> Dictionary:
 	var n := w * h
-	var filled := _fill(erode(base, w, h, sea_mm), w, h, sea_mm)
+	var filled := _fill(hydraulic(erode(base, w, h, sea_mm), w, h, sea_mm, river_flow), w, h, sea_mm)
 	var dir := PackedInt32Array()
 	dir.resize(n)
 	for i in n:
 		dir[i] = _steepest(filled, w, h, i, sea_mm)
 	# Accumulate flow from the highest cell down: order by (filled height, index), descending.
-	var order: Array = []
-	order.resize(n)
-	for i in n:
-		order[i] = (filled[i] << 24) | i
-	order.sort()
-	var flow := PackedInt32Array()
-	flow.resize(n)
-	for i in n:
-		flow[i] = 1
-	for k in range(n - 1, -1, -1):
-		var c: int = order[k] & 0xFFFFFF
-		var d := dir[c]
-		if d != NO_DIR:
-			flow[d] += flow[c]
+	var flow := _accumulate(filled, dir)
 	# River ids: a river cell carries the id (cell index + 1) of the outlet it finally reaches.
 	var river := PackedInt32Array()
 	river.resize(n)
@@ -99,6 +91,57 @@ static func erode(base: PackedInt32Array, w: int, h: int, sea_mm: int) -> Packed
 						delta[j] += amount
 		for i in w * h:
 			cur[i] += delta[i]
+	return cur
+
+
+## Flow accumulation: every cell counts itself, then passes its count down its drain, highest cell first
+## (order by height, then index).
+static func _accumulate(f: PackedInt32Array, dir: PackedInt32Array) -> PackedInt32Array:
+	var n := f.size()
+	var order: Array = []
+	order.resize(n)
+	for i in n:
+		order[i] = (f[i] << 24) | i
+	order.sort()
+	var flow := PackedInt32Array()
+	flow.resize(n)
+	flow.fill(1)
+	for k in range(n - 1, -1, -1):
+		var c: int = order[k] & 0xFFFFFF
+		var d := dir[c]
+		if d != NO_DIR:
+			flow[d] += flow[c]
+	return flow
+
+
+## Hydraulic erosion in integer maths (Phase 302): each pass fills the depressions of the current heights,
+## finds every cell's drain and flow, and cuts each river cell (flow of `river_flow` or more) by
+## `HYDRO_CUT_MM * flow / river_flow` (at most HYDRO_MAX_CUT_MM), never below one mm above its drain's
+## height at the start of the pass, nor to or below the sea. All cuts are computed from the heights at the
+## start of the pass, so the result does not depend on visiting order; a cell stays above its drain after
+## the pass (the drain only goes down too), so rivers keep reaching the sea or a lake.
+static func hydraulic(base: PackedInt32Array, w: int, h: int, sea_mm: int, river_flow: int) -> PackedInt32Array:
+	var n := w * h
+	var cur := base.duplicate()
+	for _pass in HYDRO_PASSES:
+		var f := _fill(cur, w, h, sea_mm)
+		var dir := PackedInt32Array()
+		dir.resize(n)
+		for i in n:
+			dir[i] = _steepest(f, w, h, i, sea_mm)
+		var flow := _accumulate(f, dir)
+		var next := cur.duplicate()
+		for i in n:
+			var d := dir[i]
+			if d == NO_DIR or flow[i] < river_flow or cur[i] <= sea_mm:
+				continue
+			# Only a cell that was not raised by the fill (its own ground is above its drain) is cut.
+			var floor_mm := maxi(cur[d] + 1, sea_mm + 1)
+			var cut := mini(HYDRO_CUT_MM * flow[i] / river_flow, HYDRO_MAX_CUT_MM)
+			cut = mini(cut, cur[i] - floor_mm)
+			if cut > 0:
+				next[i] = cur[i] - cut
+		cur = next
 	return cur
 
 
