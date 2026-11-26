@@ -142,3 +142,37 @@ static func hash_hex(bytes: PackedByteArray) -> String:
 	ctx.start(HashingContext.HASH_SHA256)
 	ctx.update(bytes)
 	return ctx.finish().hex_encode()
+
+
+## Parse bytes written by `to_bytes`, refusing them (empty result) when the SHA-256 differs from
+## `expected_hash` or the size does not fit the header: a corrupt or tampered file is baked or fetched again.
+static func from_bytes(bytes: PackedByteArray, expected_hash: String) -> Dictionary:
+	if bytes.size() < 12 or hash_hex(bytes) != expected_hash:
+		return {}
+	var w := bytes.decode_s32(0)
+	var h := bytes.decode_s32(4)
+	if w <= 0 or h <= 0 or bytes.size() != 12 + w * h * 12:
+		return {}
+	var out := { "w": w, "h": h, "sea_mm": bytes.decode_s32(8) }
+	var height := PackedInt32Array()
+	var flow := PackedInt32Array()
+	var river := PackedInt32Array()
+	height.resize(w * h)
+	flow.resize(w * h)
+	river.resize(w * h)
+	for i in w * h:
+		height[i] = bytes.decode_s32(12 + i * 12)
+		flow[i] = bytes.decode_s32(16 + i * 12)
+		river[i] = bytes.decode_s32(20 + i * 12)
+	out.height = height
+	out.flow = flow
+	out.river = river
+	return out
+
+
+## The ground height (mm) at `p` after carving the river segment a→b into `ground_mm`: a channel whose
+## floor lies `depth_mm` under `water_mm`, half `width_mm` wide, with 45° banks blended by `k_mm`.
+static func carved_height(ground_mm: int, p: Vector2i, a: Vector2i, b: Vector2i, width_mm: int, water_mm: int, depth_mm: int, k_mm: int) -> int:
+	var d := TerrainCsg.capsule2(p, a, b, width_mm / 2)
+	var cut := water_mm - depth_mm + maxi(d, 0)
+	return TerrainCsg.smooth_union(ground_mm, cut, k_mm)
