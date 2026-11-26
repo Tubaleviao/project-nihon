@@ -16,6 +16,7 @@ var sent := 0
 func _connect_all() -> void:
 	connect_bus(GameBus.work_mark_changed, on_mark_changed)
 	connect_bus(GameBus.work_mark_synced, on_mark_synced)
+	connect_bus(GameBus.work_strike, on_work_strike)
 
 func unwire() -> void:
 	super.unwire()
@@ -46,6 +47,15 @@ func on_mark_synced(key: String, duration: float) -> void:
 	if not root._is_client:
 		return
 	_draw(key, duration)
+
+## #714 — a body's work clip reached its impact marker: the mark nearest that body takes the beat (crack step,
+## tree kick, chips). Nothing to do before this machine has drawn a mark.
+func on_work_strike(peer: int, kind: String) -> void:
+	if view == null or not is_instance_valid(view) or root._work_anim_wiring == null:
+		return
+	var at: Variant = root._work_anim_wiring.body_position(peer)
+	if at is Vector3:
+		view.strike(at, kind)
 
 func _draw(key: String, duration: float) -> void:
 	var v := ensure_view()

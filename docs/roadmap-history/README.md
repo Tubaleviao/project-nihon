@@ -2,6 +2,10 @@
 
 Completed phases moved out of [ROADMAP.md](../../ROADMAP.md) to keep it short. Text is unchanged.
 
+Because the text is unchanged, older phases still name files and classes by their names at the time (for example
+`chunk_part_1.gd`, `ChunkPart1`, `NetPart2`, `ui_part_*`, renamed by Phase 257). The Phase 257 old-name check
+covers `src/`, `tools/`, the live docs and `CLAUDE.md`; this archive is excluded on purpose (#755).
+
 | Phases | File |
 |---|---|
 | 1–19 | [phases-01-19.md](phases-01-19.md) |

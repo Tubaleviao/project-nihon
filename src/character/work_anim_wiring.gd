@@ -70,6 +70,14 @@ func _character_of(peer: int) -> String:
 		return str(root._character.get_player_character())
 	return str(root._combat_wiring._character_for_key("p:%d" % peer))
 
+## #714 — where `peer`'s body stands, in the unshifted world frame (the frame of `block_top` and a tree's
+## `position`), or null when this machine has no body for it. `work_strike` consumers place the strike with it.
+func body_position(peer: int) -> Variant:
+	if peer == _local_peer() and root._player != null:
+		return root._player.get_position()
+	var iid := _character_of(peer)
+	return root._character.get_character_position(iid) if iid != "" and root._character != null else null
+
 ## The local player asked to work on a target: remember it, the body turns to face it when the work starts.
 var _face_target: Variant = null
 

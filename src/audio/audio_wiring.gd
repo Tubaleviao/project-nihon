@@ -81,6 +81,7 @@ func _connect_all() -> void:
 	connect_bus(GameBus.block_changed, _on_block_changed)
 	connect_bus(GameBus.block_mine_requested, _on_mine_requested)
 	connect_bus(GameBus.work_started, _on_work_started)
+	connect_bus(GameBus.work_strike, _on_work_strike)
 	connect_bus(GameBus.item_picked_up, _on_item_picked_up)
 	connect_bus(GameBus.loose_pick_requested, _on_loose_pick_requested)
 	connect_bus(GameBus.loose_picked, _on_loose_picked)
@@ -269,6 +270,27 @@ func _on_mine_requested(position: Vector3, _normal: Vector3, player_id: String, 
 		return
 	var at := _scene_of_pos(exact) if exact.has("chunk") and exact.has("local") else position + _offset()
 	play_at(ev, at)
+
+
+## #714 — a work clip reached its impact marker: the strike is heard at the worker's body. The local player's
+## strike is its held tool's `item.<tool>.hit` for the work (the completion still strikes at the aimed point); a dig
+## with no tool sound, or anyone else's dig, is `world.dig`. Other kinds have no event yet and stay silent.
+func _on_work_strike(peer: int, kind: String) -> void:
+	var wa: Variant = root._work_anim_wiring
+	if wa == null:
+		return
+	var at: Variant = wa.body_position(peer)
+	if not at is Vector3:
+		return
+	var ev := ""
+	if peer == wa._local_peer():
+		var tool := WorkTime.held_tool(root._inventory, kind)
+		if tool != "" and SoundEvents.has_event("item.%s.hit" % tool):
+			ev = "item.%s.hit" % tool
+	if ev == "" and kind == "dig":
+		ev = DIG_EVENT
+	if ev != "":
+		play_at(ev, (at as Vector3) + _offset())
 
 
 func _on_item_picked_up(_item_id: String, _quantity: int) -> void:

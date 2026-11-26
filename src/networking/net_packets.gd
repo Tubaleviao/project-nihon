@@ -1,11 +1,12 @@
 extends RefCounted
-## Packets: the network profile, the client-to-host router `_route_c2h`, the `send_*` helpers for combat, work, gestures, held items, carcasses and admin, the intent forwarders and block-edit validation. Methods moved verbatim out of `networking_slice.gd` (Phase 154, renamed Phase 257). `sl` is the owning slice; each moved method keeps a forwarder there. Does not hold: state relay and looks (`net_relay.gd`) or the host session (`net_session.gd`).
+## Packets: the network profile (and its `--net-profile` boot apply), the client-to-host router `_route_c2h`, the `send_*` helpers for combat, work, gestures, held items, carcasses and admin, the intent forwarders, the receive-side seq dedup in front of the router, the trade-invite party lookup, the block damage broadcast and block-edit validation (reach check included). Methods moved verbatim out of `networking_slice.gd` (Phase 154, renamed Phase 257). `sl` is the owning slice; each moved method keeps a forwarder there. Does not hold: state relay and looks (`net_relay.gd`) or the host session (`net_session.gd`).
 
 const HeldItem := preload("res://src/character/held_item.gd")
 var sl: Node
 
 func _init(slice: Node) -> void:
 	sl = slice
+	GameBus.block_damaged.connect(_on_block_damaged)
 
 ## Phase 135 — apply a named profile. False (nothing changed) for an unknown name. `loopback` turns
 ## the emulator off; any other profile turns it on. The one-way latency is the profile's, so the
@@ -24,38 +25,19 @@ func apply_profile(name: String) -> bool:
 	sl.emulator_retransmit = true
 	return true
 
-## Record the peer → player_id mapping, and (on a host) send the assigned id back
-## to that peer so it can cache it for a reconnect.
-func set_player_id(peer_id: int, player_id: String) -> void:
-	if player_id.is_empty():
-		return
-	sl._player_ids[peer_id] = player_id
-	if sl._role == sl.Role.HOST:
-		sl._deliver(peer_id, {
-			"type": "identity_assigned",
-			"player_id": player_id,
-			# Phase 226 — the account the client caches and presents next time (the player id is its character).
-			"account": str(sl.player_registry.accounts.get_account(peer_id)) if sl.player_registry != null and "accounts" in sl.player_registry else player_id,
-			"handle": sl._public_handle(player_id),
-			# Phase 182 — whether this player may run admin commands, so its client shows the Admin
-			# window. A hint only: the host checks every command again.
-			"admin": bool(sl.admin_check.call(player_id)) if sl.admin_check.is_valid() else false,
-		})
-
-## Evict last-known states for peers that have been disconnected longer than
-## LAST_KNOWN_STATE_TTL_MS. Called every frame from _process() so the host
-## dict doesn't grow without bound over long sessions.
-func _evict_stale_states() -> void:
-	if sl._last_known_timestamps.is_empty():
-		return
-	var now_ms: float = float(Time.get_ticks_msec())
-	for pid: int in sl._last_known_timestamps.keys():
-		if now_ms - float(sl._last_known_timestamps[pid]) > float(sl.LAST_KNOWN_STATE_TTL_MS):
-			sl._last_known_states.erase(pid)
-			sl._last_known_exact.erase(pid)
-			sl._teleport_pending.erase(pid)
-			sl._last_known_timestamps.erase(pid)
-			sl._peer_spatial.remove(pid)
+## Phase 135 — apply `--net-profile` from the command line at boot. An unknown name (or a flag with
+## no value) is refused: the process exits 2, because a run that fell back to loopback would report a
+## pass for a link it never emulated. Returns false on refusal.
+func _apply_profile_arg(args: Array) -> bool:
+	var name = sl.profile_from_args(args)
+	if name == "":
+		return true
+	if sl.apply_profile(name):
+		print("[Networking] link profile: %s" % name)
+		return true
+	sl.Diag.error("[Networking] unknown --net-profile '%s' (known: %s)" % [name, ", ".join(sl.NET_PROFILES.keys())])
+	sl.get_tree().quit(2)
+	return false
 
 func _on_block_edit_intent(action: String, position: Vector3, normal: Vector3, material: String, exact: Dictionary, seq: int = 0) -> void:
 	if sl._role != sl.Role.CLIENT:
@@ -77,20 +59,6 @@ func _on_block_edit_intent(action: String, position: Vector3, normal: Vector3, m
 	else:
 		packet["position"] = sl.WorldPos.to_wire(position)
 	sl._broadcast(packet)
-
-## Phase 47 — host: tell the peers whose AOI contains `peer_id` what it wears. Used when
-## a peer's position first becomes known: a reconnecting player's worn set is restored
-## from its record, which fires no `equipment_changed`, and at the handshake the peer has
-## no position yet to scope by (a reconnect gets a fresh ENet id, so the spawn default
-## would be used). Does nothing for a peer with no connection, no worn set or no position.
-func announce_equipment_to_aoi(peer_id: int) -> void:
-	if sl._role != sl.Role.HOST or not sl._connected() or sl.player_registry == null or not sl.has_last_known_state(peer_id):
-		return
-	var worn = sl._worn_of_peer(peer_id)
-	if worn.is_empty():
-		return
-	for pid in sl.equipment_targets(peer_id):
-		sl._send_equipment(int(pid), peer_id, worn)
 
 ## peer_id -> { budget: metres of travel earned and unspent, msec: last report, pulled: last pull-back }.
 var speed_ledger: Dictionary = {}
@@ -131,23 +99,6 @@ func _clamp_to_speed_cap(peer: int, pos: Vector3) -> Variant:
 		sl.send_teleport(peer, sl.WorldPos.from_world(accepted.x, accepted.y, accepted.z))
 	speed_ledger[peer] = led
 	return accepted
-
-func _on_remote_player_state(peer_id: int, position: Vector3) -> void:
-	if sl._role != sl.Role.HOST:
-		return
-	# Phase 19 — persist the client's last-known authoritative position so a
-	# rejoining client can resume from it.
-	var first_report = not sl.has_last_known_state(peer_id)
-	sl.remember_player_state(peer_id, position, sl._inbound_exact)
-	if first_report:
-		sl.announce_equipment_to_aoi(peer_id)
-	sl._refresh_equipment_pairs(peer_id)
-	# Phase 97 — relay the peer's exact `{chunk, local}` when its report carried one, so a far-from-origin
-	# avatar does not jitter by float32 metres on the other clients.
-	var relayed: Dictionary = sl._inbound_exact if not sl._inbound_exact.is_empty() \
-			else sl.WorldPos.from_world(position.x, position.y, position.z)
-	# Phase 163 — queued for the frame's `player_states` batch (`flush_relays`), not sent one by one.
-	sl._relays.offer(peer_id, sl.WorldPos.pos_to_packet_text(relayed), position)
 
 ## Phase 37 — host → one client: a creature struck THIS player. Damage is applied by
 ## the machine that simulates the body (`PlayerSlice` on the peer's own client, which
@@ -349,29 +300,6 @@ func _allow_packet(peer_id: int, now_ms: float) -> bool:
 		return false
 	bucket["tokens"] = float(bucket["tokens"]) - 1.0
 	return true
-
-## Host side: replace every player id inside a host → client payload with its public
-## handle, recursively — dictionary KEYS as well as values, because a trade's `offers`
-## and `accepted` maps are keyed by party.
-##
-## The player id is a BEARER TOKEN (`resolve_identity` hands the record to whoever
-## presents it on join), so broadcasting it handed every client the means to take over
-## any player's record once that player disconnected — inventories, positions,
-## appearance, technology. Market listings, trade sessions, and proposals all named
-## players by id; this is where they stop. The handle is derived, opaque and stable
-## (see PlayerRegistry.public_handle), and it is not a claim: claiming it mints a new
-## identity.
-##
-## Non-id strings ("merchant", a proposal title, an item key) are untouched: the
-## shape test recognises a minted id and nothing else.
-func redact_for_client(value: Variant) -> Variant:
-	if sl.player_registry == null:
-		return value
-	return sl._map_identities(value, func(s: String) -> String:
-		if sl.PlayerRegistry.looks_like_player_id(s):
-			return sl._public_handle(s)
-		return s
-	)
 
 ## Phase 178 — a client packet carried attribute values (the host owns attributes): count it, warn at most once per
 ## peer per interval.
@@ -968,28 +896,6 @@ func _drain_emulator(now_ms: float = -1.0) -> void:
 		else:
 			i += 1
 
-## Phase 19 — a peer disconnecting does NOT erase its last-known position; it is
-## retained (with a TTL) so a rejoining client resumes from where it left off and
-## the record written at disconnect carries that position.
-## A disconnect timestamp is set so _evict_stale_states() can expire the entry
-## after LAST_KNOWN_STATE_TTL_MS if the peer never reconnects.
-func _on_peer_disconnected(id: int) -> void:
-	sl._malformed_position_warn_ms.erase(id)
-	_protocol_refused.erase(id)   # Phase 297
-	GameBus.peer_disconnected.emit(id)
-	# Phase 33 — the connection is gone, so its transport mapping goes with it.
-	# The player's durable record stays on disk, which is what lets a reconnect
-	# with the same player id re-bind to it; game_root writes it and then releases
-	# the in-memory copy (PlayerRegistry.evict_player).
-	sl.forget_player_id(id)
-	sl._forget_equipment_pairs(id)
-	sl._relays.forget(id)
-	forget_peer_channels(id)
-	if not sl._last_known_states.has(id):
-		sl._teleport_pending.erase(id)   # nothing will age it out otherwise
-	if sl._last_known_states.has(id):
-		sl._last_known_timestamps[id] = Time.get_ticks_msec()
-
 ## Phase 162 — drop the per-peer receive channels (`"<peer>:<type>"` seq frontiers, dedup windows, gap
 ## warning clocks) and the emulated link of a peer that left. They were kept for every peer that ever
 ## connected: the crowd stress run's `churn` pattern counts them as orphans.
@@ -1158,3 +1064,99 @@ func on_block_changed(action: String, position: Vector3, normal: Vector3, materi
 				packet["edit_span"] = _edit_ack["span"]   # PR #648 review: what the host resolved, to compare with the prediction
 		_edit_ack = {}
 	sl._broadcast_aoi(packet, position)
+
+## Phase 19 — sequence dedup / gap detection.
+## Uses a per-type sliding window so reordered-but-unseen packets are accepted
+## (returned true) rather than silently dropped. Only true duplicates (the same
+## seq already in the seen window) and packets older than DEDUP_WINDOW behind
+## the frontier are dropped (returned false).
+## Gap warnings are rate-limited to one per second per (peer, type) channel.
+func _dedup(sender: int, payload: Dictionary) -> bool:
+	if not payload.has("seq"):
+		return true   # legacy packet without seq — accept
+	var seq: int = int(payload["seq"])
+	var ptype: String = str(payload.get("type", "_"))
+	var key: String = "%d:%s" % [sender, ptype]
+
+	if not sl._recv_seen.has(key):
+		sl._recv_seen[key] = {}
+	var seen: Dictionary = sl._recv_seen[key]
+
+	# True duplicate: this exact seq was already accepted in the window.
+	if seen.has(seq):
+		return false
+
+	var last: int = sl._recv_seq.get(key, -1)
+
+	# Phase 256 — a binary layout carries `seq` as a u16: a counter far behind the frontier has wrapped, so
+	# the channel starts a new lap rather than refusing every packet until the sender catches up.
+	if last >= 0 and sl.PacketCodec.has_layout(ptype) and last - seq > sl.PacketCodec.SEQ_MOD / 2:
+		seen.clear()
+		last = -1
+
+	# Too stale: more than DEDUP_WINDOW behind the frontier — cannot reorder.
+	if last >= 0 and seq < last - sl.DEDUP_WINDOW:
+		return false
+
+	# Forward gap (packet loss): log at most once per second per channel.
+	if last >= 0 and seq > last + 1:
+		var now_ms: float = float(Time.get_ticks_msec())
+		var gap_last: float = float(sl._seq_gap_warn_ms.get(key, -sl.SEQ_GAP_WARN_INTERVAL_MS))
+		if now_ms - gap_last >= sl.SEQ_GAP_WARN_INTERVAL_MS:
+			sl.Diag.warn("NetworkingSlice: seq gap — peer %d type '%s' frontier %d got %d" \
+				% [sender, ptype, last, seq])
+			sl._seq_gap_warn_ms[key] = now_ms
+
+	# Mark seen and prune entries beyond the window.
+	seen[seq] = true
+	var cutoff: int = seq - sl.DEDUP_WINDOW
+	for k: int in seen.keys():
+		if k < cutoff:
+			seen.erase(k)
+
+	# Advance the frontier only when this seq is higher.
+	if seq > last:
+		sl._recv_seq[key] = seq
+
+	return true
+
+## Resolve the counterparty a client NAMED on a trade invite to the player id it
+## denotes, or "" when it denotes nothing this host can open a session with.
+##
+## Phase 36 — this is the ONE identity a client payload may legitimately name: an
+## invite grants the named player nothing (it is answered by that player's own
+## accept, which is bound to its own connection), and every ACTING half is bound to
+## the sender. Requiring the name to resolve against the registry means the host
+## only ever opens a session with a player it knows and that is online right now —
+## an invite to an offline or invented id is dropped, not parked.
+##
+## Phase 37 — the name must be a public HANDLE (see
+## PlayerRegistry.resolve_named_party): accepting a raw player id as well turned this
+## into a yes/no oracle for "is this exact id online", which is a probing tool, not a
+## feature. An id is a bearer token and a client is never told one.
+func _named_party(raw: String) -> String:
+	if raw == "" or sl.player_registry == null:
+		return ""
+	if not sl.player_registry.has_method("resolve_named_party"):
+		return ""
+	return str(sl.player_registry.resolve_named_party(raw))
+
+## Phase 205 — host → clients in range: a hit left a structure block standing at `fraction` of its durability.
+func _on_block_damaged(position: Vector3, fraction: float) -> void:
+	if sl._role != sl.Role.HOST:
+		return
+	sl._broadcast_aoi({ "type": "block_damaged", "position": sl.WorldPos.to_wire(position), "fraction": fraction }, position)
+
+## Phase 36 — is `position` within `reach` metres of the peer's last recorded
+## position? The host records that position from the peer's own movement packets
+## (see remember_player_state), so it is the host's evidence of where the peer is,
+## not the peer's claim.
+##
+## A peer that has never reported a position has none the host can check against,
+## and the edit is refused rather than measured from an assumed origin:
+## `has_last_known_state()` is what distinguishes "never reported" from "at the
+## origin" (get_last_known_state answers Vector3.ZERO for both).
+func _within_reach(sender: int, position: Vector3, reach: float) -> bool:
+	if not sl.has_last_known_state(sender):
+		return false
+	return sl.get_last_known_state(sender).distance_to(position) <= reach

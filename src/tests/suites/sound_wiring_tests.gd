@@ -31,6 +31,7 @@ func register() -> void:
 	_run_test("sound wiring: a music file that does not load backs off, without touching the rng", _test_music_back_off)
 	_run_test("sound wiring: a failed ambience load is not retried and clears on a biome change", _test_ambience_failed)
 	_run_test("sound wiring: a strike resets the work action to mine", _test_work_action_reset)
+	_run_test("sound wiring: #714 a work strike is heard at the worker, the own tool's hit or a dig", _test_work_strike)
 
 ## Events this phase wires, by where they are played.
 ## A player body the suite places by hand (a fixture PlayerSlice has no body: no position, never on the floor).
@@ -558,3 +559,39 @@ func _test_polyphony_cap() -> void:
 	Sound.stop_all()
 	assert_true(Sound.play("ui.click") != null, "room again once the players are gone")
 	Sound.stop_all()
+
+
+## #714 — `work_strike` (a work clip's impact marker) plays at the striking body: the local player's held tool hit
+## for the work, a dig sound for a dig with no tool sound or anyone else's dig, nothing for other kinds.
+func _test_work_strike() -> void:
+	_begin()
+	var gr := _root()
+	var ch := CharacterSlice.new()
+	add_child(ch)
+	gr._character = ch
+	gr._registry = PlayerRegistry.new()
+	var body := Vector3(4, 3, -2)
+	var iid := ch.create_character_from_recipe({"skeleton": "HumanoidSkeleton"}, body)
+	ch.set_player_character(iid)
+	var bag := InventorySlice.new()
+	add_child(bag)
+	gr._inventory = bag
+	gr._work_anim_wiring.root = gr   # body_position only reads the root
+	gr._audio_wiring.wire(gr)
+	GameBus.work_strike.emit(1, "mine")
+	assert_eq(_traced(), [], "a bare-handed mining strike has no tool sound")
+	GameBus.work_strike.emit(1, "dig")
+	assert_eq(_traced(), ["world.dig"], "a bare-handed dig strike digs")
+	assert_eq(Sound.trace[-1]["position"], body, "at the worker's body")
+	Sound.trace.clear()
+	bag.add_item("StonePick", 1)
+	GameBus.work_strike.emit(1, "mine")
+	assert_eq(_traced(), ["item.StonePick.hit"], "the held pick strikes on the beat")
+	Sound.trace.clear()
+	GameBus.work_strike.emit(1, "dissect")
+	GameBus.work_strike.emit(1, "build")
+	assert_eq(_traced(), [], "kinds with no event stay silent")
+	GameBus.work_strike.emit(7, "dig")
+	assert_eq(_traced(), [], "a peer with no body here is not placed")
+	_free_root(gr, [bag, ch, gr._registry])
+	_end()

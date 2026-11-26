@@ -1,5 +1,5 @@
 extends RefCounted
-## The host session: hosting, the registry heartbeat, the status server, hello and snapshots, teleports, redaction, the host-to-client router `_route_h2c` and the character roster. Methods moved verbatim out of `networking_slice.gd` (Phase 154, renamed Phase 257). `sl` is the owning slice; each moved method keeps a forwarder there. Does not hold: the client-to-host router and packet senders (`net_packets.gd`) or state relay and looks (`net_relay.gd`).
+## The host session: hosting, the registry heartbeat, the status server, hello and snapshots, teleports, redaction (with the identity walk it uses), the host-to-client router `_route_h2c` and the character roster. Methods moved verbatim out of `networking_slice.gd` (Phase 154, renamed Phase 257). `sl` is the owning slice; each moved method keeps a forwarder there. Does not hold: the client-to-host router and packet senders (`net_packets.gd`) or state relay and looks (`net_relay.gd`).
 
 const HeldItem := preload("res://src/character/held_item.gd")
 const ComboChain := preload("res://src/battle/combo_chain.gd")
@@ -25,14 +25,7 @@ var _game_port: int = 0
 
 func _init(slice: Node) -> void:
 	sl = slice
-	GameBus.block_damaged.connect(_on_block_damaged)
 	GameBus.peer_connected.connect(_send_server_hello)
-
-## Phase 205 — host → clients in range: a hit left a structure block standing at `fraction` of its durability.
-func _on_block_damaged(position: Vector3, fraction: float) -> void:
-	if sl._role != sl.Role.HOST:
-		return
-	sl._broadcast_aoi({ "type": "block_damaged", "position": sl.WorldPos.to_wire(position), "fraction": fraction }, position)
 
 ## Start an authoritative ENet server. Sets the slice to HOST role.
 ## Prints one boot line on success (the same line a dedicated server and a
@@ -255,34 +248,6 @@ func send_teleport(peer_id: int, position: Dictionary) -> bool:
 		sl._teleport_pending[peer_id] = { "pos": sl.WorldPos.normalized(position), "msec": Time.get_ticks_msec() }
 	return true
 
-## Phase 48 — host: `moved` changed position (or is the host avatar), so re-evaluate every
-## (viewer, subject) pair it is part of. A pair that ENTERED AOI is sent the subject's
-## set; a pair that LEFT is told to evict it.
-func _refresh_equipment_pairs(moved: int) -> void:
-	if not sl._connected() or sl.player_registry == null:
-		return
-	# A client reports at movement rate; its pairs only change at an AOI boundary, so
-	# skip the whole pass until it has moved EQUIPMENT_REEVAL_DIST_SQ from the last one.
-	if moved != sl.HOST_PEER_ID and sl.has_last_known_state(moved):
-		var at = sl.get_last_known_state(moved)
-		if sl._equipment_eval_positions.has(moved) \
-				and (sl._equipment_eval_positions[moved] as Vector3).distance_squared_to(at) <= sl.EQUIPMENT_REEVAL_DIST_SQ:
-			return
-		sl._equipment_eval_positions[moved] = at
-	var others: Array = Array(sl._connected_peers())
-	others.append(sl.HOST_PEER_ID)
-	# Phase 163 — a pair needs work only when its subject wears something to show, or the viewer holds a
-	# record to evict. In a crowd where nobody wears gear that is no pair at all, instead of 2 per peer.
-	var moved_worn: bool = not sl._worn_of_peer(moved).is_empty()
-	for other in others:
-		var o := int(other)
-		if o == moved:
-			continue
-		if moved_worn or sl._equipment_sent.has(sl._pair_key(o, moved)):
-			sl._update_equipment_pair(o, moved)
-		if sl._equipment_sent.has(sl._pair_key(moved, o)) or not sl._worn_of_peer(o).is_empty():
-			sl._update_equipment_pair(moved, o)
-
 func _on_inventory_synced(owner_id: String, contents: Dictionary, durabilities: Dictionary = {}) -> void:
 	if sl._role != sl.Role.HOST:
 		return
@@ -326,20 +291,6 @@ func _tree_fall_yaw(raw: Variant) -> float:
 	if (raw is float or raw is int) and is_finite(float(raw)):
 		return float(raw)
 	return NO_TREE_FALL
-
-## Phase 36 — is `position` within `reach` metres of the peer's last recorded
-## position? The host records that position from the peer's own movement packets
-## (see remember_player_state), so it is the host's evidence of where the peer is,
-## not the peer's claim.
-##
-## A peer that has never reported a position has none the host can check against,
-## and the edit is refused rather than measured from an assumed origin:
-## `has_last_known_state()` is what distinguishes "never reported" from "at the
-## origin" (get_last_known_state answers Vector3.ZERO for both).
-func _within_reach(sender: int, position: Vector3, reach: float) -> bool:
-	if not sl.has_last_known_state(sender):
-		return false
-	return sl.get_last_known_state(sender).distance_to(position) <= reach
 
 ## Phase 38 — host side: the world snapshot's social/economy blobs, redacted and keyed
 ## by the ONE list that says which parts of the world name players
@@ -745,30 +696,6 @@ func _route_h2c(payload: Dictionary) -> void:
 			# Legacy low-level packets fall through to packet_received.
 			GameBus.packet_received.emit(1, payload)
 
-## Sample the buffered snapshots for `peer_id` at playback time
-## (now_ms - jitter_buffer_ms), interpolating between the two surrounding
-## snapshots. Pure — accepts an explicit clock for tests.
-func _sample_remote_state_at(peer_id: int, now_ms: float) -> Vector3:
-	var queue: Array = sl._jitter_buffer.get(peer_id, [])
-	if queue.is_empty():
-		return Vector3.ZERO
-	var play: float = now_ms - sl.jitter_buffer_ms
-	var first: Dictionary = queue[0]
-	if play <= float(first["at_ms"]):
-		return first["position"]
-	var last: Dictionary = queue[queue.size() - 1]
-	if play >= float(last["at_ms"]):
-		return last["position"]
-	for i in range(queue.size() - 1):
-		var a: Dictionary = queue[i]
-		var b: Dictionary = queue[i + 1]
-		var ta: float = float(a["at_ms"])
-		var tb: float = float(b["at_ms"])
-		if play >= ta and play <= tb:
-			var t: float = (play - ta) / maxf(tb - ta, 0.0001)
-			return (a["position"] as Vector3).lerp(b["position"], t)
-	return last["position"]
-
 ## Host: relay a creature's state change to the peers whose AOI holds it.
 func relay_creature_state(instance_id: String, creature_id: String, state: String, position: Dictionary) -> void:
 	if sl._role != sl.Role.HOST:
@@ -801,3 +728,45 @@ func on_character_roster_synced(peer_id: int, roster: Dictionary) -> void:
 	if sl._role != sl.Role.HOST or peer_id <= 0 or sl._is_local_peer(peer_id):
 		return
 	_deliver(peer_id, { "type": "roster", "data": roster })
+
+## Walk `value`, mapping every STRING through `mapper` — values and dictionary keys
+## alike. Arrays and dictionaries are rebuilt; every other type is passed through. The
+## shapes walked here are the replicated social/economy state (dictionaries of
+## dictionaries of scalars), never a whole world snapshot.
+func _map_identities(value: Variant, mapper: Callable) -> Variant:
+	if value is String:
+		return mapper.call(value)
+	if value is Array:
+		var out_items: Array = []
+		for item in value:
+			out_items.append(sl._map_identities(item, mapper))
+		return out_items
+	if value is Dictionary:
+		var out: Dictionary = {}
+		for key in value:
+			out[sl._map_identities(key, mapper)] = sl._map_identities(value[key], mapper)
+		return out
+	return value
+
+## Host side: replace every player id inside a host → client payload with its public
+## handle, recursively — dictionary KEYS as well as values, because a trade's `offers`
+## and `accepted` maps are keyed by party.
+##
+## The player id is a BEARER TOKEN (`resolve_identity` hands the record to whoever
+## presents it on join), so broadcasting it handed every client the means to take over
+## any player's record once that player disconnected — inventories, positions,
+## appearance, technology. Market listings, trade sessions, and proposals all named
+## players by id; this is where they stop. The handle is derived, opaque and stable
+## (see PlayerRegistry.public_handle), and it is not a claim: claiming it mints a new
+## identity.
+##
+## Non-id strings ("merchant", a proposal title, an item key) are untouched: the
+## shape test recognises a minted id and nothing else.
+func redact_for_client(value: Variant) -> Variant:
+	if sl.player_registry == null:
+		return value
+	return sl._map_identities(value, func(s: String) -> String:
+		if sl.PlayerRegistry.looks_like_player_id(s):
+			return sl._public_handle(s)
+		return s
+	)

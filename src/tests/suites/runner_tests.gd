@@ -93,8 +93,9 @@ func _test_runner_source_size_audit() -> void:
 # Phase 257 — no source file is named by number, and a file near the cap names its planned split.
 func _test_runner_source_name_audit() -> void:
 	assert_eq(Runner.misnamed_source_files("res://src", Runner.MAX_SOURCE_LINES), [], "no src/ file is named by number or sits at the cap without a planned split")
-	var dir := "user://name_audit_fixture"
-	DirAccess.make_dir_recursive_absolute(dir)
+	_with_scratch_dir("user://name_audit_fixture", _name_audit_fixture)
+
+func _name_audit_fixture(dir: String) -> void:
 	for name in ["split_part_2.gd", "thing2.gd", "ok_name.gd"]:
 		var f := FileAccess.open(dir.path_join(name), FileAccess.WRITE)
 		f.store_string("extends Node\n")
@@ -109,7 +110,20 @@ func _test_runner_source_name_audit() -> void:
 	near.store_string("extends Node\n## %s the rest goes to other.gd.\n" % Runner.SPLIT_MARKER + "x\n".repeat(Runner.MAX_SOURCE_LINES - 10))
 	near.close()
 	assert_eq(Runner.misnamed_source_files(dir, Runner.MAX_SOURCE_LINES).size(), 2, "its header naming the split clears it")
-	for name in ["split_part_2.gd", "thing2.gd", "ok_name.gd", "near_cap.gd"]:
+
+## #755 — runs `body(dir)` in an emptied scratch directory and removes it afterwards, whatever `body` did: a script
+## error inside `body` ends only that call, so the cleanup still runs (and a leftover from an aborted run is cleared
+## first).
+func _with_scratch_dir(dir: String, body: Callable) -> void:
+	_remove_scratch_dir(dir)
+	DirAccess.make_dir_recursive_absolute(dir)
+	body.call(dir)
+	_remove_scratch_dir(dir)
+
+func _remove_scratch_dir(dir: String) -> void:
+	if not DirAccess.dir_exists_absolute(dir):
+		return
+	for name in DirAccess.get_files_at(dir):
 		DirAccess.remove_absolute(dir.path_join(name))
 	DirAccess.remove_absolute(dir)
 

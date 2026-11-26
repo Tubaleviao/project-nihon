@@ -190,7 +190,7 @@ func _test_protocol_wire() -> void:
 		"game_version": ServerStatus.game_version() })
 	assert_eq(joins, [8], "a join of this protocol goes on")
 	assert_eq(rosters, [8], "and so does its roster intent")
-	n._m2._on_peer_disconnected(5)
+	n._m1._on_peer_disconnected(5)
 	assert_false(n._m2._protocol_refused.has(5), "a disconnect forgets the mark (ENet may reuse the id)")
 	GameBus.player_join_intent.disconnect(on_join)
 	GameBus.character_roster_intent.disconnect(on_roster)
