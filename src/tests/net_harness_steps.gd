@@ -1227,3 +1227,52 @@ func character_roster(h: Node) -> void:
 	var good: bool = one and second != "" and in_second and in_first
 	h._report("character_roster", h.verdict(good, true), TOKEN if good else "listed%d-one%d-made%d-second%d-first%d" % [
 		int(listed), int(one), int(second != ""), int(in_second), int(in_first)])
+
+## Phase 302 — the host's copy of the planet bake. The host holds a small bake it first serves with one byte flipped
+## under the genuine hash; the client asks for it, and must refuse it (the fetch fails on the hash) and, as the
+## caller does, bake from the seed and find the host's hash. Then the host serves the real bytes, and the client
+## fetches them and ends with exactly the host's bytes. Both sides derive the bake from the same seed and size.
+const BAKE_SEED := 7
+const BAKE_W := 48
+const BAKE_H := 24
+const BAKE_CIRC := 800000.0
+const PlanetBake := preload("res://src/terrain/planet_bake.gd")
+const BakeTransfer := preload("res://src/networking/bake_transfer.gd")
+func planet_bake_fetch(h: Node) -> void:
+	var bake: RefCounted = h._root._networking._m3.bake
+	var genuine: PackedByteArray = PlanetBake.to_bytes(PlanetBake.bake_planet(BAKE_SEED, BAKE_W, BAKE_H, BAKE_CIRC, 12))
+	var hash: String = PlanetBake.hash_hex(genuine)
+	if h._role == "host":
+		var bad := genuine.duplicate()
+		bad[bad.size() / 2] ^= 0x55
+		bake.serve_bake(bad)
+		bake.serve.hash = hash   # the host announces the genuine hash and serves bytes that are not
+		var count: int = BakeTransfer.chunk_count(bad.size())
+		var served_all: bool = await h._await_until(func(): return _served_at_least(bake, count), h._step_timeout() * 2.0)
+		bake.serve_bake(genuine)   # the second request is served the real bake
+		var done: bool = served_all and await h._await_until(func(): return _served_at_least(bake, 2 * count), h._step_timeout() * 2.0)
+		h._report("planet_bake_fetch", h.verdict(done, true), "corrupt-refused-then-host-bytes" if done else "served_all%d" % int(served_all))
+		return
+	await h._await_settle(1.0 * h._time_scale)
+	var results: Array = []
+	var on_fetched := func(ok: bool, bytes: PackedByteArray, expected: String) -> void: results.append({ "ok": ok, "bytes": bytes, "hash": expected })
+	GameBus.planet_bake_fetched.connect(on_fetched)
+	bake.start_fetch(hash, BAKE_W, BAKE_H)
+	var first: bool = await h._await_until(func(): return results.size() >= 1, h._step_timeout())
+	var refused: bool = first and not bool(results[0]["ok"]) and (results[0]["bytes"] as PackedByteArray).is_empty()
+	# The fallback: this machine's own bake from the seed is the one the host announced.
+	var local_ok: bool = PlanetBake.hash_hex(PlanetBake.to_bytes(PlanetBake.bake_planet(BAKE_SEED, BAKE_W, BAKE_H, BAKE_CIRC, 12))) == hash
+	await h._await_settle(BakeTransfer.OFFER_INTERVAL_MS / 1000.0 * 1.25)   # one offer per peer per interval
+	bake.start_fetch(hash, BAKE_W, BAKE_H)
+	var second: bool = await h._await_until(func(): return results.size() >= 2, h._step_timeout())
+	GameBus.planet_bake_fetched.disconnect(on_fetched)
+	var got: bool = second and bool(results[1]["ok"]) and results[1]["bytes"] == genuine
+	var ok := refused and local_ok and got
+	h._report("planet_bake_fetch", h.verdict(ok, true), "corrupt-refused-then-host-bytes" if ok else
+		"first%d-refused%d-local%d-second%d-got%d" % [int(first), int(refused), int(local_ok), int(second), int(got)])
+
+func _served_at_least(bake: RefCounted, n: int) -> bool:
+	for peer in bake.serve._peers:
+		if int(bake.serve._peers[peer]["served"]) >= n:
+			return true
+	return false
