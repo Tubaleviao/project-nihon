@@ -11,13 +11,14 @@ const RADIUS_CAP = 1.5          // metres: the largest brush any tool and skill 
 const SKILL_RADIUS_PER_TIER = 0.05
 const BLEND = 0.25              // default smooth-blend k in metres
 const MIN_RADIUS = 0.25         // below this a dig is the single slab (one tile)
+// Mirrors VoxelConsts TILE_SIZE x TILE_SIZE x STEP_HEIGHT (src/terrain/voxel_consts.gd); fabric holds no such constants.
 const UNIT_VOLUME = 0.5 * 0.5 * 0.125 // 0.03125 m3
 const SHAPES = ['sphere', 'cylinder', 'box']
 
 /** Built (placed) materials: never part of a natural dig, so no brush cuts them. */
 function builtMaterials() { return Object.keys(require('../world/materials/built')) }
 
-/** Names of the natural materials of the given families, from the material files so new ones join by themselves. */
+/** Names of the natural materials (a future gravel material in the soil family would join the lists automatically) of the given families, from the material files so new ones join by themselves. */
 function materialsOf(families) {
   const built = new Set(builtMaterials())
   return Object.keys(work.FAMILIES).filter((m) => families.includes(work.FAMILIES[m]) && !built.has(m))
@@ -55,32 +56,66 @@ function digBrushesData() {
 }
 
 function digBrushesRefs() {
-  return { materials: Object.keys(work.FAMILIES), diggingItems: Object.keys(diggingItems()) }
+  const biomes = require('../world/biomes')
+  const biomeSoil = [...new Set(Object.values(biomes)
+    .map((e) => e && e.fields && e.fields.soilMaterial && e.fields.soilMaterial.defaultValue).filter(Boolean))]
+  return {
+    // Natural terrain materials only: what a natural column can yield. Built (Concrete, Steel, Leyframe) and wood
+    // (trees, not ground) are never dug as terrain. Host rock per biome is chosen at runtime by OreField.host_material
+    // (GDScript-only BIOME_BIAS, a transcription of the biome prose), so coverage is checked against every natural
+    // stone and metal: any host rock or vein material is one of them.
+    natural: materialsOf(['soil', 'stone', 'metal']),
+    soft: materialsOf(['soil']),
+    rock: materialsOf(['stone', 'metal']),
+    biomeSoil,
+    roles: { hands: 'hands', ...diggingItems() },
+    diggingItems: Object.keys(diggingItems()),
+  }
 }
+
+const BRUSH_KEYS = ['shape', 'radius', 'cuts']
+const isObj = (v) => v !== null && typeof v === 'object' && !Array.isArray(v)
 
 /** Problems with the dig-brush table, as strings. */
 function digBrushesProblems(d, refs) {
   const p = []
   const pos = (v) => typeof v === 'number' && Number.isFinite(v) && v > 0
+  if (!isObj(d)) return ['dig brushes must be an object']
   if (!pos(d.radiusCap)) p.push('radiusCap must be a number > 0')
   if (!pos(d.skillRadiusPerTier)) p.push('skillRadiusPerTier must be a number > 0')
-  if (!(typeof d.blend === 'number' && d.blend >= 0)) p.push('blend must be a number >= 0')
+  if (!(typeof d.blend === 'number' && Number.isFinite(d.blend) && d.blend >= 0)) p.push('blend must be a finite number >= 0')
   if (!pos(d.minRadius)) p.push('minRadius must be a number > 0')
-  const brushes = d.brushes || {}
+  else if (pos(d.radiusCap) && d.minRadius >= d.radiusCap) p.push('minRadius must be under radiusCap')
+  const brushes = isObj(d.brushes) ? d.brushes : {}
+  if (!isObj(d.brushes)) p.push('brushes must be an object')
   if (!brushes.hands) p.push('brushes.hands is missing: bare hands dig too')
   for (const [name, b] of Object.entries(brushes)) {
+    if (!isObj(b)) { p.push(`brushes.${name} must be an object`); continue }
+    const role = name === 'hands' ? 'hands' : refs.roles[name]
     if (name !== 'hands' && !refs.diggingItems.includes(name)) p.push(`brushes.${name} is not a digging tool item`)
+    for (const k of Object.keys(b)) if (!BRUSH_KEYS.includes(k)) p.push(`brushes.${name}.${k} is not a brush key`)
     if (!SHAPES.includes(b.shape)) p.push(`brushes.${name}.shape "${b.shape}" is not one of ${SHAPES.join(', ')}`)
     if (!pos(b.radius)) p.push(`brushes.${name}.radius must be > 0`)
     else if (b.radius > d.radiusCap) p.push(`brushes.${name}.radius ${b.radius} is over radiusCap ${d.radiusCap}`)
-    if (!Array.isArray(b.cuts) || !b.cuts.length) p.push(`brushes.${name}.cuts must list at least one material`)
-    for (const m of b.cuts || []) if (!refs.materials.includes(m)) p.push(`brushes.${name}.cuts "${m}" is not a block material`)
+    else if (pos(d.minRadius) && b.radius < d.minRadius) p.push(`brushes.${name}.radius ${b.radius} is under minRadius ${d.minRadius}`)
+    if (!Array.isArray(b.cuts) || !b.cuts.length) { p.push(`brushes.${name}.cuts must list at least one material`); continue }
+    const allowed = role === 'pick' ? refs.natural : refs.soft
+    const seen = new Set()
+    for (const m of b.cuts) {
+      if (seen.has(m)) p.push(`brushes.${name}.cuts lists "${m}" twice`)
+      seen.add(m)
+      if (!refs.natural.includes(m)) p.push(`brushes.${name}.cuts "${m}" is not a natural terrain material`)
+      else if (!allowed.includes(m)) p.push(`brushes.${name}.cuts "${m}" is beyond a ${role} (${role === 'pick' ? 'soil, stone, metal' : 'soft ground only'})`)
+    }
+    // Coverage: everything a natural column can yield is dug by every tool of the right role.
+    const need = role === 'pick' ? [...refs.biomeSoil, ...refs.rock] : refs.biomeSoil
+    for (const m of need) if (!seen.has(m)) p.push(`brushes.${name}.cuts misses "${m}", which natural ground yields`)
   }
   for (const item of refs.diggingItems) if (!brushes[item]) p.push(`${item} is a digging tool with no brush`)
-  const uv = d.unitVolume || {}
+  const uv = isObj(d.unitVolume) ? d.unitVolume : {}
   if (!pos(uv.default)) p.push('unitVolume.default must be > 0')
   for (const [m, v] of Object.entries(uv.overrides || {})) {
-    if (!refs.materials.includes(m)) p.push(`unitVolume.overrides.${m} is not a block material`)
+    if (!refs.natural.includes(m)) p.push(`unitVolume.overrides.${m} is not a natural terrain material`)
     if (!pos(v)) p.push(`unitVolume.overrides.${m} must be > 0`)
   }
   return p
