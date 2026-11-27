@@ -66,15 +66,18 @@ static func _report(progress: Callable, stage: StringName, fraction: float) -> v
 ## The bake versions: a bake is made by the algorithm of the worldgen version its world was recorded at, so a
 ## world's baked rivers never change under it (the stable-world rule). 14 = Phase 245: thermal erosion at a
 ## 2.4 m talus, no hydraulic pass, no biome byte. 15 = Phase 302: a 500 m talus, the hydraulic pass, the biome byte.
+## 18 = Phase 232: the grid wraps east-west (the X edges are neighbours, not boundaries), so a river crosses the world seam.
+const BAKE_VERSION_WRAP := 18
 const BAKE_VERSION_245 := 14
-const BAKE_VERSION := 15   ## the newest; `TerrainSlice.WORLDGEN_VERSION` (the suite holds them equal)
+const BAKE_VERSION := 18   ## the newest; `TerrainSlice.WORLDGEN_VERSION` (the suite holds them equal)
 
-## The algorithm a bake of `version` runs: { talus (mm), hydraulic (bool), biome (bool) }. Any version up to
-## BAKE_VERSION_245 is the Phase 245 profile, any later one the newest.
+## The algorithm a bake of `version` runs: { talus (mm), hydraulic (bool), biome (bool), wrap (bool) }. Any version
+## up to BAKE_VERSION_245 is the Phase 245 profile, up to BAKE_VERSION_WRAP - 1 the Phase 302 one (X edges are
+## boundaries), any later one the newest (X wraps, Phase 232).
 static func profile(version: int) -> Dictionary:
 	if version <= BAKE_VERSION_245:
-		return { "talus": ERODE_TALUS_245_MM, "hydraulic": false, "biome": false }
-	return { "talus": ERODE_TALUS_MM, "hydraulic": true, "biome": true }
+		return { "talus": ERODE_TALUS_245_MM, "hydraulic": false, "biome": false, "wrap": false }
+	return { "talus": ERODE_TALUS_MM, "hydraulic": true, "biome": true, "wrap": version >= BAKE_VERSION_WRAP }
 
 
 ## `base`: row-major heights in mm, `w` x `h` cells. Cells at or below `sea_mm` are sea.
@@ -84,7 +87,7 @@ static func bake(base: PackedInt32Array, w: int, h: int, sea_mm: int, river_flow
 	var pf := profile(version)
 	if NativeLoaderScript.use_native("NativeBake", "bake"):   # same bytes, computed in C++
 		_report(progress, &"terrain", 0.0)
-		var nb: Dictionary = NativeLoaderScript.instance("NativeBake").call("bake", base, w, h, sea_mm, river_flow, int(pf.talus), bool(pf.hydraulic))
+		var nb: Dictionary = NativeLoaderScript.instance("NativeBake").call("bake", base, w, h, sea_mm, river_flow, int(pf.talus), bool(pf.hydraulic), bool(pf.wrap))
 		_report(progress, &"terrain", 1.0)
 		return nb
 	return bake_gd(base, w, h, sea_mm, river_flow, progress, version)
@@ -95,16 +98,17 @@ static func bake_gd(base: PackedInt32Array, w: int, h: int, sea_mm: int, river_f
 	var n := w * h
 	var pf := profile(version)
 	_report(progress, &"terrain", 0.0)
-	var eroded := erode(base, w, h, sea_mm, int(pf.talus))
+	var wrap := bool(pf.wrap)
+	var eroded := erode(base, w, h, sea_mm, int(pf.talus), wrap)
 	_report(progress, &"terrain", 0.1)
-	var carved := hydraulic(eroded, w, h, sea_mm, river_flow) if bool(pf.hydraulic) else eroded
+	var carved := hydraulic(eroded, w, h, sea_mm, river_flow, wrap) if bool(pf.hydraulic) else eroded
 	_report(progress, &"terrain", 0.6)
-	var filled := _fill(carved, w, h, sea_mm)
+	var filled := _fill(carved, w, h, sea_mm, wrap)
 	_report(progress, &"terrain", 0.7)
 	var dir := PackedInt32Array()
 	dir.resize(n)
 	for i in n:
-		dir[i] = _steepest(filled, w, h, i, sea_mm)
+		dir[i] = _steepest(filled, w, h, i, sea_mm, wrap)
 	# Accumulate flow from the highest cell down: order by (filled height, index), descending.
 	var flow := _accumulate(filled, dir)
 	_report(progress, &"terrain", 0.85)
@@ -126,7 +130,7 @@ static func bake_gd(base: PackedInt32Array, w: int, h: int, sea_mm: int, river_f
 ## each of its four lower land neighbours whose drop exceeds the talus. All moves of a pass are computed
 ## from the heights at its start and summed, so the result does not depend on visiting order. Sea cells
 ## and cells at or below the sea never change; mass is conserved among land cells.
-static func erode(base: PackedInt32Array, w: int, h: int, sea_mm: int, talus_mm: int = ERODE_TALUS_MM) -> PackedInt32Array:
+static func erode(base: PackedInt32Array, w: int, h: int, sea_mm: int, talus_mm: int = ERODE_TALUS_MM, wrap: bool = false) -> PackedInt32Array:
 	var cur := base.duplicate()
 	var delta := PackedInt32Array()
 	delta.resize(w * h)
@@ -140,6 +144,8 @@ static func erode(base: PackedInt32Array, w: int, h: int, sea_mm: int, talus_mm:
 				for k in 4:
 					var nx := x + (-1 if k == 0 else (1 if k == 1 else 0))
 					var nz := z + (-1 if k == 2 else (1 if k == 3 else 0))
+					if wrap:
+						nx = posmod(nx, w)
 					if nx < 0 or nz < 0 or nx >= w or nz >= h:
 						continue
 					var j := nz * w + nx
@@ -181,15 +187,15 @@ static func _accumulate(f: PackedInt32Array, dir: PackedInt32Array) -> PackedInt
 ## height at the start of the pass, nor to or below the sea. All cuts are computed from the heights at the
 ## start of the pass, so the result does not depend on visiting order; a cell stays above its drain after
 ## the pass (the drain only goes down too), so rivers keep reaching the sea or a lake.
-static func hydraulic(base: PackedInt32Array, w: int, h: int, sea_mm: int, river_flow: int) -> PackedInt32Array:
+static func hydraulic(base: PackedInt32Array, w: int, h: int, sea_mm: int, river_flow: int, wrap: bool = false) -> PackedInt32Array:
 	var n := w * h
 	var cur := base.duplicate()
 	for _pass in HYDRO_PASSES:
-		var f := _fill(cur, w, h, sea_mm)
+		var f := _fill(cur, w, h, sea_mm, wrap)
 		var dir := PackedInt32Array()
 		dir.resize(n)
 		for i in n:
-			dir[i] = _steepest(f, w, h, i, sea_mm)
+			dir[i] = _steepest(f, w, h, i, sea_mm, wrap)
 		var flow := _accumulate(f, dir)
 		var next := cur.duplicate()
 		for i in n:
@@ -207,7 +213,7 @@ static func hydraulic(base: PackedInt32Array, w: int, h: int, sea_mm: int, river
 
 
 ## Priority flood: raise every depression to its spill height (+1 mm per step so water keeps a gradient).
-static func _fill(base: PackedInt32Array, w: int, h: int, sea_mm: int) -> PackedInt32Array:
+static func _fill(base: PackedInt32Array, w: int, h: int, sea_mm: int, wrap: bool = false) -> PackedInt32Array:
 	var n := w * h
 	var out := base.duplicate()
 	var done := PackedByteArray()
@@ -216,7 +222,7 @@ static func _fill(base: PackedInt32Array, w: int, h: int, sea_mm: int) -> Packed
 	for i in n:
 		var x := i % w
 		var z := i / w
-		if base[i] <= sea_mm or x == 0 or z == 0 or x == w - 1 or z == h - 1:
+		if base[i] <= sea_mm or z == 0 or z == h - 1 or (not wrap and (x == 0 or x == w - 1)):
 			done[i] = 1
 			_heap_push(heap, ((maxi(base[i], sea_mm) << 24) | i) if base[i] <= sea_mm else ((base[i] << 24) | i))
 	while heap.size() > 0:
@@ -228,6 +234,8 @@ static func _fill(base: PackedInt32Array, w: int, h: int, sea_mm: int) -> Packed
 		for k in 8:
 			var nx: int = cx + DX[k]
 			var nz: int = cz + DZ[k]
+			if wrap:
+				nx = posmod(nx, w)
 			if nx < 0 or nz < 0 or nx >= w or nz >= h:
 				continue
 			var j := nz * w + nx
@@ -273,7 +281,7 @@ static func _heap_pop(heap: PackedInt64Array) -> int:
 	return top
 
 
-static func _steepest(f: PackedInt32Array, w: int, h: int, i: int, sea_mm: int) -> int:
+static func _steepest(f: PackedInt32Array, w: int, h: int, i: int, sea_mm: int, wrap: bool = false) -> int:
 	if f[i] <= sea_mm:
 		return NO_DIR
 	var x := i % w
@@ -283,6 +291,8 @@ static func _steepest(f: PackedInt32Array, w: int, h: int, i: int, sea_mm: int) 
 	for k in 8:
 		var nx: int = x + DX[k]
 		var nz: int = z + DZ[k]
+		if wrap:
+			nx = posmod(nx, w)
 		if nx < 0 or nz < 0 or nx >= w or nz >= h:
 			continue
 		var j := nz * w + nx
@@ -329,7 +339,7 @@ static func hash_hex(bytes: PackedByteArray) -> String:
 
 ## Parse bytes written by `to_bytes`, refusing them (empty result) when the SHA-256 differs from
 ## `expected_hash` or the size does not fit the header: a corrupt or tampered file is baked or fetched again.
-static func from_bytes(bytes: PackedByteArray, expected_hash: String) -> Dictionary:
+static func from_bytes(bytes: PackedByteArray, expected_hash: String, version: int = BAKE_VERSION) -> Dictionary:
 	if bytes.size() < 12 or hash_hex(bytes) != expected_hash:
 		return {}
 	var w := bytes.decode_s32(0)
@@ -354,10 +364,11 @@ static func from_bytes(bytes: PackedByteArray, expected_hash: String) -> Diction
 	out.river = river
 	# `dir` is not stored: it is the steepest descent over the filled heights, so it is rebuilt here
 	# exactly as `bake_gd` computes it (`Hydrology.baked_segs` reads it).
+	var wrap := bool(profile(version).wrap)
 	var dir := PackedInt32Array()
 	dir.resize(w * h)
 	for i in w * h:
-		dir[i] = _steepest(height, w, h, i, out.sea_mm)
+		dir[i] = _steepest(height, w, h, i, out.sea_mm, wrap)
 	out.dir = dir
 	return out
 
@@ -465,10 +476,10 @@ static func save(b: Dictionary, path: String) -> bool:
 
 
 ## Read a saved bake: empty when the file or hash is missing, or the hash does not match.
-static func load_file(path: String) -> Dictionary:
+static func load_file(path: String, version: int = BAKE_VERSION) -> Dictionary:
 	if not FileAccess.file_exists(path) or not FileAccess.file_exists(path + ".sha256"):
 		return {}
-	return from_bytes(FileAccess.get_file_as_bytes(path), FileAccess.get_file_as_string(path + ".sha256").strip_edges())
+	return from_bytes(FileAccess.get_file_as_bytes(path), FileAccess.get_file_as_string(path + ".sha256").strip_edges(), version)
 
 
 ## The bake file for a world: `<dir>/planet_<seed>_v<worldgen version>_<w>x<h>.bin`.
@@ -482,7 +493,7 @@ static func file_path(dir: String, seed_v: int, worldgen_version: int, w: int, h
 ## (`profile`) a fresh bake runs; `path` should name the same version (`file_path`).
 static func ensure(path: String, seed_v: int, w: int, h: int, circumference_m: float, river_flow: int, expected_hash: String = "", progress: Callable = Callable(), version: int = BAKE_VERSION) -> Dictionary:
 	_report(progress, &"load", 0.0)
-	var b := load_file(path)
+	var b := load_file(path, version)
 	if not b.is_empty():
 		var hash_now := FileAccess.get_file_as_string(path + ".sha256").strip_edges()   # from_bytes already checked it
 		if expected_hash == "" or hash_now == expected_hash:

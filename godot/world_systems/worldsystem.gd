@@ -25,6 +25,8 @@ extends Resource
 @export var clearRadiusMetres: float
 @export var lakeFrequency: float
 @export var lakeMinDepth: float
+@export var lakeFreeboard: float
+@export var lakeMaxLevee: float
 @export var riverSourceHeight: float
 @export var riverWidthMin: float
 @export var riverWidthMax: float

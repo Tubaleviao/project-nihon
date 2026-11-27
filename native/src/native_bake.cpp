@@ -102,7 +102,7 @@ constexpr int ERODE_PASSES = 6;
 constexpr int64_t ERODE_SHARE = 8;
 
 // `PlanetBake.erode`.
-PackedInt32Array erode(const PackedInt32Array &base, int64_t w, int64_t h, int64_t sea, int64_t talus) {
+PackedInt32Array erode(const PackedInt32Array &base, int64_t w, int64_t h, int64_t sea, int64_t talus, bool wrap) {
 	int64_t n = w * h;
 	std::vector<int32_t> cur(n), delta(n);
 	for (int64_t i = 0; i < n; i++) {
@@ -120,6 +120,9 @@ PackedInt32Array erode(const PackedInt32Array &base, int64_t w, int64_t h, int64
 				}
 				for (int k = 0; k < 4; k++) {
 					int64_t nx = x + KX[k], nz = z + KZ[k];
+					if (wrap) {
+						nx = ((nx % w) + w) % w;
+					}
 					if (nx < 0 || nz < 0 || nx >= w || nz >= h) {
 						continue;
 					}
@@ -148,7 +151,7 @@ PackedInt32Array erode(const PackedInt32Array &base, int64_t w, int64_t h, int64
 	return out;
 }
 
-std::vector<int32_t> fill(const PackedInt32Array &base, int64_t w, int64_t h, int64_t sea) {
+std::vector<int32_t> fill(const PackedInt32Array &base, int64_t w, int64_t h, int64_t sea, bool wrap) {
 	int64_t n = w * h;
 	std::vector<int32_t> out(n);
 	std::vector<uint8_t> done(n, 0);
@@ -158,7 +161,7 @@ std::vector<int32_t> fill(const PackedInt32Array &base, int64_t w, int64_t h, in
 	std::set<int64_t> heap;
 	for (int64_t i = 0; i < n; i++) {
 		int64_t x = i % w, z = i / w;
-		if (base[i] <= sea || x == 0 || z == 0 || x == w - 1 || z == h - 1) {
+		if (base[i] <= sea || z == 0 || z == h - 1 || (!wrap && (x == 0 || x == w - 1))) {
 			done[i] = 1;
 			heap.insert(base[i] <= sea ? key_of(std::max<int64_t>(base[i], sea), i) : key_of(base[i], i));
 		}
@@ -171,6 +174,9 @@ std::vector<int32_t> fill(const PackedInt32Array &base, int64_t w, int64_t h, in
 		int64_t cx = c % w, cz = c / w;
 		for (int k = 0; k < 8; k++) {
 			int64_t nx = cx + DX[k], nz = cz + DZ[k];
+			if (wrap) {
+				nx = ((nx % w) + w) % w;
+			}
 			if (nx < 0 || nz < 0 || nx >= w || nz >= h) {
 				continue;
 			}
@@ -188,7 +194,7 @@ std::vector<int32_t> fill(const PackedInt32Array &base, int64_t w, int64_t h, in
 	return out;
 }
 
-int64_t steepest(const std::vector<int32_t> &f, int64_t w, int64_t h, int64_t i, int64_t sea) {
+int64_t steepest(const std::vector<int32_t> &f, int64_t w, int64_t h, int64_t i, int64_t sea, bool wrap) {
 	if (f[i] <= sea) {
 		return -1;
 	}
@@ -196,6 +202,9 @@ int64_t steepest(const std::vector<int32_t> &f, int64_t w, int64_t h, int64_t i,
 	int64_t best = -1, best_drop = 0;
 	for (int k = 0; k < 8; k++) {
 		int64_t nx = x + DX[k], nz = z + DZ[k];
+		if (wrap) {
+			nx = ((nx % w) + w) % w;
+		}
 		if (nx < 0 || nz < 0 || nx >= w || nz >= h) {
 			continue;
 		}
@@ -234,7 +243,7 @@ std::vector<int32_t> accumulate(const std::vector<int32_t> &f, const std::vector
 }
 
 // `PlanetBake.hydraulic`.
-PackedInt32Array hydraulic(const PackedInt32Array &base, int64_t w, int64_t h, int64_t sea, int64_t river_flow) {
+PackedInt32Array hydraulic(const PackedInt32Array &base, int64_t w, int64_t h, int64_t sea, int64_t river_flow, bool wrap) {
 	int64_t n = w * h;
 	std::vector<int32_t> cur(n);
 	for (int64_t i = 0; i < n; i++) {
@@ -246,10 +255,10 @@ PackedInt32Array hydraulic(const PackedInt32Array &base, int64_t w, int64_t h, i
 		for (int64_t i = 0; i < n; i++) {
 			cur_arr[i] = cur[i];
 		}
-		std::vector<int32_t> f = fill(cur_arr, w, h, sea);
+		std::vector<int32_t> f = fill(cur_arr, w, h, sea, wrap);
 		std::vector<int32_t> dir(n);
 		for (int64_t i = 0; i < n; i++) {
-			dir[i] = int32_t(steepest(f, w, h, i, sea));
+			dir[i] = int32_t(steepest(f, w, h, i, sea, wrap));
 		}
 		std::vector<int32_t> flow = accumulate(f, dir);
 		std::vector<int32_t> next = cur;
@@ -298,9 +307,9 @@ void NativeBake::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("capsule3", "p", "a", "b", "r"), &NativeBake::capsule3);
 	ClassDB::bind_method(D_METHOD("version"), &NativeBake::version);
 	ClassDB::bind_method(D_METHOD("functions"), &NativeBake::functions);
-	ClassDB::bind_method(D_METHOD("bake", "base", "w", "h", "sea_mm", "river_flow", "talus_mm", "hydraulic"), &NativeBake::bake);
-	ClassDB::bind_method(D_METHOD("erode", "base", "w", "h", "sea_mm", "talus_mm"), &NativeBake::erode);
-	ClassDB::bind_method(D_METHOD("hydraulic", "base", "w", "h", "sea_mm", "river_flow"), &NativeBake::hydraulic);
+	ClassDB::bind_method(D_METHOD("bake", "base", "w", "h", "sea_mm", "river_flow", "talus_mm", "hydraulic", "wrap"), &NativeBake::bake, DEFVAL(false));
+	ClassDB::bind_method(D_METHOD("erode", "base", "w", "h", "sea_mm", "talus_mm", "wrap"), &NativeBake::erode, DEFVAL(false));
+	ClassDB::bind_method(D_METHOD("hydraulic", "base", "w", "h", "sea_mm", "river_flow", "wrap"), &NativeBake::hydraulic, DEFVAL(false));
 	ClassDB::bind_method(D_METHOD("isqrt", "n"), &NativeBake::isqrt);
 	ClassDB::bind_method(D_METHOD("smooth_union", "a", "b", "k"), &NativeBake::smooth_union);
 	ClassDB::bind_method(D_METHOD("smooth_intersection", "a", "b", "k"), &NativeBake::smooth_intersection);
@@ -309,7 +318,7 @@ void NativeBake::_bind_methods() {
 }
 
 int NativeBake::version() const {
-	return 6;   // 1 = Phase 245: bake and the CSG operations; 2 = thermal erosion; 3 = every CSG shape; 4 = hydraulic erosion (Phase 302); 5 = thermal talus 500 m per cell; 6 = the bake profile (talus, hydraulic on/off) as parameters, so a worldgen-14 world bakes its Phase 245 bytes
+	return 7;   // 1 = Phase 245: bake and the CSG operations; 2 = thermal erosion; 3 = every CSG shape; 4 = hydraulic erosion (Phase 302); 5 = thermal talus 500 m per cell; 6 = the bake profile (talus, hydraulic on/off) as parameters, so a worldgen-14 world bakes its Phase 245 bytes; 7 = the east-west wrap (Phase 232) as a parameter
 }
 
 PackedStringArray NativeBake::functions() const {
@@ -328,13 +337,13 @@ PackedStringArray NativeBake::functions() const {
 	return out;
 }
 
-Dictionary NativeBake::bake(const PackedInt32Array &p_base, int64_t p_w, int64_t p_h, int64_t p_sea_mm, int64_t p_river_flow, int64_t p_talus_mm, bool p_hydraulic) const {
+Dictionary NativeBake::bake(const PackedInt32Array &p_base, int64_t p_w, int64_t p_h, int64_t p_sea_mm, int64_t p_river_flow, int64_t p_talus_mm, bool p_hydraulic, bool p_wrap) const {
 	int64_t n = p_w * p_h;
-	PackedInt32Array eroded = ::erode(p_base, p_w, p_h, p_sea_mm, p_talus_mm);
-	std::vector<int32_t> filled = fill(p_hydraulic ? ::hydraulic(eroded, p_w, p_h, p_sea_mm, p_river_flow) : eroded, p_w, p_h, p_sea_mm);
+	PackedInt32Array eroded = ::erode(p_base, p_w, p_h, p_sea_mm, p_talus_mm, p_wrap);
+	std::vector<int32_t> filled = fill(p_hydraulic ? ::hydraulic(eroded, p_w, p_h, p_sea_mm, p_river_flow, p_wrap) : eroded, p_w, p_h, p_sea_mm, p_wrap);
 	std::vector<int32_t> dir(n);
 	for (int64_t i = 0; i < n; i++) {
-		dir[i] = int32_t(steepest(filled, p_w, p_h, i, p_sea_mm));
+		dir[i] = int32_t(steepest(filled, p_w, p_h, i, p_sea_mm, p_wrap));
 	}
 	std::vector<int64_t> order(n);
 	for (int64_t i = 0; i < n; i++) {
@@ -382,8 +391,8 @@ Dictionary NativeBake::bake(const PackedInt32Array &p_base, int64_t p_w, int64_t
 	return d;
 }
 
-PackedInt32Array NativeBake::erode(const PackedInt32Array &p_base, int64_t p_w, int64_t p_h, int64_t p_sea_mm, int64_t p_talus_mm) const {
-	return ::erode(p_base, p_w, p_h, p_sea_mm, p_talus_mm);
+PackedInt32Array NativeBake::erode(const PackedInt32Array &p_base, int64_t p_w, int64_t p_h, int64_t p_sea_mm, int64_t p_talus_mm, bool p_wrap) const {
+	return ::erode(p_base, p_w, p_h, p_sea_mm, p_talus_mm, p_wrap);
 }
 
 int64_t NativeBake::isqrt(int64_t p_n) const {
@@ -462,6 +471,6 @@ int64_t NativeBake::capsule3(const Vector3i &p_p, const Vector3i &p_a, const Vec
 	return length3(int64_t(p_p.x) - cx, int64_t(p_p.y) - cy, int64_t(p_p.z) - cz) - p_r;
 }
 
-PackedInt32Array NativeBake::hydraulic(const PackedInt32Array &p_base, int64_t p_w, int64_t p_h, int64_t p_sea_mm, int64_t p_river_flow) const {
-	return ::hydraulic(p_base, p_w, p_h, p_sea_mm, p_river_flow);
+PackedInt32Array NativeBake::hydraulic(const PackedInt32Array &p_base, int64_t p_w, int64_t p_h, int64_t p_sea_mm, int64_t p_river_flow, bool p_wrap) const {
+	return ::hydraulic(p_base, p_w, p_h, p_sea_mm, p_river_flow, p_wrap);
 }

@@ -7,6 +7,9 @@ const Hydrology := preload("res://src/terrain/hydrology.gd")
 ## thread only wraps them in a mesh (`mesh_from`). Walking the chunk's 4096 tiles on the main thread at every
 ## attach cost the native builder, which lands many chunks a frame, most of its stream-step hitches.
 static func worker_arrays(chunk_pos: Vector2i, seed_v: int, local: bool) -> Array:
+	var f := Hydrology.features_for_chunk(chunk_pos, seed_v)
+	if f["lakes"].is_empty() and f["segs"].is_empty():
+		return []   # no feature touches the chunk: no 4096-tile walk, no fresh-water node
 	return arrays_for(chunk_pos, Hydrology.surfaces_for_chunk(chunk_pos, seed_v), local)
 
 ## `mesh_from(arrays_for(...))`: the whole build in one call (the synchronous path and the suite).

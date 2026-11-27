@@ -27,6 +27,12 @@ const ChunkRecords := preload("res://src/terrain/chunk_records.gd")
 ## Chebyshev distance, in chunks, from the nearest recorded chunk at which the plain generator resumes.
 const BLEND_CHUNKS := 4
 
+## Phase 232 — how much of a lake's or river's own water level survives at `dist_m` metres from a recorded chunk of an
+## older generator (one that holds no water): 0 at its edge, rising by a smoothstep to 1 at `BLEND_CHUNKS` chunks, so the
+## water surface eases down to the recorded ground as `blend_weight` eases the heights.
+static func water_weight(dist_m: float) -> float:
+	return smoothstep(0.0, float(BLEND_CHUNKS) * TerrainSlice.CHUNK_METERS, dist_m)
+
 ## The recorded chunks within `BLEND_CHUNKS` of `chunk`: unwrapped chunk -> record. One locked pass over
 ## the shared table (main thread or worker; the table is mutex-guarded); `{}` at once on a world with
 ## no records.
