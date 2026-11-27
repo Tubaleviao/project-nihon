@@ -67,7 +67,7 @@ static func _report(progress: Callable, stage: StringName, fraction: float) -> v
 ## world's baked rivers never change under it (the stable-world rule). 14 = Phase 245: thermal erosion at a
 ## 2.4 m talus, no hydraulic pass, no biome byte. 15 = Phase 302: a 500 m talus, the hydraulic pass, the biome byte.
 const BAKE_VERSION_245 := 14
-const BAKE_VERSION := 16   ## the newest; `TerrainSlice.WORLDGEN_VERSION` (the suite holds them equal)
+const BAKE_VERSION := 17   ## the newest; `TerrainSlice.WORLDGEN_VERSION` (the suite holds them equal)
 
 ## The algorithm a bake of `version` runs: { talus (mm), hydraulic (bool), biome (bool) }. Any version up to
 ## BAKE_VERSION_245 is the Phase 245 profile, any later one the newest.

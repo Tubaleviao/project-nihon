@@ -19,6 +19,7 @@ const WorldShape := preload("res://src/terrain/world_shape.gd")
 const ChunkRecords := preload("res://src/terrain/chunk_records.gd")
 const PlanetBake := preload("res://src/terrain/planet_bake.gd")
 const Csg := preload("res://src/terrain/terrain_csg.gd")
+const Frontier := preload("res://src/terrain/frontier.gd")
 
 const HYDROLOGY_VERSION := 12   ## the first `TerrainSlice.WORLDGEN_VERSION` with water
 ## Phase 302 — the first `TerrainSlice.WORLDGEN_VERSION` whose rivers have soft banks (`soft_carve`); a chunk
@@ -39,6 +40,21 @@ const LAKE_CELL_SMALL_M := 500.0   ## Phase 238: divides the 2,000 km circumfere
 const LAKE_RADIUS_MIN := 40.0
 const LAKE_RADIUS_MAX := 100.0
 const LAKE_MIN_ALTITUDE := 3.0      ## the lake surface lies at least this far above the sea
+## Phase 232 — the lake shore. Outside the disc the ground is cut down to a bank line rising LAKE_BANK_NUM / LAKE_BANK_DEN
+## per metre from the water (then LAKE_WALL_SLOPE per metre past LAKE_BANK_SOFT_M, so the cut ends at LAKE_REACH_M), and
+## raised into a levee: from the water level at the shore up to the freeboard at LAKE_CREST_M out, then back down at
+## LAKE_LEVEE_SLOPE per metre. The ground samples that clamp the surface lie on rings out to LAKE_REACH_M.
+const LAKE_BANK_NUM := 1
+const LAKE_BANK_DEN := 2
+const LAKE_BANK_SOFT_M := 20.0
+const LAKE_WALL_SLOPE := 20
+const LAKE_REACH_M := 32.0
+const LAKE_CREST_M := 2.0
+const LAKE_LEVEE_SLOPE := 0.25
+const LAKE_K_MM := 400              ## the smoothing width of the bowl's and the bank's union with the ground
+const LAKE_POLE_GAP_M := 1500.0   ## a lake keeps this far from the fold at a pole
+const LAKE_RING_STEPS := 24
+const LAKE_RINGS_M: Array = [1.0, 8.0, 16.0, 24.0, 32.0]
 const RIVER_CELL_M := 1024.0   ## see `river_cell()`
 const RIVER_CELL_SMALL_M := 1000.0   ## Phase 238: 2,000 cells round the small planet
 
@@ -71,6 +87,9 @@ static var _features_n := 0
 static var _blocks: Dictionary = {}   # seed → { Vector2i block → features }
 static var _blocks_n := 0
 static var _gen := 0
+static var _lakes: Dictionary = {}   # "seed:cx:cz" → lake Dictionary or {}
+static var _ease_mutex := Mutex.new()
+static var _ease_cache: Dictionary = {}   # "seed:x:z" of a lake → [records revision, [Rect2 of each older recorded chunk near it]]
 
 ## Forget cached rivers (the fabric or the seed changed).
 static func reset_cache() -> void:
@@ -78,11 +97,15 @@ static func reset_cache() -> void:
 	_rivers.clear()
 	_features.clear()
 	_blocks.clear()
+	_lakes.clear()
 	_rivers_n = 0
 	_features_n = 0
 	_blocks_n = 0
 	_gen += 1
 	_mutex.unlock()
+	_ease_mutex.lock()
+	_ease_cache.clear()
+	_ease_mutex.unlock()
 
 # ---------------------------------------------------------------------------
 # Fabric parameters
@@ -90,6 +113,8 @@ static func reset_cache() -> void:
 static var _warmed := false
 static var _lake_freq := 0.35
 static var _lake_depth := 4.0
+static var _lake_freeboard := 0.5
+static var _lake_max_levee := 3.0
 static var _source_h := 60.0
 static var _wmin := 4.0
 static var _wmax := 16.0
@@ -104,6 +129,8 @@ static func warm() -> void:
 	if ws != null:
 		_lake_freq = _num(ws, "lakeFrequency", _lake_freq)
 		_lake_depth = _num(ws, "lakeMinDepth", _lake_depth)
+		_lake_freeboard = _num(ws, "lakeFreeboard", _lake_freeboard)
+		_lake_max_levee = _num(ws, "lakeMaxLevee", _lake_max_levee)
 		_source_h = _num(ws, "riverSourceHeight", _source_h)
 		_wmin = _num(ws, "riverWidthMin", _wmin)
 		_wmax = _num(ws, "riverWidthMax", _wmax)
@@ -120,7 +147,7 @@ static func _num(res: Variant, field: String, fallback: float) -> float:
 ## The parameters in a fixed order, for `TerrainSlice.worldgen_fingerprint`.
 static func fingerprint_fields() -> Array:
 	warm()
-	return [_lake_freq, _lake_depth, _source_h, _wmin, _wmax, float(_catch), ",".join(PackedStringArray(_blocked))]
+	return [_lake_freq, _lake_depth, _lake_freeboard, _lake_max_levee, _source_h, _wmin, _wmax, float(_catch), ",".join(PackedStringArray(_blocked))]
 
 # ---------------------------------------------------------------------------
 # Eligibility
@@ -162,8 +189,26 @@ static func _biome_blocked(seed_v: int, x: float, z: float) -> bool:
 # Lakes
 # ---------------------------------------------------------------------------
 
-## The lake of cell (cx, cz) as `{ x, z, r, surface, depth }`, or {} when the cell holds none. Pure.
+## The lake of cell (cx, cz) as `{ x, z, r, surface, depth, shore }`, or {} when the cell holds none. Pure; cached
+## (Phase 232: its surface reads about 120 ground samples).
 static func lake_of_cell(seed_v: int, cx: int, cz: int) -> Dictionary:
+	var key := "%d:%d:%d" % [seed_v, cx, cz]
+	_mutex.lock()
+	var hit: Variant = _lakes.get(key)
+	var gen := _gen
+	_mutex.unlock()
+	if hit != null:
+		return hit
+	var built := _build_lake(seed_v, cx, cz)
+	_mutex.lock()
+	if gen == _gen:
+		if _lakes.size() >= CACHE_MAX:
+			_lakes.clear()
+		_lakes[key] = built
+	_mutex.unlock()
+	return built
+
+static func _build_lake(seed_v: int, cx: int, cz: int) -> Dictionary:
 	warm()
 	var w := float(TerrainSlice.circumference_chunks()) * TerrainSlice.CHUNK_METERS
 	var ccx := posmod(cx, _cells(w, lake_cell()))
@@ -174,15 +219,150 @@ static func lake_of_cell(seed_v: int, cx: int, cz: int) -> Dictionary:
 	var r := LAKE_RADIUS_MIN + (LAKE_RADIUS_MAX - LAKE_RADIUS_MIN) * _rand(seed_v, ccx, cz, 4)
 	if Vector2(x - WorldShape.SPAWN_CENTER.x, z - WorldShape.SPAWN_CENTER.y).length() < WorldShape.SPAWN_PLAIN_M + r:
 		return {}   # the spawn plain stays dry: the whole disc, not only its centre
+	# A lake is placed in unfolded coordinates, so one near a pole would not be the same in the frame beyond it: none within
+	# the fold margin and its view (Phase 120's fold is not seen), the shore and bank included.
+	if absf(z) + r + LAKE_REACH_M > float(TerrainSlice.pole_chunks()) * TerrainSlice.CHUNK_METERS - LAKE_POLE_GAP_M:
+		return {}
 	var surface := _shape(seed_v, x, z, w)
 	for i in 8:
 		var p := Vector2.from_angle(TAU * float(i) / 8.0) * r
 		surface = minf(surface, _shape(seed_v, x + p.x, z + p.y, w))
+	# Phase 232: the ground outside the disc, detail noise and massifs included, never lies below the surface.
+	var noise := FastNoiseLite.new()
+	TerrainSlice.configure_noise(noise, seed_v)
+	var cache := TerrainSlice.new_corner_cache()
+	var ring: Array = []   # [distance beyond the shore, ground height]
+	for ring_m in LAKE_RINGS_M:
+		for i in LAKE_RING_STEPS:
+			var q := Vector2.from_angle(TAU * (float(i) + 0.5 * float(int(ring_m) % 2)) / float(LAKE_RING_STEPS)) * (r + float(ring_m))
+			var g := TerrainSlice.height_wrapped_in(seed_v, noise, x + q.x, z + q.y, w, cache, [])
+			ring.append([float(ring_m), g])
+			surface = minf(surface, g)
 	if surface < WorldShape.sea_level() + LAKE_MIN_ALTITUDE or surface > WorldShape.max_height() * 0.5:
 		return {}
+	# The levee the shore needs where the ground sits under it; a lake that would need more than the maximum is dropped.
+	for rg in ring:
+		if levee_height(surface, float(rg[0])) - float(rg[1]) > _lake_max_levee:
+			return {}
 	if _biome_blocked(seed_v, x, z):
 		return {}
-	return { "x": x, "z": z, "r": r, "surface": surface, "depth": _lake_depth + 4.0 * _rand(seed_v, ccx, cz, 5) }
+	return { "x": x, "z": z, "r": r, "surface": surface, "depth": _lake_depth + 4.0 * _rand(seed_v, ccx, cz, 5), "shore": true }
+
+## Phase 232 — `f` (features of a chunk or block) with each lake that reaches an older recorded chunk (one recorded
+## before hydrology, so it holds no water) carrying `ease`: the rectangles of those chunks within `Frontier.BLEND_CHUNKS`
+## of the lake's reach, and the ground sampler for their edge. Pure per call: the caches hold the plain features, so a
+## record changed later takes effect at once. `f` itself when nothing is recorded or no lake is near such a chunk.
+static func _with_ease(f: Dictionary, seed_v: int) -> Dictionary:
+	if f["lakes"].is_empty() or ChunkRecords.is_empty():
+		return f
+	var out: Array = []
+	var changed := false
+	for lk in f["lakes"]:
+		var rects := _older_rects(lk, seed_v)
+		if rects.is_empty() or not lk.has("shore"):
+			out.append(lk)
+			continue
+		var noise := FastNoiseLite.new()
+		TerrainSlice.configure_noise(noise, seed_v)
+		var lk2: Dictionary = (lk as Dictionary).duplicate()
+		lk2["ease"] = { "rects": rects, "noise": noise, "cache": TerrainSlice.new_corner_cache(), "seed": seed_v }
+		out.append(lk2)
+		changed = true
+	if not changed:
+		return f
+	return { "lakes": out, "segs": f["segs"] }
+
+static func _older_rects(lk: Dictionary, seed_v: int) -> Array:
+	var key := "%d:%d:%d" % [seed_v, int(float(lk["x"])), int(float(lk["z"]))]
+	var rev := ChunkRecords.revision()
+	_ease_mutex.lock()
+	var hit: Variant = _ease_cache.get(key)
+	_ease_mutex.unlock()
+	if hit != null and int(hit[0]) == rev:
+		return hit[1]
+	var cm := TerrainSlice.CHUNK_METERS
+	var radius := int(ceil((float(lk["r"]) + LAKE_REACH_M) / cm)) + Frontier.BLEND_CHUNKS
+	var centre := Vector2i(floori(float(lk["x"]) / cm), floori(float(lk["z"]) / cm))
+	var rects: Array = []
+	for c in ChunkRecords.records_around(centre, radius, TerrainSlice.wrap_chunk):
+		var rec: Dictionary = ChunkRecords.get_record(TerrainSlice.wrap_chunk(c))
+		if int(rec.get("v", 0)) < HYDROLOGY_VERSION:
+			rects.append(Rect2(float(c.x) * cm, float(c.y) * cm, cm, cm))
+	_ease_mutex.lock()
+	if _ease_cache.size() >= CACHE_MAX:
+		_ease_cache.clear()
+	_ease_cache[key] = [rev, rects]
+	_ease_mutex.unlock()
+	return rects
+
+## Phase 232 — lake `lk` as it is at (x, z): beside an older recorded chunk its surface eases down to that chunk's ground at
+## the nearest point of its edge, by `Frontier.water_weight` of the distance, so the water ends at a shore and not a cut.
+## The depth and freeboard go with the weight; `w` tells `lake_ground` how much of the shore to carve.
+static func _eased(lk: Dictionary, x: float, z: float) -> Dictionary:
+	var ease: Variant = lk.get("ease")
+	if ease == null:
+		return lk
+	var best := INF
+	var at := Vector2.ZERO
+	for rc in ease["rects"]:
+		var rect: Rect2 = rc
+		var q := Vector2(clampf(x, rect.position.x, rect.end.x), clampf(z, rect.position.y, rect.end.y))
+		var d := q.distance_to(Vector2(x, z))
+		if d < best:
+			best = d
+			at = q
+	var w := Frontier.water_weight(best)
+	if w >= 1.0:
+		return lk
+	var g := TerrainSlice.height_wrapped_in(int(ease["seed"]), ease["noise"], at.x, at.y, float(TerrainSlice.circumference_chunks()) * TerrainSlice.CHUNK_METERS, ease["cache"], [])
+	var s := float(lk["surface"])
+	var out := (lk as Dictionary).duplicate()
+	out["surface"] = lerpf(minf(g, s), s, w)
+	out["depth"] = float(lk["depth"]) * w
+	out["fb"] = (_lake_freeboard if _warmed else 0.5) * w
+	out["w"] = w
+	return out
+
+## Phase 232 — the levee's height (m) at `out` metres beyond a shore whose water is at `surface`: the water level at
+## the shore, rising to the freeboard at LAKE_CREST_M, then falling LAKE_LEVEE_SLOPE per metre to the water level again.
+static func levee_height(surface: float, out: float, freeboard: float = -1.0) -> float:
+	warm()
+	var fb := _lake_freeboard if freeboard < 0.0 else freeboard
+	if out <= 0.0:
+		return surface
+	if out < LAKE_CREST_M:
+		return surface + fb * out / LAKE_CREST_M
+	return surface + maxf(0.0, fb - (out - LAKE_CREST_M) * LAKE_LEVEE_SLOPE)
+
+## Phase 232 — ground `h` (m) at distance `d` (m) from the centre of lake `lk` carved with its bowl, bank and levee, in integer mm
+## through `terrain_csg.gd`. Inside the disc the ground is smooth-subtracted down to the bowl (a paraboloid, flat at the shore
+## and `depth` under the water at the centre). Outside, the ground is cut to the bank line and the result is smooth-unioned
+## up into the levee, so the water always meets a sloping bank. Pure.
+static func lake_ground(lk: Dictionary, d: float, h: float) -> float:
+	var r := float(lk["r"])
+	var s_mm := roundi(float(lk["surface"]) * 1000.0)
+	var g := roundi(h * 1000.0)
+	if d < r:
+		var t := d * d / (r * r)
+		var bed := s_mm - roundi(float(lk["depth"]) * (1.0 - t) * 1000.0) - 50
+		if not lk.has("shore"):
+			return minf(h, float(bed) * 0.001)
+		return float(mini(g, Csg.smooth_union(g, bed, LAKE_K_MM))) * 0.001
+	if not lk.has("shore"):
+		return h
+	var out := d - r
+	if out >= LAKE_REACH_M:
+		return h
+	var wt := float(lk.get("w", 1.0))   # Phase 232: less than 1 beside an older recorded chunk, which the shore must not alter
+	if wt <= 0.0:
+		return h
+	var out_mm := roundi(out * 1000.0)
+	var soft_mm := roundi(LAKE_BANK_SOFT_M * 1000.0)
+	var cut := s_mm - 50 + mini(out_mm, soft_mm) * LAKE_BANK_NUM / LAKE_BANK_DEN + maxi(out_mm - soft_mm, 0) * LAKE_WALL_SLOPE
+	var lowered := Csg.smooth_union(g, cut, LAKE_K_MM) if cut - g < LAKE_K_MM else g
+	var levee := roundi(levee_height(float(lk["surface"]), out, float(lk.get("fb", -1.0))) * 1000.0)
+	var shore := float(Csg.smooth_intersection(lowered, levee, LAKE_K_MM)) * 0.001
+	return shore if wt >= 1.0 else lerpf(h, shore, wt)
 
 # ---------------------------------------------------------------------------
 # Rivers
@@ -284,12 +464,12 @@ static func features_for_chunk(chunk: Vector2i, seed_v: int) -> Dictionary:
 	var gen := _gen
 	_mutex.unlock()
 	if hit != null:
-		return hit
+		return _with_ease(hit, seed_v)
 	var built := _build_features(chunk, seed_v)
 	_mutex.lock()
 	if gen != _gen:   # reset while building: the result may use old parameters, so it is not stored
 		_mutex.unlock()
-		return built
+		return _with_ease(built, seed_v)
 	if _features_n >= FEATURE_CACHE_MAX:
 		_features.clear()
 		_features_n = 0
@@ -298,7 +478,7 @@ static func features_for_chunk(chunk: Vector2i, seed_v: int) -> Dictionary:
 	(_features[seed_v] as Dictionary)[chunk] = built
 	_features_n += 1
 	_mutex.unlock()
-	return built
+	return _with_ease(built, seed_v)
 
 ## The features of block `block` (a BLOCK_M square, `floori(x / BLOCK_M)`), cached. A superset of the features of
 ## every chunk inside it, in the same order, so `water_at` answers any point in the block as its chunk's features do.
@@ -309,14 +489,14 @@ static func block_features(block: Vector2i, seed_v: int) -> Dictionary:
 	var gen := _gen
 	_mutex.unlock()
 	if hit != null:
-		return hit
+		return _with_ease(hit, seed_v)
 	var x0 := float(block.x) * BLOCK_M
 	var z0 := float(block.y) * BLOCK_M
 	var built := _features_in(seed_v, x0, z0, x0 + BLOCK_M, z0 + BLOCK_M)
 	_mutex.lock()
 	if gen != _gen:   # reset while building (a worker outlived it): the result is returned, not stored
 		_mutex.unlock()
-		return built
+		return _with_ease(built, seed_v)
 	if _blocks_n >= BLOCK_CACHE_MAX:
 		_blocks.clear()
 		_blocks_n = 0
@@ -325,7 +505,7 @@ static func block_features(block: Vector2i, seed_v: int) -> Dictionary:
 	(_blocks[seed_v] as Dictionary)[block] = built
 	_blocks_n += 1
 	_mutex.unlock()
-	return built
+	return _with_ease(built, seed_v)
 
 static func _build_features(chunk: Vector2i, seed_v: int) -> Dictionary:
 	var cm := TerrainSlice.CHUNK_METERS
@@ -335,7 +515,7 @@ static func _build_features(chunk: Vector2i, seed_v: int) -> Dictionary:
 static func _features_in(seed_v: int, x0: float, z0: float, x1: float, z1: float) -> Dictionary:
 	var out := { "lakes": [], "segs": [] }
 	warm()
-	var pad := _wmax + LAKE_RADIUS_MAX
+	var pad := _wmax + LAKE_RADIUS_MAX + LAKE_REACH_M
 	# Lakes: the cells whose disc can reach the chunk.
 	for cz in range(floori((z0 - pad) / lake_cell()), floori((z1 + pad) / lake_cell()) + 1):
 		for cx in range(floori((x0 - pad) / lake_cell()), floori((x1 + pad) / lake_cell()) + 1):
@@ -444,12 +624,13 @@ static func _disc_touches(d: Dictionary, x0: float, z0: float, x1: float, z1: fl
 ## is the highest the ground may be there; the surface is the water level. Where a lake and a river
 ## overlap the lower surface wins nothing: the first feature found is used (all are static).
 static func water_at(features: Dictionary, x: float, z: float) -> Dictionary:
-	for lk in features["lakes"]:
-		var dx := x - float(lk["x"])
-		var dz := z - float(lk["z"])
-		var r := float(lk["r"])
+	for lk0 in features["lakes"]:
+		var dx := x - float(lk0["x"])
+		var dz := z - float(lk0["z"])
+		var r := float(lk0["r"])
 		var d2 := dx * dx + dz * dz
 		if d2 < r * r:
+			var lk := _eased(lk0, x, z)
 			var t := d2 / (r * r)
 			var s := float(lk["surface"])
 			return { "surface": s, "bed": s - float(lk["depth"]) * (1.0 - t) - 0.05, "width": INF }
@@ -508,12 +689,17 @@ static func _carve_point(f: Dictionary, x: float, z: float, h: float, soft: bool
 		var wt := water_at(f, x, z)
 		return h if wt.is_empty() else minf(h, float(wt["bed"]))
 	var out := h
-	for lk in f["lakes"]:   # as `water_at`: the first lake holding the point lowers it to its bed
+	for lk0 in f["lakes"]:   # as `water_at`: the first lake holding the point lowers it to its bed
+		var lk: Dictionary = lk0
 		var dx := x - float(lk["x"])
 		var dz := z - float(lk["z"])
 		var r := float(lk["r"])
 		var d2 := dx * dx + dz * dz
-		if d2 < r * r:
+		if lk.has("shore"):
+			if d2 < (r + LAKE_REACH_M) * (r + LAKE_REACH_M):   # Phase 232: the bowl, bank and levee
+				out = lake_ground(_eased(lk, x, z), sqrt(d2), out)
+				break
+		elif d2 < r * r:
 			out = minf(out, float(lk["surface"]) - float(lk["depth"]) * (1.0 - d2 / (r * r)) - 0.05)
 			break
 	return soft_carve(f["segs"], x, z, out)

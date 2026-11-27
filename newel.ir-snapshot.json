@@ -1,5 +1,5 @@
 {
-  "schemaHash": "sha256:6e2a4154ae27305ae7de7e3f88d38fc545ed6ac4641ee2bb40f92098fef8bc4c",
+  "schemaHash": "sha256:71d81405783ff635dfa595873f6b09f6a3f3798af54f76c264219a1b6a07c166",
   "schema": {
     "version": "3.0.0",
     "meta": {
@@ -9098,6 +9098,24 @@
             "primaryKey": false,
             "pii": false,
             "defaultValue": 4
+          },
+          "lakeFreeboard": {
+            "name": "lakeFreeboard",
+            "type": "decimal",
+            "description": "Metres a lake's levee crest stands above its surface where the rim would sit lower, 0 to 2 (Phase 232)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 0.5
+          },
+          "lakeMaxLevee": {
+            "name": "lakeMaxLevee",
+            "type": "decimal",
+            "description": "Most metres a lake's levee may have to rise above the natural ground; a lake that would need more is dropped, at least lakeFreeboard (Phase 232)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 3
           },
           "riverSourceHeight": {
             "name": "riverSourceHeight",

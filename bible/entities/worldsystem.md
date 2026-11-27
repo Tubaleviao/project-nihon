@@ -33,6 +33,8 @@ The planet as a fact of the fabric. The world takes globe semantics on a flat ch
 | `clearRadiusMetres` | decimal | yes | Metres (horizontal) around a placed station within which trees are cleared for good (Phase 116) |
 | `lakeFrequency` | decimal | yes | Chance, 0–1, that a 512 m lake cell holds a lake when its basin is deep enough (Phase 217) |
 | `lakeMinDepth` | decimal | yes | Metres a lake basin is carved below its surface at the centre, at least 1 (Phase 217) |
+| `lakeFreeboard` | decimal | yes | Metres a lake's levee crest stands above its surface where the rim would sit lower, 0 to 2 (Phase 232) |
+| `lakeMaxLevee` | decimal | yes | Most metres a lake's levee may have to rise above the natural ground; a lake that would need more is dropped, at least lakeFreeboard (Phase 232) |
 | `riverSourceHeight` | decimal | yes | World Y in metres a river may start at or above: above seaLevel and below maxHeight (Phase 217) |
 | `riverWidthMin` | decimal | yes | Metres wide a river is at its source, at least 2 (Phase 217) |
 | `riverWidthMax` | decimal | yes | Metres wide a river grows to once its catchment is full, not below riverWidthMin (Phase 217) |

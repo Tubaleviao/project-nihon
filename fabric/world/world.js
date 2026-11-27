@@ -34,6 +34,8 @@ module.exports = {
       clearRadiusMetres:  { type: 'decimal', description: 'Metres (horizontal) around a placed station within which trees are cleared for good (Phase 116)', defaultValue: 3 },
       lakeFrequency:    { type: 'decimal', description: 'Chance, 0–1, that a 512 m lake cell holds a lake when its basin is deep enough (Phase 217)', defaultValue: 0.35 },
       lakeMinDepth:     { type: 'decimal', description: 'Metres a lake basin is carved below its surface at the centre, at least 1 (Phase 217)', defaultValue: 4 },
+      lakeFreeboard:    { type: 'decimal', description: 'Metres a lake\'s levee crest stands above its surface where the rim would sit lower, 0 to 2 (Phase 232)', defaultValue: 0.5 },
+      lakeMaxLevee:     { type: 'decimal', description: 'Most metres a lake\'s levee may have to rise above the natural ground; a lake that would need more is dropped, at least lakeFreeboard (Phase 232)', defaultValue: 3 },
       riverSourceHeight: { type: 'decimal', description: 'World Y in metres a river may start at or above: above seaLevel and below maxHeight (Phase 217)', defaultValue: 60 },
       riverWidthMin:    { type: 'decimal', description: 'Metres wide a river is at its source, at least 2 (Phase 217)', defaultValue: 4 },
       riverWidthMax:    { type: 'decimal', description: 'Metres wide a river grows to once its catchment is full, not below riverWidthMin (Phase 217)', defaultValue: 16 },
