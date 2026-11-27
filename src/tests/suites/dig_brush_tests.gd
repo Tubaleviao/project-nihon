@@ -12,6 +12,10 @@ func register() -> void:
 	_run_test("dig brush: the cut stops at BEDROCK_DEPTH", _test_dig_bedrock)
 	_run_test("dig brush: a cut_ok that refuses rock removes no rock", _test_dig_cut_rules)
 	_run_test("dig brush: a side dig into a cliff leaves a roof run above the hole", _test_dig_side_roof)
+	_run_test("dig brush: a shovel dig is one brush op that moves a shovelful", _test_dig_shovel_host)
+	_run_test("dig brush: yield is conserved however a volume is split", _test_dig_yield_conservation)
+	_run_test("dig brush: a client applying the wire op holds the host's runs", _test_dig_wire_parity)
+	_run_test("dig brush: the fabric brushes stay under the radius cap", _test_dig_fabric_caps)
 	_run_test("dig brush: the cells repeat for the same brush and runs", _test_dig_deterministic)
 
 func _flat(top: float) -> Callable:
@@ -74,3 +78,79 @@ func _test_dig_deterministic() -> void:
 	var a: Array = Ras.rasterise(brush, _flat(0.5))
 	var b: Array = Ras.rasterise(brush, _flat(0.5))
 	assert_true(a.size() > 0 and a == b, "same brush, same cells")
+
+func _shovel_voxel() -> Array:
+	var v := _make_voxel()
+	var inv := InventorySlice.new()
+	add_child(inv)
+	inv._max_weight = 1.0e9
+	v.inventory_slice = inv
+	inv.add_item("StoneShovel", 1)
+	return [v, inv]
+
+func _runs_of(v: VoxelSlice, centre: Vector2, reach: int) -> Dictionary:
+	var out := {}
+	var t0 := Vector2i(floori(centre.x / VoxelSlice.TILE_SIZE), floori(centre.y / VoxelSlice.TILE_SIZE))
+	for dx in range(-reach, reach + 1):
+		for dz in range(-reach, reach + 1):
+			var t := t0 + Vector2i(dx, dz)
+			out[t] = v.get_runs_at_tile(t)
+	return out
+
+func _test_dig_shovel_host() -> void:
+	var pair := _shovel_voxel()
+	var v: VoxelSlice = pair[0]
+	var inv: Node = pair[1]
+	var top := v.get_voxel_height_at(Vector2(16.25, 16.25))
+	var sent: Array = []
+	var cb := func(action: String, pos: Vector3, normal: Vector3, material: String) -> void: sent.append([action, pos, normal, material])
+	GameBus.block_changed.connect(cb)
+	var r := v.mine_block(Vector3(16.25, top, 16.25), Vector3.UP)
+	GameBus.block_changed.disconnect(cb)
+	assert_true(bool(r.get("success", false)), "the dig succeeds")
+	assert_true(sent.size() == 1 and sent[0][0] == "dig", "one dig op on the wire, not one per slab")
+	assert_true(int(r["quantity"]) > 4, "a shovelful yields many units, got %d" % int(r["quantity"]))
+	assert_true(v.get_voxel_height_at(Vector2(16.25, 16.25)) < top, "the ground is lower")
+	v.queue_free()
+	inv.queue_free()
+
+func _test_dig_wire_parity() -> void:
+	var host := _make_voxel()
+	var client := _make_voxel()
+	var tool := "StoneShovel"
+	var plan := host._dig.plan(Vector3(16.25, 1.5, 16.25), 0.6, 0.0, "sphere", tool)
+	assert_true(not (plan["cells"] as Array).is_empty(), "the host plan cuts something")
+	host._dig.apply_plan(plan["cells"], 0)
+	client.apply_block_change("dig", Vector3(16.25, 1.5, 16.25), Vector3(0.6, 0.0, 0.0), tool)
+	var a := _runs_of(host, Vector2(16.25, 16.25), 3)
+	var b := _runs_of(client, Vector2(16.25, 16.25), 3)
+	assert_true(a == b, "identical runs for every touched tile")
+	var changed := 0
+	for t in a:
+		if a[t] != _make_voxel().get_runs_at_tile(t):
+			changed += 1
+	assert_true(changed > 0, "the dig changed columns")
+	host.queue_free()
+	client.queue_free()
+
+func _test_dig_yield_conservation() -> void:
+	var v := _make_voxel()
+	var unit := 0.5 * 0.5 * 0.125
+	var small := {}
+	for _i in 20:
+		var paid: Dictionary = v._dig.pay_units("p1", { "Soil": unit * 0.1 })
+		for m in paid:
+			small[m] = int(small.get(m, 0)) + int(paid[m])
+	var big: Dictionary = v._dig.pay_units("p2", { "Soil": unit * 0.1 * 20.0 })
+	assert_eq(int(small.get("Soil", 0)), int(big.get("Soil", 0)), "20 small digs yield what one big dig does")
+	v.queue_free()
+
+func _test_dig_fabric_caps() -> void:
+	var res: Resource = GameData.WORLD_SYSTEMS.get("DigBrush", null)
+	assert_true(res != null, "the DigBrush fabric entity exists")
+	var cap := float(res.get("radiusCap"))
+	for tool in (res.get("brushes") as Dictionary):
+		var b: Dictionary = res.get("brushes")[tool]
+		assert_true(float(b["radiusMax"]) <= cap, "%s stays under the cap" % tool)
+	var shovel: Dictionary = res.get("brushes")["StoneShovel"]
+	assert_true(not (shovel["materials"] as Array).has("Ashite"), "a shovel cuts no rock")

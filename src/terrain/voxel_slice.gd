@@ -108,6 +108,8 @@ const SeamWrap := preload("res://src/terrain/seam_wrap.gd")
 const Settle := preload("res://src/terrain/settle.gd")
 const VoxelPersist := preload("res://src/terrain/voxel_persist.gd")
 const VoxelEdit := preload("res://src/terrain/voxel_edit.gd")
+const VoxelDig := preload("res://src/terrain/voxel_dig.gd")
+const DigRasteriser := preload("res://src/terrain/dig_rasteriser.gd")
 const VoxelBuild := preload("res://src/terrain/voxel_build.gd")
 const VoxelQuery := preload("res://src/terrain/voxel_query.gd")
 const VoxelConsts := preload("res://src/terrain/voxel_consts.gd")
@@ -195,6 +197,7 @@ const VEIN_DEPOSIT_INSET := 0.16
 
 var _persist := VoxelPersist.new(self)
 var _edit := VoxelEdit.new(self)
+var _dig := VoxelDig.new(self)   # Phase 300: a dig is one brush op
 var _build := VoxelBuild.new(self)
 var _query := VoxelQuery.new(self)
 var _predict := preload("res://src/terrain/edit_prediction.gd").new(self)   # Phase 263: a client's own edits, ahead of the host

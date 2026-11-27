@@ -31,6 +31,12 @@ func mine_block(world_pos: Vector3, normal: Vector3 = Vector3.UP, player_id: Str
 	var pick = s._held_pick(inventory)
 	var axe := _held_axe(inventory) if pick == "" else ""
 
+	# Phase 300 — a shovel (any digger whose brush reaches a whole tile) digs a shovelful, not a slab.
+	if str(span["material"]) == "":
+		var digger := _held_shovel(inventory)
+		if s.VoxelDig.is_brush(digger) and s.VoxelDig.brush_for(digger)["materials"].has(str(s.natural_yield(tile, span)["material"])):
+			return dig_brush(world_pos, normal, player_id, digger, inventory)
+
 	# Phase 205 — whose block this is, decided before anything is spent: free ground, the owner taking it
 	# apart, or someone else's hit on it (damage, or destruction at zero durability). A natural span is
 	# nobody's, whatever the index still says about it.
@@ -138,6 +144,45 @@ func mine_block(world_pos: Vector3, normal: Vector3 = Vector3.UP, player_id: Str
 	GameBus.block_changed.emit("mine", world_pos, normal, material)
 	return { "success": true, "material": material, "quantity": quantity, "position": pos, "player_id": player_id,
 		"destroyed": verdict == "destroy" }
+
+## Phase 300 — the host digs one brush: the brush is the held tool's, from the fabric table, never the client's. One
+## durability point, one op on the wire (`block_changed("dig", centre, (radius, k, shape), tool)`), yield by volume.
+func dig_brush(world_pos: Vector3, normal: Vector3, player_id: String, tool: String, inventory: Node) -> Dictionary:
+	var fail := { "success": false, "material": "", "quantity": 0, "position": world_pos, "player_id": player_id }
+	var spec: Dictionary = s.VoxelDig.brush_for(tool)
+	var radius := float(spec["radius"])
+	var shape := str(spec["shape"])
+	# Snapped here, so the centre on the wire is exact in float32 and a client snaps to the same cell.
+	var snapped: Vector3i = s.DigRasteriser.snap_centre(s.DigRasteriser.centre_from_hit(world_pos, normal, radius))
+	var centre := Vector3(snapped) / 1000.0
+	var p: Dictionary = s._dig.plan(centre, radius, 0.0, shape, tool)
+	if (p["cells"] as Array).is_empty():
+		return fail
+	if tool != "" and inventory != null and inventory.has_method("use_item"):
+		if not inventory.use_item(tool, "dig"):
+			return fail
+	var applied: Dictionary = s._dig.apply_plan(p["cells"], _edit_level(player_id))
+	var paid: Dictionary = s._dig.pay_units(player_id, applied["volumes"])
+	var total := 0
+	var first := ""
+	for material in paid:
+		var units := int(paid[material])
+		total += units
+		if first == "":
+			first = str(material)
+		if inventory != null and inventory.has_method("add_item"):
+			var banked: bool = inventory.add_item(str(material), units)
+			if not banked and not s._is_remote_actor(player_id):
+				GameBus.inventory_full.emit()
+			if banked and s.is_authoritative:
+				GameBus.resource_gathered.emit(player_id, str(material), units)
+				WorkSkills.grant(s.player_registry, player_id, WorkSkills.gather_row(str(material)), units)
+		GameBus.block_mined.emit(str(material), units, centre)
+	s._push_inventory(player_id)
+	var first_tile: Vector2i = (applied["tiles"] as Array)[0]
+	GameBus.block_edit_resolved.emit(first_tile, centre.y)
+	GameBus.block_changed.emit("dig", centre, Vector3(radius, 0.0, float(s.DigRasteriser.SHAPES.find(shape))), tool)
+	return { "success": true, "material": first, "quantity": total, "position": centre, "player_id": player_id, "destroyed": false }
 
 ## Phase 43 — what mining a NATURAL span of `tile` yields, off the ore field:
 ## `{ material, quantity, vein }`. Inside a LIVE vein it is the vein's material and its
@@ -659,6 +704,8 @@ func _normalise_ops(ops: Array) -> Array:
 func _apply_edit(action: String, position: Vector3, normal: Vector3, material: String, level: int = EditRemesh.NEIGHBOUR) -> Dictionary:
 	if action == "settle":
 		return s._apply_settle(position, normal, material)
+	if action == "dig":
+		return s._dig.apply_wire(position, normal, material, level)
 	var r = s._resolve_edit_tile(action, position, normal)
 	var tile: Vector2i = r["tile"]
 	var xz: Vector2 = r["xz"]
