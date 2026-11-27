@@ -97,6 +97,7 @@ covers `src/`, `tools/`, the live docs and `CLAUDE.md`; this archive is excluded
 | 242 | [phases-242.md](phases-242.md) |
 | 243 | [phases-243.md](phases-243.md) |
 | 244 | [phases-244.md](phases-244.md) |
+| 245 | [phases-245-302.md](phases-245-302.md) |
 | 248 | [phases-248.md](phases-248.md) |
 | 250 | [phases-250.md](phases-250.md) |
 | 252 | [phases-252.md](phases-252.md) |
@@ -105,6 +106,7 @@ covers `src/`, `tools/`, the live docs and `CLAUDE.md`; this archive is excluded
 | 255 | [phases-255.md](phases-255.md) |
 | 256 | [phases-256.md](phases-256.md) |
 | 257 | [phases-257.md](phases-257.md) |
+| 302 | [phases-245-302.md](phases-245-302.md) |
 
 Phases with no section of their own were merged into another phase:
 
@@ -347,6 +349,8 @@ Filed by the owner on 2026-11-10. The other phases of the arc are open in [ROADM
 | 242 | Terrain materials: blend weights, a triplanar shader and CC0 textures | Done | [phases-242.md](phases-242.md) |
 | 243 | Level of detail past the window: voxel rings out to the distant ring, faded, under the haze | Done | [phases-243.md](phases-243.md) |
 | 244 | A chunk cache on disk: the host keeps generated chunks, the client keeps built meshes | Done | [phases-244.md](phases-244.md) |
+| 245 | The planet bake: continents, rivers with flow, erosion and biomes at 2 km | Done | [phases-245-302.md](phases-245-302.md) |
+| 302 | The planet bake, part 2: hydraulic erosion, biomes, macro height from the bake and the host's copy | Done | [phases-245-302.md](phases-245-302.md) |
 
 ### The first hour, from nothing (Phases 259–266)
 

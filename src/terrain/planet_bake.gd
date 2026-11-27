@@ -6,7 +6,9 @@ extends RefCounted
 ## lowest index), flow accumulates from the top down, and cells whose flow reaches a threshold are river
 ## cells. Heights are integer millimetres, so every machine bakes the same bytes.
 ##
-## Phase 302 added hydraulic erosion; the biome field is stored in the bake (`biome_field`); the host's boot bakes off the main thread behind a progress screen (`BakeProgress`, `BakeScreen`); still to come: macro height from the bake and the host's copy.
+## Phase 302 added hydraulic erosion, the biome byte (`biome_field`), bake profiles by world version (`profile`) and the
+## macro height read (`sample_height`); the host's boot bakes off the main thread (`BakeJob`, `BakeBoot`, `BakeScreen`) and
+## a client can fetch the host's copy (`BakeTransfer`, `BakeNet`).
 
 const NativeLoaderScript := preload("res://src/core/native_loader.gd")
 const WorldShape := preload("res://src/terrain/world_shape.gd")
