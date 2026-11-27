@@ -93,6 +93,7 @@ covers `src/`, `tools/`, the live docs and `CLAUDE.md`; this archive is excluded
 | 222 | [phases-222.md](phases-222.md) |
 | 223 | [phases-223.md](phases-223.md) |
 | 224 | [phases-224.md](phases-224.md) |
+| 232 | [phase-232.md](phase-232.md) |
 | 241 | [phases-241.md](phases-241.md) |
 | 242 | [phases-242.md](phases-242.md) |
 | 243 | [phases-243.md](phases-243.md) |
