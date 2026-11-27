@@ -78,7 +78,7 @@ func _test_job_thread() -> void:
 	var dir := "user://test_bake_job"
 	var circ := float(W) * Bake.CELL_M
 	var job := BakeJobScript.new()
-	job.plan = BakeJobScript.plan_for(11, circ, 1, dir)
+	job.plan = BakeJobScript.plan_for(11, circ, Bake.BAKE_VERSION, dir)
 	assert_false(job.plan.is_empty(), "a 32-cell planet has a plan")
 	DirAccess.remove_absolute(str(job.plan.path))
 	DirAccess.remove_absolute(str(job.plan.path) + ".sha256")

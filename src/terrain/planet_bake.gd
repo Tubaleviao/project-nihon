@@ -27,6 +27,8 @@ const MAX_CELLS := 1000000
 ## and took up to 1.3 km off the 8 km summits.
 const ERODE_PASSES := 6
 const ERODE_TALUS_MM := 500000
+## The Phase 245 talus (2.4 m per cell, 0.12%), kept for the worlds recorded at worldgen 14 (see `profile`).
+const ERODE_TALUS_245_MM := 2400
 const ERODE_SHARE := 8
 ## Hydraulic erosion (Phase 302): passes, and the most a river cell is cut per pass (mm). A cell cuts
 ## `min(HYDRO_CUT_MM * flow / river_flow, ...)` down to one mm above its downstream neighbour.
@@ -59,24 +61,41 @@ static func _report(progress: Callable, stage: StringName, fraction: float) -> v
 		progress.call(stage, fraction)
 
 
+## The bake versions: a bake is made by the algorithm of the worldgen version its world was recorded at, so a
+## world's baked rivers never change under it (the stable-world rule). 14 = Phase 245: thermal erosion at a
+## 2.4 m talus, no hydraulic pass, no biome byte. 15 = Phase 302: a 500 m talus, the hydraulic pass, the biome byte.
+const BAKE_VERSION_245 := 14
+const BAKE_VERSION := 15   ## the newest; `TerrainSlice.WORLDGEN_VERSION` (the suite holds them equal)
+
+## The algorithm a bake of `version` runs: { talus (mm), hydraulic (bool), biome (bool) }. Any version up to
+## BAKE_VERSION_245 is the Phase 245 profile, any later one the newest.
+static func profile(version: int) -> Dictionary:
+	if version <= BAKE_VERSION_245:
+		return { "talus": ERODE_TALUS_245_MM, "hydraulic": false, "biome": false }
+	return { "talus": ERODE_TALUS_MM, "hydraulic": true, "biome": true }
+
+
 ## `base`: row-major heights in mm, `w` x `h` cells. Cells at or below `sea_mm` are sea.
 ## Returns { w, h, sea_mm, height (filled, mm), dir, flow, river (id per cell, 0 = none) }.
-static func bake(base: PackedInt32Array, w: int, h: int, sea_mm: int, river_flow: int, progress: Callable = Callable()) -> Dictionary:
+## `version` picks the algorithm (`profile`).
+static func bake(base: PackedInt32Array, w: int, h: int, sea_mm: int, river_flow: int, progress: Callable = Callable(), version: int = BAKE_VERSION) -> Dictionary:
+	var pf := profile(version)
 	if NativeLoaderScript.use_native("NativeBake", "bake"):   # same bytes, computed in C++
 		_report(progress, &"terrain", 0.0)
-		var nb: Dictionary = NativeLoaderScript.instance("NativeBake").call("bake", base, w, h, sea_mm, river_flow)
+		var nb: Dictionary = NativeLoaderScript.instance("NativeBake").call("bake", base, w, h, sea_mm, river_flow, int(pf.talus), bool(pf.hydraulic))
 		_report(progress, &"terrain", 1.0)
 		return nb
-	return bake_gd(base, w, h, sea_mm, river_flow, progress)
+	return bake_gd(base, w, h, sea_mm, river_flow, progress, version)
 
 
 ## The GDScript reference the native bake is held equal to.
-static func bake_gd(base: PackedInt32Array, w: int, h: int, sea_mm: int, river_flow: int, progress: Callable = Callable()) -> Dictionary:
+static func bake_gd(base: PackedInt32Array, w: int, h: int, sea_mm: int, river_flow: int, progress: Callable = Callable(), version: int = BAKE_VERSION) -> Dictionary:
 	var n := w * h
+	var pf := profile(version)
 	_report(progress, &"terrain", 0.0)
-	var eroded := erode(base, w, h, sea_mm)
+	var eroded := erode(base, w, h, sea_mm, int(pf.talus))
 	_report(progress, &"terrain", 0.1)
-	var carved := hydraulic(eroded, w, h, sea_mm, river_flow)
+	var carved := hydraulic(eroded, w, h, sea_mm, river_flow) if bool(pf.hydraulic) else eroded
 	_report(progress, &"terrain", 0.6)
 	var filled := _fill(carved, w, h, sea_mm)
 	_report(progress, &"terrain", 0.7)
@@ -105,7 +124,7 @@ static func bake_gd(base: PackedInt32Array, w: int, h: int, sea_mm: int, river_f
 ## each of its four lower land neighbours whose drop exceeds the talus. All moves of a pass are computed
 ## from the heights at its start and summed, so the result does not depend on visiting order. Sea cells
 ## and cells at or below the sea never change; mass is conserved among land cells.
-static func erode(base: PackedInt32Array, w: int, h: int, sea_mm: int) -> PackedInt32Array:
+static func erode(base: PackedInt32Array, w: int, h: int, sea_mm: int, talus_mm: int = ERODE_TALUS_MM) -> PackedInt32Array:
 	var cur := base.duplicate()
 	var delta := PackedInt32Array()
 	delta.resize(w * h)
@@ -125,8 +144,8 @@ static func erode(base: PackedInt32Array, w: int, h: int, sea_mm: int) -> Packed
 					if cur[j] <= sea_mm:
 						continue
 					var drop := cur[i] - cur[j]
-					if drop > ERODE_TALUS_MM:
-						var amount := (drop - ERODE_TALUS_MM) / ERODE_SHARE
+					if drop > talus_mm:
+						var amount := (drop - talus_mm) / ERODE_SHARE
 						delta[i] -= amount
 						delta[j] += amount
 		for i in w * h:
@@ -391,8 +410,11 @@ static func base_grid(seed_v: int, w: int, h: int, circumference_m: float, progr
 
 ## Bake the planet for `seed_v` on a `w` x `h` grid; `river_flow` is the flow that makes a river.
 ## The result carries the biome field (Phase 302), read from the eroded heights.
-static func bake_planet(seed_v: int, w: int, h: int, circumference_m: float, river_flow: int, progress: Callable = Callable()) -> Dictionary:
-	var b := bake(base_grid(seed_v, w, h, circumference_m, progress), w, h, roundi(WorldShape.sea_level() * 1000.0), river_flow, progress)
+## `version` picks the algorithm (`profile`): a Phase 245 bake carries no biome byte.
+static func bake_planet(seed_v: int, w: int, h: int, circumference_m: float, river_flow: int, progress: Callable = Callable(), version: int = BAKE_VERSION) -> Dictionary:
+	var b := bake(base_grid(seed_v, w, h, circumference_m, progress), w, h, roundi(WorldShape.sea_level() * 1000.0), river_flow, progress, version)
+	if not bool(profile(version).biome):
+		return b
 	b["biome"] = biome_field(b, seed_v, circumference_m, load("res://src/terrain/terrain_slice.gd").BIOME_KEYS, progress)
 	return b
 
@@ -454,8 +476,9 @@ static func file_path(dir: String, seed_v: int, worldgen_version: int, w: int, h
 
 ## The bake at `path`, or a fresh one when the file is missing, damaged or (when `expected_hash` is given, as a
 ## client does with the host's hash) not the one the host announced; a fresh bake is saved to `path`.
-## Returns { bake, hash, loaded } (`loaded`: read from the file, not baked now).
-static func ensure(path: String, seed_v: int, w: int, h: int, circumference_m: float, river_flow: int, expected_hash: String = "", progress: Callable = Callable()) -> Dictionary:
+## Returns { bake, hash, loaded } (`loaded`: read from the file, not baked now). `version` is the bake version
+## (`profile`) a fresh bake runs; `path` should name the same version (`file_path`).
+static func ensure(path: String, seed_v: int, w: int, h: int, circumference_m: float, river_flow: int, expected_hash: String = "", progress: Callable = Callable(), version: int = BAKE_VERSION) -> Dictionary:
 	_report(progress, &"load", 0.0)
 	var b := load_file(path)
 	if not b.is_empty():
@@ -464,7 +487,7 @@ static func ensure(path: String, seed_v: int, w: int, h: int, circumference_m: f
 			_report(progress, &"save", 1.0)
 			return { "bake": b, "hash": hash_now, "loaded": true }
 	_report(progress, &"load", 1.0)
-	b = bake_planet(seed_v, w, h, circumference_m, river_flow, progress)
+	b = bake_planet(seed_v, w, h, circumference_m, river_flow, progress, version)
 	_report(progress, &"save", 0.0)
 	DirAccess.make_dir_recursive_absolute(path.get_base_dir())
 	save(b, path)

@@ -277,16 +277,21 @@ func _adopt_planet_bake(seed_v: int, with_bake: bool = true, bake_macro: bool = 
 	Hydrology.clear_all_bakes()   # no bake of another seed or circumference outlives this call
 	_bake_hash = ""
 	_bake_dict = {}
+	_bake_plan = {}
 	if not with_bake:   # the caller keeps the local river trace (an old world, a host without a bake): no bake to pay for
 		return
 	if "--run-tests" in OS.get_cmdline_user_args():
 		return
 	var circ := float(circumference_chunks()) * CHUNK_METERS
-	var plan := BakeJob.plan_for(seed_v, circ, WORLDGEN_VERSION)
+	# Phase 302 — the bake runs the algorithm of the world's worldgen version: a world recorded at 14 (whose
+	# macro height stays the noise shape, `bake_macro` false) keeps the Phase 245 bake and file, so its baked
+	# rivers never move beside its recorded chunks; a newer world (macro from the bake) gets the newest.
+	var plan := BakeJob.plan_for(seed_v, circ, WORLDGEN_VERSION if bake_macro else BAKE_WORLDGEN_VERSION)
 	if plan.is_empty():   # an older, larger planet keeps the local river trace
 		return
+	_bake_plan = plan
 	# Phase 302 — the host's boot has usually baked this file off the main thread already (`BakeBoot`): a read.
-	var r := PlanetBake.ensure(str(plan.path), seed_v, int(plan.w), int(plan.h), circ, PlanetBake.RIVER_FLOW)
+	var r := PlanetBake.ensure(str(plan.path), seed_v, int(plan.w), int(plan.h), circ, PlanetBake.RIVER_FLOW, "", Callable(), int(plan.version))
 	Hydrology.use_bake(seed_v, r.bake, circ, bake_macro)
 	_bake_hash = str(r.hash)
 	_bake_dict = r.bake
@@ -295,6 +300,12 @@ func _adopt_planet_bake(seed_v: int, with_bake: bool = true, bake_macro: bool = 
 ## Hex hash of the bake in use ("" without one); the host sends it so a client can tell its own bake differs.
 var _bake_hash := ""
 var _bake_dict := {}
+var _bake_plan := {}   ## Phase 302: the `BakeJob.plan_for` of the bake in use ({ path, version, … }; {} without one)
+
+## Phase 302 — the bake file and version of the bake in use (`{ path, version, w, h, … }`, {} without one): where a
+## bake fetched from the host is saved, so it lands under the world's own bake version.
+func planet_bake_plan() -> Dictionary:
+	return _bake_plan
 
 ## Phase 302 — the cells of the planet bake this world's circumference calls for (Vector2i.ZERO when none).
 func planet_bake_dims() -> Vector2i:
@@ -338,6 +349,7 @@ func release_planet_bake() -> void:
 	Hydrology.clear_bake(_world_seed)
 	_bake_hash = ""
 	_bake_dict = {}
+	_bake_plan = {}
 
 ## The seed this world is generating from (see set_world_seed).
 func get_world_seed() -> int:

@@ -28,14 +28,16 @@ func plan_job() -> BakeJob:
 	var rec: Dictionary = root._persistence.load_world_record()
 	var seed_v: int = root._terrain.get_world_seed()
 	var circ_m := float(TerrainSlice.circumference_chunks()) * TerrainSlice.CHUNK_METERS
+	var version := TerrainSlice.WORLDGEN_VERSION
 	if not rec.is_empty():
+		version = BakeJob.bake_version_for(PersistenceSlice.worldgen_version_of(rec))   # Phase 302: worldgen 14 keeps its bake
 		if PersistenceSlice.worldgen_version_of(rec) < TerrainSlice.BAKE_WORLDGEN_VERSION:
 			return null   # recorded before the bake: it keeps its local rivers
 		if rec.get("seed", null) != null:
 			seed_v = int(rec["seed"])
 		var km := float(rec["circumferenceKm"]) if rec.has("circumferenceKm") else TerrainSlice.DEFAULT_CIRCUMFERENCE_KM
 		circ_m = float(TerrainSlice.circumference_chunks_for_km(km)) * TerrainSlice.CHUNK_METERS
-	var plan := BakeJob.plan_for(seed_v, circ_m, TerrainSlice.WORLDGEN_VERSION)
+	var plan := BakeJob.plan_for(seed_v, circ_m, version)
 	if plan.is_empty() or FileAccess.file_exists(str(plan.path)):
 		return null   # nothing to bake, or a file to read (a damaged one is baked again by the boot)
 	var job := BakeJob.new()

@@ -23,6 +23,7 @@ func register() -> void:
 	_run_test("bake: ensure loads a good file, and bakes again when it is damaged or not the host's", _test_bake_ensure)
 	_run_test("bake: the bake-only boot skips the main menu and the file name carries seed and version", _test_bake_cli)
 	_run_test("bake: a carved river lies below the water with soft banks", _test_bake_carve)
+	_run_test("bake (302): a worldgen-14 world bakes the Phase 245 bytes, a newer one the new profile", _test_bake_profiles, true)
 	_run_test("bake (302): the baked macro height is interpolated continuously across its cells", _test_bake_macro_interpolated)
 	_run_test("bake (302): the generator reads the baked macro height when a bake is loaded, native and GDScript alike", _test_bake_macro_used, true)
 	_run_test("bake (302): along 50 baked rivers the runtime ground lies below the water and no bank step exceeds 0.5 m", _test_bake_runtime_carve, true)
@@ -126,11 +127,13 @@ func _test_bake_native_parity() -> void:
 	var mism := 0
 	if NativeLoaderScript.use_native("NativeBake", "bake"):
 		for c: Array in cases:
-			var a: Dictionary = Bake.bake_gd(c[0], c[1], c[2], c[3], c[4])
-			var b: Dictionary = NativeLoaderScript.instance("NativeBake").callv("bake", c)
-			if a.height != b.height or a.dir != b.dir or a.flow != b.flow or a.river != b.river:
-				mism += 1
-		assert_eq(mism, 0, "native bake equals the reference on %d grids" % cases.size())
+			for v in [Bake.BAKE_VERSION_245, Bake.BAKE_VERSION]:   # Phase 302: both bake profiles
+				var pf := Bake.profile(v)
+				var a: Dictionary = Bake.bake_gd(c[0], c[1], c[2], c[3], c[4], Callable(), v)
+				var b: Dictionary = NativeLoaderScript.instance("NativeBake").callv("bake", c + [int(pf.talus), bool(pf.hydraulic)])
+				if a.height != b.height or a.dir != b.dir or a.flow != b.flow or a.river != b.river:
+					mism += 1
+		assert_eq(mism, 0, "native bake equals the reference on %d grids, both profiles" % cases.size())
 	var op: Array = []
 	for i in 3000:
 		op.append([rng.randi_range(-30000, 30000), rng.randi_range(-30000, 30000), rng.randi_range(-3, 4000)])
@@ -254,10 +257,12 @@ func _test_bake_erosion() -> void:
 			r.resize(W * H)
 			for i in W * H:
 				r[i] = rng.randi_range(-8000, 3000000)   # up to 3 km between neighbours: well over the talus
-			if NativeLoaderScript.instance("NativeBake").call("erode", r, W, H, SEA) != Bake.erode(r, W, H, SEA):
+			if NativeLoaderScript.instance("NativeBake").call("erode", r, W, H, SEA, Bake.ERODE_TALUS_MM) != Bake.erode(r, W, H, SEA):
+				bad += 1
+			if NativeLoaderScript.instance("NativeBake").call("erode", r, W, H, SEA, Bake.ERODE_TALUS_245_MM) != Bake.erode(r, W, H, SEA, Bake.ERODE_TALUS_245_MM):
 				bad += 1
 		assert_eq(bad, 0, "native erosion equals the reference")
-		assert_eq(NativeLoaderScript.instance("NativeBake").call("erode", sg, W, H, SEA), se, "native erosion of the steep fixture equals the reference")
+		assert_eq(NativeLoaderScript.instance("NativeBake").call("erode", sg, W, H, SEA, Bake.ERODE_TALUS_MM), se, "native erosion of the steep fixture equals the reference")
 
 
 func _test_bake_hydraulic() -> void:
@@ -524,6 +529,7 @@ func _test_bake_runtime_carve() -> void:
 	var bank_ok := true
 	var worst_bank := 0.0
 	var bank_pairs := 0
+	var worst_natural := 0.0
 	var hm_ok := true
 	for n in 50:
 		var sg: Array = all[mini(n * stride, all.size() - 1)]
@@ -547,10 +553,11 @@ func _test_bake_runtime_carve() -> void:
 			var u := TerrainSlice.height_wrapped_in(MACRO_SEED, noise, p.x, p.y, circ, cache, row)
 			var c := Hydrology.carved_height(MACRO_SEED, p.x, p.y, u)
 			if k > -50 and (c != u or prev_c != prev_u):
+				# The raw step between the two carved tiles, whatever the natural ground did (1 mm for the carve's rounding).
 				var s := absf(c - prev_c)
-				var allowed := maxf(0.5, absf(u - prev_u)) + 0.002
-				worst_bank = maxf(worst_bank, s - maxf(0.0, absf(u - prev_u) - 0.5))
-				bank_ok = bank_ok and s <= allowed
+				worst_bank = maxf(worst_bank, s)
+				worst_natural = maxf(worst_natural, absf(u - prev_u))
+				bank_ok = bank_ok and s <= 0.501
 				bank_pairs += 1
 			prev_u = u
 			prev_c = c
@@ -564,5 +571,42 @@ func _test_bake_runtime_carve() -> void:
 	Hydrology.clear_bake(MACRO_SEED)
 	assert_eq(checked, 50, "50 baked river segments hold water at their midpoint")
 	assert_true(centre_ok, "the ground at each centreline lies below the water (worst %.3f m)" % worst_centre)
-	assert_true(bank_pairs > 500 and bank_ok, "no bank step between adjacent tiles over 0.5 m (%d carved pairs, worst %.3f m)" % [bank_pairs, worst_bank])
+	assert_true(bank_pairs > 500 and bank_ok, "no bank step between adjacent tiles over 0.5 m (%d carved pairs, worst %.3f m; the uncarved ground there stepped up to %.3f m)" % [bank_pairs, worst_bank, worst_natural])
 	assert_true(hm_ok, "the chunk heightmap carves the same ground as the point query")
+
+
+## Golden hashes of the Phase 245 bake (worldgen 14), recorded by running origin/main's `planet_bake.gd` (before
+## Phase 302) on the same inputs: the `_grid()` fixture through `bake_gd`, and a 64 x 32 planet of seed 302245 on
+## the fabric planet. A world recorded at worldgen 14 must keep getting these bytes (the stable-world rule).
+const BAKE_245_GRID_HASH := "02f476d4f2e4be725cd44c5aa644d5ebdeb633d7815dac95b7120137e65d0deb"
+const BAKE_245_PLANET_HASH := "5d02e3a30f858524e6be0b7af38fd2afb205ec01370cd04185a70cf351baeeb6"
+
+func _test_bake_profiles() -> void:
+	assert_eq(Bake.BAKE_VERSION, TerrainSlice.WORLDGEN_VERSION, "the newest bake version is the worldgen version")
+	assert_eq(Bake.BAKE_VERSION_245, TerrainSlice.BAKE_WORLDGEN_VERSION, "the Phase 245 bake version is the first baked worldgen")
+	var old := Bake.bake_gd(_grid(), W, H, SEA, 12, Callable(), Bake.BAKE_VERSION_245)
+	assert_eq(Bake.hash_hex(Bake.to_bytes(old)), BAKE_245_GRID_HASH, "the worldgen-14 profile bakes the Phase 245 bytes (GDScript)")
+	assert_true(Bake.hash_hex(Bake.to_bytes(Bake.bake_gd(_grid(), W, H, SEA, 12))) != BAKE_245_GRID_HASH, "the newest profile bakes other bytes")
+	if NativeLoaderScript.use_native("NativeBake", "bake"):
+		assert_eq(Bake.hash_hex(Bake.to_bytes(Bake.bake(_grid(), W, H, SEA, 12, Callable(), Bake.BAKE_VERSION_245))), BAKE_245_GRID_HASH, "and natively")
+		assert_true(Bake.to_bytes(Bake.bake(_grid(), W, H, SEA, 12)) == Bake.to_bytes(Bake.bake_gd(_grid(), W, H, SEA, 12)), "the newest profile: native equals GDScript")
+	var circ := float(TerrainSlice.circumference_chunks()) * TerrainSlice.CHUNK_METERS
+	var planet := Bake.bake_planet(302245, 64, 32, circ, 12, Callable(), Bake.BAKE_VERSION_245)
+	assert_true(not planet.has("biome"), "a Phase 245 bake has no biome byte")
+	assert_eq(Bake.hash_hex(Bake.to_bytes(planet)), BAKE_245_PLANET_HASH, "a worldgen-14 planet bakes the Phase 245 bytes")
+	assert_true(Bake.bake_planet(302245, 64, 32, circ, 12).has("biome"), "a newest-profile planet carries the biome byte")
+	# The plan picks the file and the profile from the world's version; the boot's job and the slice read the same plan.
+	assert_eq(BakeJob.bake_version_for(14), 14, "a world recorded at 14 bakes profile 14")
+	assert_eq(BakeJob.bake_version_for(15), Bake.BAKE_VERSION, "a world recorded at 15 bakes the newest")
+	assert_eq(BakeJob.bake_version_for(-1), Bake.BAKE_VERSION, "a new world bakes the newest")
+	var p14 := BakeJob.plan_for(7, 1000.0 * Bake.CELL_M, 14)
+	var p15 := BakeJob.plan_for(7, 1000.0 * Bake.CELL_M, 15)
+	assert_true(str(p14.path).contains("_v14_") and int(p14.version) == 14, "the worldgen-14 plan names its own file")
+	assert_true(str(p15.path).contains("_v15_") and int(p15.version) == 15, "the worldgen-15 plan names the newest file")
+	# ensure() bakes the plan's profile.
+	var path := "user://test_bake_profile_v14.bin"
+	var r := Bake.ensure(path, 302245, 64, 32, circ, 12, "", Callable(), Bake.BAKE_VERSION_245)
+	assert_eq(str(r.hash), BAKE_245_PLANET_HASH, "ensure bakes and saves the worldgen-14 profile")
+	assert_eq(str(Bake.ensure(path, 302245, 64, 32, circ, 12, "", Callable(), Bake.BAKE_VERSION_245).hash), BAKE_245_PLANET_HASH, "and reads it back")
+	DirAccess.remove_absolute(path)
+	DirAccess.remove_absolute(path + ".sha256")
