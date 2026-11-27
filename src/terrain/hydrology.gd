@@ -172,8 +172,8 @@ static func lake_of_cell(seed_v: int, cx: int, cz: int) -> Dictionary:
 	var x := (float(cx) + 0.3 + 0.4 * _rand(seed_v, ccx, cz, 2)) * lake_cell()
 	var z := (float(cz) + 0.3 + 0.4 * _rand(seed_v, ccx, cz, 3)) * lake_cell()
 	var r := LAKE_RADIUS_MIN + (LAKE_RADIUS_MAX - LAKE_RADIUS_MIN) * _rand(seed_v, ccx, cz, 4)
-	if Vector2(x - WorldShape.SPAWN_CENTER.x, z - WorldShape.SPAWN_CENTER.y).length() < WorldShape.SPAWN_PLAIN_M:
-		return {}   # the spawn plain stays dry
+	if Vector2(x - WorldShape.SPAWN_CENTER.x, z - WorldShape.SPAWN_CENTER.y).length() < WorldShape.SPAWN_PLAIN_M + r:
+		return {}   # the spawn plain stays dry: the whole disc, not only its centre
 	var surface := _shape(seed_v, x, z, w)
 	for i in 8:
 		var p := Vector2.from_angle(TAU * float(i) / 8.0) * r
@@ -245,8 +245,8 @@ static func _trace_river(seed_v: int, cx: int, cz: int) -> Dictionary:
 		if hq > last + 0.5:   # the descent would climb: the river ends in a pond here
 			pond = _pond_at(p, last, wid[wid.size() - 1])
 			break
-		if _biome_blocked(seed_v, q.x, q.y) or (q - WorldShape.SPAWN_CENTER).length() < WorldShape.SPAWN_PLAIN_M:
-			break
+		if _biome_blocked(seed_v, q.x, q.y) or Geometry2D.get_closest_point_to_segment(WorldShape.SPAWN_CENTER, p, q).distance_to(WorldShape.SPAWN_CENTER) < WorldShape.SPAWN_PLAIN_M + _wmax * 0.5:
+			break   # the river's whole reach keeps off the spawn plain, not just its vertices
 		dir = d
 		p = q
 		pts.append(p)

@@ -16,6 +16,8 @@ func register() -> void:
 	_run_test("hydrology: the field is deterministic, also on a worker thread", _test_deterministic)
 	_run_test("hydrology: a chunk recorded by an older generator gets no water", _test_recorded_chunk_dry)
 	_run_test("hydrology: the spawn plain stays dry", _test_spawn_dry)
+	_run_test("hydrology (Phase 232): no lake disc or river segment overlaps the spawn plain on 20 seeds", _test_spawn_plain_extent)
+	_run_test("hydrology (Phase 232): a chunk with no features makes no fresh-water arrays or node", _test_no_features_no_water)
 	_run_test("hydrology: carving lowers water tiles to their bed and nothing else", _test_carve)
 	_run_test("hydrology: a body in a lake swims", _test_player_swims_in_lake)
 	_run_test("hydrology: a non-swimming creature path avoids a river", _test_creature_path_avoids_river)
@@ -115,6 +117,38 @@ func _test_spawn_dry() -> void:
 		for cx in range(-8, 8):
 			for v in Hydrology.surfaces_for_chunk(Vector2i(cx, cz), SEED):
 				assert_true(is_nan(v), "no fresh water on the spawn plain")
+
+func _test_spawn_plain_extent() -> void:
+	var c := WorldShape.SPAWN_CENTER
+	var bad := 0
+	var lakes := 0
+	var segs := 0
+	var reach := int(ceil((WorldShape.SPAWN_PLAIN_M + 2000.0) / TerrainSlice.CHUNK_METERS))
+	for seed_v in range(1, 21):
+		var cc := Vector2i(floori(c.x / TerrainSlice.CHUNK_METERS), floori(c.y / TerrainSlice.CHUNK_METERS))
+		for dz in range(-reach, reach + 1):
+			for dx in range(-reach, reach + 1):
+				var f := Hydrology.features_for_chunk(cc + Vector2i(dx, dz), seed_v)
+				for lk in f["lakes"]:
+					lakes += 1
+					if Vector2(float(lk["x"]) - c.x, float(lk["z"]) - c.y).length() - float(lk["r"]) < WorldShape.SPAWN_PLAIN_M:
+						bad += 1
+				for sg in f["segs"]:
+					segs += 1
+					var d := Geometry2D.get_closest_point_to_segment(c, Vector2(sg[0], sg[1]), Vector2(sg[2], sg[3])).distance_to(c)
+					if d < WorldShape.SPAWN_PLAIN_M:
+						bad += 1
+	assert_eq(bad, 0, "no lake disc or river segment reaches the spawn plain (%d lakes, %d segments seen)" % [lakes, segs])
+
+
+func _test_no_features_no_water() -> void:
+	var dry := Vector2i(0, 0)   # the spawn plain: no feature
+	assert_true(Hydrology.features_for_chunk(dry, SEED)["lakes"].is_empty(), "the spawn chunk holds no lake")
+	assert_true(FreshWaterMesh.worker_arrays(dry, SEED, false).is_empty(), "no features, no fresh-water arrays")
+	assert_true(FreshWaterMesh.mesh_from(FreshWaterMesh.worker_arrays(dry, SEED, false)) == null, "no fresh-water mesh")
+	var wet := _wet_chunk()
+	assert_false(FreshWaterMesh.worker_arrays(wet, SEED, false).is_empty(), "a wet chunk still builds its water")
+
 
 func _test_carve() -> void:
 	var chunk := _wet_chunk()

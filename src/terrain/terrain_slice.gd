@@ -48,7 +48,8 @@ const HEIGHT_SCALE := 5.0    # world units peak-to-valley of the small-scale DET
 ## 15 = Phase 302 macro height from the bake: with a planet bake loaded the large-scale shape is the bake's eroded
 ## height interpolated bilinearly between its 2 km cell centres (`macro_height`), the detail noise on top, and rivers
 ## are carved with soft banks (`Hydrology.soft_carve`, a smooth CSG subtraction) instead of a hard edge at the water.
-const WORLDGEN_VERSION := 15
+## 16 = Phase 232 lakes and rivers stay off the whole spawn plain: a lake by its full disc, a river by its segments and width, not by centre or vertices.
+const WORLDGEN_VERSION := 16
 ## The first worldgen version whose rivers are the planet bake's; a world recorded earlier keeps the local trace.
 const BAKE_WORLDGEN_VERSION := 14
 ## The first worldgen version whose macro height is the planet bake's; a world recorded at 14 keeps the noise shape.
