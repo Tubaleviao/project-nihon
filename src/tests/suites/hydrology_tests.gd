@@ -28,6 +28,9 @@ func register() -> void:
 	_run_test("hydrology: a streamed build carries its fresh-water arrays from the worker", _test_fresh_water_worker_arrays)
 	_run_test("hydrology (Phase 232, #573): the rim of 50 lakes has no ground under its surface and no shore step over 0.5 m", _test_lake_shores)
 	_run_test("hydrology (Phase 232, #573): an older recorded chunk beside a lake meets its water with no step over 0.5 m", _test_frontier_water)
+	_run_test("hydrology (Phase 232 review): a chunk recorded at 12 to 17 keeps the lake and ground it had; unrecorded land gets the shore", _test_recorded_lake_versions)
+	_run_test("hydrology (Phase 232 review): a lake meets an older recorded chunk's water at one level", _test_frontier_legacy_water)
+	_run_test("hydrology (Phase 232 review): the spawn extents and the river cell are chosen by the chunk's record version", _test_spawn_and_river_tiers)
 	_run_test("hydrology (Phase 232): the freeboard and maximum levee are fabric parameters, and the fingerprint reads them", _test_levee_params)
 	_run_test("hydrology: a point query reads its block and agrees with its chunk", _test_surface_at_blocks)
 
@@ -389,7 +392,7 @@ func _test_lake_shores() -> void:
 		var surface := float(lk["surface"])
 		for i in 16:
 			var dir := Vector2.from_angle(TAU * (float(i) + 0.3) / 16.0)
-			for out in [0.5, 1.0, 2.0, 4.0, 8.0, 16.0, 24.0, 31.0]:
+			for out in [0.5, 1.0, 2.0, 4.0, 8.0, 16.0, 24.0, 27.0]:   # past 28 m the shore fades into the plain ground (LAKE_SHORE_FADE_M)
 				var p := Vector2(float(lk["x"]), float(lk["z"])) + dir * (r + float(out))
 				var g := TerrainSlice.height_wrapped_in(SEED, noise, p.x, p.y, w, cache, [])
 				var segs: Array = Hydrology.features_for_chunk(Vector2i(floori(p.x / 32.0), floori(p.y / 32.0)), SEED)["segs"]
@@ -404,6 +407,27 @@ func _test_lake_shores() -> void:
 			worst_step = maxf(worst_step, absf(hout - hin))
 	assert_eq(under, 0, "no ground sample outside a lake's disc lies below its surface")
 	assert_true(worst_step <= 0.5, "the ground across the waterline steps at most 0.5 m (worst %.3f)" % worst_step)
+	# Phase 232 review: no step at the shore's outer edge. Just inside LAKE_REACH_M the carved ground is the plain ground.
+	var edge := 0.0
+	for lk in lakes:
+		for i in 12:
+			var dir := Vector2.from_angle(TAU * (float(i) + 0.1) / 12.0)
+			var pe := Vector2(float(lk["x"]), float(lk["z"])) + dir * (float(lk["r"]) + Hydrology.LAKE_REACH_M - 0.01)
+			var ge := TerrainSlice.height_wrapped_in(SEED, noise, pe.x, pe.y, w, cache, [])
+			if Hydrology.soft_carve(Hydrology.features_for_chunk(Vector2i(floori(pe.x / 32.0), floori(pe.y / 32.0)), SEED)["segs"], pe.x, pe.y, ge) != ge:
+				continue
+			edge = maxf(edge, absf(Hydrology.carved_height(SEED, pe.x, pe.y, ge) - ge))
+	assert_true(edge <= 0.01, "the shore ends without a step: carved ground within 0.01 m of the plain ground at the reach (worst %.4f)" % edge)
+	# The bed `water_at` reports is an upper bound of the carved ground in the disc (the smooth union only goes lower).
+	for lk in lakes.slice(0, 10):
+		var f := {"lakes": [lk], "segs": []}
+		for i in 12:
+			var dir := Vector2.from_angle(TAU * (float(i) + 0.2) / 12.0)
+			for fr: float in [0.1, 0.5, 0.9]:
+				var pd := Vector2(float(lk["x"]), float(lk["z"])) + dir * float(lk["r"]) * fr
+				var gd := TerrainSlice.height_wrapped_in(SEED, noise, pd.x, pd.y, w, cache, [])
+				var bed := float(Hydrology.water_at(f, pd.x, pd.y)["bed"])
+				assert_true(Hydrology.lake_ground(lk, Vector2(pd.x - float(lk["x"]), pd.y - float(lk["z"])).length(), gd) <= minf(gd, bed) + 0.0011, "the carved ground in the disc is no higher than the bed or the plain ground")
 
 func _test_frontier_water() -> void:
 	ChunkRecords.clear()
@@ -445,3 +469,135 @@ func _test_levee_params() -> void:
 	assert_eq(Hydrology.levee_height(100.0, 0.0), 100.0, "the levee starts at the water")
 	assert_eq(Hydrology.levee_height(100.0, Hydrology.LAKE_CREST_M), 100.5, "and crests a freeboard above it")
 	assert_eq(Hydrology.levee_height(100.0, 100.0), 100.0, "and falls back to the water level")
+
+
+func _record_at(c: Vector2i, v: int) -> void:
+	var rec := TerrainSlice.generation_record(c, SEED)
+	rec["v"] = v
+	ChunkRecords.set_record(c, rec)
+
+func _lake_in(f: Dictionary, lk: Dictionary) -> Dictionary:
+	for l in f["lakes"]:
+		if is_equal_approx(float(l["x"]), float(lk["x"])) and is_equal_approx(float(l["z"]), float(lk["z"])):
+			return l
+	return {}
+
+func _test_recorded_lake_versions() -> void:
+	var cm := TerrainSlice.CHUNK_METERS
+	var noise := FastNoiseLite.new()
+	TerrainSlice.configure_noise(noise, SEED)
+	var w := float(TerrainSlice.circumference_chunks()) * cm
+	var cache := TerrainSlice.new_corner_cache()
+	var shore_seen := 0
+	var checked := 0
+	for lk in _shore_lakes(8):
+		var cx := float(lk["x"])
+		var cz := float(lk["z"])
+		var r := float(lk["r"])
+		var centre := Vector2i(floori(cx / cm), floori(cz / cm))
+		var edge := Vector2i(floori((cx + r + 8.0) / cm), floori(cz / cm))
+		for v in [Hydrology.HYDROLOGY_VERSION, Hydrology.LAKE_SPAWN_VERSION - 1, Hydrology.LAKE_SPAWN_VERSION, Hydrology.LAKE_SHORE_VERSION - 1]:
+			ChunkRecords.clear()
+			Hydrology.reset_cache()
+			_record_at(centre, v)
+			_record_at(edge, v)
+			for c in [centre, edge]:
+				var f := Hydrology.features_for_chunk(c, SEED)
+				var l := _lake_in(f, lk)
+				assert_true(not l.has("shore"), "a chunk recorded at %d keeps the lake without a shore" % v)
+				if not l.is_empty():
+					assert_true(is_equal_approx(float(l["surface"]), float(lk["s0"])), "its surface is the one from the centre and eight rim points")
+				for tz in range(0, 64, 5):
+					for tx in range(0, 64, 5):
+						var px := float(c.x) * cm + float(tx) * TerrainSlice.TILE_SIZE
+						var pz := float(c.y) * cm + float(tz) * TerrainSlice.TILE_SIZE
+						var g := TerrainSlice.height_wrapped_in(SEED, noise, px, pz, w, cache, [])
+						var d := Vector2(px - cx, pz - cz).length()
+						var want := g if d >= r or l.is_empty() else minf(g, float(l["surface"]) - float(l["depth"]) * (1.0 - d * d / (r * r)) - 0.05)
+						want = Hydrology.soft_carve(f["segs"], px, pz, want)
+						assert_true(absf(Hydrology.carved_height(SEED, px, pz, g) - want) < 1e-4, "a chunk recorded at %d keeps its legacy ground (d %.1f of r %.1f; %f vs %f)" % [v, d, r, Hydrology.carved_height(SEED, px, pz, g), want])
+						checked += 1
+		# Recorded at 17, or not recorded: the shore.
+		ChunkRecords.clear()
+		Hydrology.reset_cache()
+		_record_at(edge, Hydrology.LAKE_SHORE_VERSION)
+		assert_true(_lake_in(Hydrology.features_for_chunk(edge, SEED), lk).has("shore"), "a chunk recorded at 17 has the shore")
+		shore_seen += 1
+		ChunkRecords.clear()
+		Hydrology.reset_cache()
+		var l2 := _lake_in(Hydrology.features_for_chunk(edge, SEED), lk)
+		assert_true(l2.has("shore"), "an unrecorded chunk gets the shore")
+		var raised := 0
+		for tz in range(0, 64, 2):
+			for tx in range(0, 64, 2):
+				var px2 := float(edge.x) * cm + float(tx) * TerrainSlice.TILE_SIZE
+				var pz2 := float(edge.y) * cm + float(tz) * TerrainSlice.TILE_SIZE
+				if Vector2(px2 - cx, pz2 - cz).length() <= r:
+					continue
+				var g2 := TerrainSlice.height_wrapped_in(SEED, noise, px2, pz2, w, cache, [])
+				if absf(Hydrology.carved_height(SEED, px2, pz2, g2) - g2) > 0.001:
+					raised += 1
+		assert_true(raised > 0, "the unrecorded chunk's ground beside the lake is shaped by the shore")
+	ChunkRecords.clear()
+	Hydrology.reset_cache()
+	assert_true(checked > 100 and shore_seen > 0, "ground samples compared with the legacy computation (%d)" % checked)
+
+func _test_frontier_legacy_water() -> void:
+	var cm := TerrainSlice.CHUNK_METERS
+	var checked := 0
+	for lk in _shore_lakes(6):
+		for v in [Hydrology.HYDROLOGY_VERSION, 15, 16]:
+			ChunkRecords.clear()
+			Hydrology.reset_cache()
+			var anchor := Vector2i(floori((float(lk["x"]) + 0.8 * float(lk["r"])) / cm), floori(float(lk["z"]) / cm))
+			_record_at(anchor, v)
+			for tz in 64:
+				var z := float(anchor.y) * cm + float(tz) * TerrainSlice.TILE_SIZE
+				var inside := Hydrology.surface_at(SEED, float(anchor.x) * cm + 0.25, z)
+				var beside := Hydrology.surface_at(SEED, float(anchor.x) * cm - 0.25, z)
+				if is_nan(inside) or is_nan(beside):
+					continue
+				checked += 1
+				assert_true(absf(inside - beside) <= 0.05, "the water level meets the recorded chunk's (v%d): %.3f vs %.3f" % [v, inside, beside])
+	ChunkRecords.clear()
+	Hydrology.reset_cache()
+	assert_true(checked > 0, "some recorded water meets unrecorded water (%d tiles)" % checked)
+
+func _test_spawn_and_river_tiers() -> void:
+	assert_eq(Hydrology.tier_of(15), 0, "15 has none of the changes")
+	assert_eq(Hydrology.tier_of(16), 1, "16 has the spawn extents")
+	assert_eq(Hydrology.tier_of(17), 2, "17 has the shore")
+	assert_eq(Hydrology.tier_of(18), 3, "18 has the river cell")
+	# A lake whose centre is off the spawn plain but whose disc reaches it: the old rule keeps it, the new drops it.
+	var c := WorldShape.SPAWN_CENTER
+	var legacy_only := 0
+	for seed_v in range(1, 41):
+		var lc := Hydrology.lake_cell()
+		for cz in range(floori((c.y - 1750.0) / lc), floori((c.y + 1750.0) / lc) + 1):
+			for cx in range(floori((c.x - 1750.0) / lc), floori((c.x + 1750.0) / lc) + 1):
+				var old := Hydrology.lake_of_cell(seed_v, cx, cz, 0)
+				if not old.is_empty() and Hydrology.lake_of_cell(seed_v, cx, cz, 1).is_empty():
+					legacy_only += 1
+					var cm := TerrainSlice.CHUNK_METERS
+					var ch := Vector2i(floori(float(old["x"]) / cm), floori(float(old["z"]) / cm))
+					ChunkRecords.clear()
+					_record_at(ch, 15)
+					assert_true(not _lake_in(Hydrology.features_for_chunk(ch, seed_v), old).is_empty(), "a chunk recorded at 15 keeps its lake on the spawn plain's edge")
+					_record_at(ch, 16)
+					assert_true(_lake_in(Hydrology.features_for_chunk(ch, seed_v), old).is_empty(), "a chunk recorded at 16 does not have it")
+					ChunkRecords.clear()
+	assert_true(legacy_only > 0, "some lake reaches the plain only by its disc (%d)" % legacy_only)
+	# The river cell: an exact divisor of the circumference since 18, the plain cell before.
+	TerrainSlice.set_world_circumference(96.5, false)
+	assert_true(Hydrology.river_cell(2) != Hydrology.river_cell(3), "a chunk recorded at 17 keeps the plain river cell on a planet that does not divide by it")
+	assert_eq(Hydrology.river_cell(2), Hydrology.RIVER_CELL_SMALL_M, "the plain cell")
+	var seen := 0
+	for i in 60:
+		for j in range(-6, 6):
+			var rv2 := Hydrology.river_of_cell(SEED, i, j, 2)
+			var rv3 := Hydrology.river_of_cell(SEED, i, j, 3)
+			if not rv2.is_empty() and not rv3.is_empty():
+				seen += int(rv2["pts"][0] != rv3["pts"][0])
+	assert_true(seen > 0, "the cell choice moves the traced rivers (%d differ)" % seen)
+	TerrainSlice.set_world_circumference(TerrainSlice.DEFAULT_CIRCUMFERENCE_KM, false)
+	Hydrology.reset_cache()

@@ -263,14 +263,14 @@ static func adopt_record_circumference(rec: Dictionary) -> void:
 ## off the world record (authoritative boot) or out of the host's join snapshot
 ## (client) BEFORE any chunk is requested, so every height in the session comes
 ## from the same noise field.
-func set_world_seed(seed_v: int, with_bake: bool = true, bake_macro: bool = true) -> void:
+func set_world_seed(seed_v: int, with_bake: bool = true, bake_macro: bool = true, world_version: int = -1) -> void:
 	_world_seed = seed_v
 	seed_adopted = true
 	_corner_mutex.lock()
 	_corner_caches.clear()
 	_corner_mutex.unlock()
 	_noise.seed = seed_v
-	_adopt_planet_bake(seed_v, with_bake, bake_macro)
+	_adopt_planet_bake(seed_v, with_bake, bake_macro, world_version)
 
 ## Phase 245 — the planet bake for this seed: read from `user://bake/` when its hash checks out, else baked
 ## now (about 6 s natively) and saved, then handed to `Hydrology` so the rivers are the baked ones. A client
@@ -278,7 +278,7 @@ func set_world_seed(seed_v: int, with_bake: bool = true, bake_macro: bool = true
 ## file is baked again. Off under `--run-tests`, whose many seeds would each pay for a bake.
 ## Phase 302: with `bake_macro` (a world recorded at `MACRO_BAKE_WORLDGEN_VERSION` or later) the macro height is
 ## the bake's too.
-func _adopt_planet_bake(seed_v: int, with_bake: bool = true, bake_macro: bool = true) -> void:
+func _adopt_planet_bake(seed_v: int, with_bake: bool = true, bake_macro: bool = true, world_version: int = -1) -> void:
 	Hydrology.clear_all_bakes()   # no bake of another seed or circumference outlives this call
 	_bake_hash = ""
 	_bake_dict = {}
@@ -291,7 +291,7 @@ func _adopt_planet_bake(seed_v: int, with_bake: bool = true, bake_macro: bool = 
 	# Phase 302 — the bake runs the algorithm of the world's worldgen version: a world recorded at 14 (whose
 	# macro height stays the noise shape, `bake_macro` false) keeps the Phase 245 bake and file, so its baked
 	# rivers never move beside its recorded chunks; a newer world (macro from the bake) gets the newest.
-	var plan := plan_for_world(seed_v, bake_macro)
+	var plan := plan_for_world(seed_v, bake_macro, world_version)
 	if plan.is_empty():   # an older, larger planet keeps the local river trace
 		return
 	_bake_plan = plan
@@ -314,8 +314,19 @@ func planet_bake_plan() -> Dictionary:
 
 ## Phase 302 — the bake plan (`BakeJob.plan_for`) a world of `seed_v` with or without the baked macro height would use
 ## at the current circumference; {} when the planet is too large or small to bake.
-func plan_for_world(seed_v: int, bake_macro: bool) -> Dictionary:
-	return BakeJob.plan_for(seed_v, float(circumference_chunks()) * CHUNK_METERS, WORLDGEN_VERSION if bake_macro else BAKE_WORLDGEN_VERSION)
+## `world_version` is the worldgen version the world was recorded at (-1 for a new world or an unknown one): a
+## world of 15 to 17 keeps the bake whose X edges are boundaries (`BakeJob.bake_version_for`), never the wrapped one.
+func plan_for_world(seed_v: int, bake_macro: bool, world_version: int = -1) -> Dictionary:
+	var v := BakeJob.bake_version_for(world_version) if bake_macro else BAKE_WORLDGEN_VERSION
+	return BakeJob.plan_for(seed_v, float(circumference_chunks()) * CHUNK_METERS, v)
+
+## Network input: the worldgen version a host's snapshot names, or -1 (the newest bake) when it is missing, not an
+## integer or outside the versions that have a baked macro height.
+static func sanitize_world_version(raw: Variant) -> int:
+	if typeof(raw) != TYPE_INT:
+		return -1
+	var v: int = raw
+	return v if v >= MACRO_BAKE_WORLDGEN_VERSION and v <= WORLDGEN_VERSION else -1
 
 ## Phase 302 — the hash of the bake file of `plan` on this machine ("" without one). Only the hash file is read;
 ## `PlanetBake.ensure` checks the contents against it when the bake is adopted.
@@ -340,7 +351,7 @@ func planet_bake_file_bytes() -> PackedByteArray:
 func store_fetched_bake(plan: Dictionary, bytes: PackedByteArray, expected_hash: String) -> bool:
 	if plan.is_empty():
 		return false
-	var b := PlanetBake.from_bytes(bytes, expected_hash)
+	var b := PlanetBake.from_bytes(bytes, expected_hash, int(plan.get("version", PlanetBake.BAKE_VERSION)))
 	if b.is_empty() or int(b.w) != int(plan.w) or int(b.h) != int(plan.h):
 		return false
 	var path := str(plan.path)

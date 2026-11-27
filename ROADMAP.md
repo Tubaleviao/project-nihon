@@ -584,6 +584,17 @@ in the fabric) and the frontier water ease (`Hydrology._eased`, `Frontier.water_
 makes drains, fill, thermal and hydraulic erosion treat the X edges as neighbours, in the GDScript reference and in `NativeBake` (version 7);
 `Hydrology.baked_segs` steps a drain over the seam as one cell; the local trace cell is an exact divisor of the circumference.
 A test traces a baked river across the seam. Worlds recorded before 18 keep the non-wrapping bake.
+Review pass: the bake version now follows the world's recorded worldgen version (`TerrainSlice.plan_for_world`, `set_world_seed`
+take it; the host's snapshot carries `worldgenVersion`, which a client validates with `sanitize_world_version`: only 15 to the running
+version, else the newest), so a world of 15 to 17 keeps its non-wrapping bake. Lake and river changes are gated by the chunk's record
+version like `soft_banks` (`Hydrology.tier_of`: 16 spawn extents, 17 shore, pole gap and ring-clamped surface, 18 river cell): a chunk
+recorded at 12 to 17 keeps the lake (no `shore`) and ground it had, and caches are keyed by tier. The frontier ease now also meets a
+chunk recorded at 12 to 16: the new lake's surface eases to the surface that chunk's own lake has (`s0`) and the shore term fades to
+nothing at its edge (it eased only to records before 12, which are dry). Known limit: a lake that the old rule kept but the new one drops
+(ring clamp under sea level plus 3 m, levee over the maximum, pole gap, the plain by disc) stays as the recorded chunk has it and ends at
+that chunk's edge in unrecorded land (a wall of water), since the unrecorded side has no lake to ease. The shore term also fades over
+the last 4 m before its reach (no step), and features of a shore lake reach every chunk within its reach, not only its disc. Unreleased
+worldgen 18 output changed for unrecorded land without a bump (no saved world has 18).
 
 **Closes:** #573, #593
 

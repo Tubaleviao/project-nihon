@@ -15,6 +15,7 @@ func register() -> void:
 	_run_test("bake transfer: the host rate-limits offers and pieces per peer and caps what it serves", _test_host_limits)
 	_run_test("bake transfer: the host without a bake offers and serves nothing", _test_no_bake)
 	_run_test("bake transfer: a fetched bake is stored under the world's own plan and never swapped into a running world", _test_store_fetched)
+	_run_test("bake transfer: the plan version follows the world's recorded worldgen version (Phase 232 review)", _test_plan_version_by_world)
 	_run_test("bake transfer: the world waits for a fetch only when the host's bake is one this client lacks", _test_needs_fetch)
 	_run_test("bake transfer: the host answers joined peers only and never keeps an empty answer", _test_host_gate)
 	_run_test("bake transfer: a fetch keeps four pieces in flight and ends with the host's bytes", _test_window)
@@ -169,6 +170,20 @@ func _test_store_fetched() -> void:
 	assert_true(not t.has_planet_bake() and t.planet_bake_file_bytes().is_empty(), "storing never swaps a bake into the running world")
 	for f in [str(noise.path), str(noise.path) + ".sha256"]:
 		DirAccess.remove_absolute(f)
+	t.free()
+	TerrainSlice.set_world_circumference(TerrainSlice.DEFAULT_CIRCUMFERENCE_KM, false)
+
+func _test_plan_version_by_world() -> void:
+	TerrainSlice.set_world_circumference(96.0, false)
+	var t := TerrainSlice.new()
+	for v in [15, 16, 17]:
+		assert_eq(int(t.plan_for_world(7, true, v).version), Bake.BAKE_VERSION_WRAP - 1, "a world recorded at %d plans the non-wrapped bake" % v)
+	assert_eq(int(t.plan_for_world(7, true, 18).version), 18, "a world recorded at 18 plans the wrapped bake")
+	assert_eq(int(t.plan_for_world(7, true).version), Bake.BAKE_VERSION, "a new world plans the newest")
+	assert_eq(int(t.plan_for_world(7, false, 14).version), Bake.BAKE_VERSION_245, "a world without the baked macro keeps its bake")
+	assert_eq(TerrainSlice.sanitize_world_version(16), 16, "a known version passes")
+	for bad in [-5, 0, 14, 19, 99999, "17", 17.0, null, [17]]:
+		assert_eq(TerrainSlice.sanitize_world_version(bad), -1, "an unknown or mistyped version from the host is ignored: %s" % str(bad))
 	t.free()
 	TerrainSlice.set_world_circumference(TerrainSlice.DEFAULT_CIRCUMFERENCE_KM, false)
 
