@@ -9,21 +9,24 @@ extends RefCounted
 const BakeTransfer := preload("res://src/networking/bake_transfer.gd")
 ## A fetch with no progress for this long fails.
 const STALL_MS := 20000.0
+## Pieces asked for at once (inside the host's burst of `BakeTransfer.CHUNK_BURST`).
+const WINDOW := 4
 
 var sl: Node
 var serve := BakeTransfer.Server.new()
-## Host: returns the bake's bytes (empty without a bake); asked once, then cached until `serve_bake` is called again.
+## Host: returns the bake's bytes (empty without a bake yet). Asked until it returns something, then the bytes
+## are kept until `serve_bake` is called again; an empty answer is never kept.
 var bytes_provider: Callable = Callable()
-var _provided := false
 var _fetch: BakeTransfer.Fetch = null
 var _last_progress_ms := 0.0
+var _next_request := 0   ## the next piece index this fetch has not asked for
+var _inflight := 0       ## pieces asked for and not yet received
 
 func _init(slice: Node) -> void:
 	sl = slice
 
 func serve_bake(bytes: PackedByteArray) -> void:
 	serve.set_bake(bytes)
-	_provided = true
 
 func forget(peer: int) -> void:
 	serve.forget(peer)
@@ -37,7 +40,10 @@ func _now() -> float:
 func on_request(sender: int, payload: Dictionary) -> void:
 	if sl._role != sl.Role.HOST:
 		return
-	if not _provided and bytes_provider.is_valid():
+	# Only a peer that has joined (a bound identity) may ask: an unjoined connection costs the host nothing here.
+	if str(sl.get_player_id(sender)) == "":
+		return
+	if not serve.has_bake() and bytes_provider.is_valid():
 		serve_bake(bytes_provider.call())
 	var op := str(payload.get("op", ""))
 	if op == "offer":
@@ -60,6 +66,8 @@ func on_request(sender: int, payload: Dictionary) -> void:
 func start_fetch(expected_hash: String, w: int, h: int) -> void:
 	_fetch = BakeTransfer.Fetch.new(expected_hash, w, h)
 	_last_progress_ms = _now()
+	_next_request = 0
+	_inflight = 0
 	if expected_hash == "" or BakeTransfer.valid_sizes(w, h).is_empty():
 		_finish(false)
 		return
@@ -75,7 +83,7 @@ func on_offer(payload: Dictionary) -> void:
 		_finish(false)
 		return
 	_last_progress_ms = _now()
-	_ask_next()
+	_fill_window()
 
 func on_chunk(payload: Dictionary) -> void:
 	if _fetch == null or not _fetch.started():
@@ -85,13 +93,18 @@ func on_chunk(payload: Dictionary) -> void:
 		_finish(false)   # a piece that does not fit is a host that is wrong or hostile: no retry, bake locally
 		return
 	_last_progress_ms = _now()
+	_inflight = maxi(0, _inflight - 1)
 	if _fetch.complete():
 		_finish(true)
 	else:
-		_ask_next()
+		_fill_window()
 
-func _ask_next() -> void:
-	sl._deliver(1, { "type": "bake_request", "op": "chunk", "index": _fetch.next_needed() })
+## Keep up to `WINDOW` pieces asked for, in order, each once.
+func _fill_window() -> void:
+	while _inflight < WINDOW and _next_request < _fetch.count():
+		sl._deliver(1, { "type": "bake_request", "op": "chunk", "index": _next_request })
+		_next_request += 1
+		_inflight += 1
 
 ## Called every frame by the slice: a host that goes quiet ends the fetch.
 func poll() -> void:

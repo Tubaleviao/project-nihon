@@ -21,7 +21,7 @@ func _connect_all() -> void:
 	connect_bus(GameBus.planet_bake_fetched, _on_planet_bake_fetched)
 	# Phase 302 — a host serves the bake it holds (read when the first client asks).
 	if root._networking != null and root._terrain != null:
-		root._networking._m3.bake.bytes_provider = Callable(root._terrain, "planet_bake_bytes")
+		root._networking._m3.bake.bytes_provider = Callable(root._terrain, "planet_bake_file_bytes")
 
 ## Host-side: serialize authoritative world state for a connecting client,
 ## AOI-scoped (Phase 29) — only entities within the peer's area of interest are
@@ -268,21 +268,55 @@ func place_from_snapshot(own: Variant) -> void:
 		if hp >= 0.0:
 			root._player.set_hp(hp)
 
-## Phase 302 — the host's bake arrived and its hash is the announced one: it replaces this client's own.
+## Phase 302 — the snapshot held while this client fetches the host's bake, and the bake file's plan.
+var _held_snapshot: Dictionary = {}
+var _held_plan: Dictionary = {}
+
+## Phase 302 — true when the host's bake is one this client does not hold (so the world must not start on its own
+## bake, which would then be swapped under the chunk workers).
+static func needs_bake_fetch(host_bakes: bool, host_hash: String, local_hash: String) -> bool:
+	return host_bakes and host_hash != "" and local_hash != host_hash
+
+## Hold `data` and fetch the host's bake first; false (nothing held, the join goes on as before) when this client
+## already has the host's bake, the host has none, or there is nothing to ask through.
+func _hold_for_bake_fetch(data: Dictionary) -> bool:
+	if root._networking == null or root._terrain == null:
+		return false
+	var plan: Dictionary = root._terrain.plan_for_world(int(data["seed"]), bool(data.get("planetBakeMacro", false)))
+	var host_hash := str(data.get("planetBakeHash", ""))
+	if plan.is_empty() or not needs_bake_fetch(bool(data.get("planetBake", false)), host_hash, root._terrain.local_bake_hash(plan)):
+		return false
+	_held_snapshot = data
+	_held_plan = plan
+	root._networking._m3.bake.start_fetch(host_hash, int(plan.w), int(plan.h))
+	return true
+
+## Phase 302 — the fetch ended: a verified bake is saved where `set_world_seed` reads it, a failed one is logged and
+## this client bakes from the seed instead; either way the held snapshot then starts the world (the only place the
+## bake is chosen, before any chunk is streamed).
 func _on_planet_bake_fetched(ok: bool, bytes: PackedByteArray, expected_hash: String) -> void:
-	if not root._is_client:
+	if not root._is_client or _held_snapshot.is_empty():
 		return
-	if ok and root._terrain.adopt_bake_bytes(bytes, expected_hash):
+	var data := _held_snapshot
+	var plan := _held_plan
+	_held_snapshot = {}
+	_held_plan = {}
+	if ok and root._terrain.store_fetched_bake(plan, bytes, expected_hash):
 		print("[World] planet bake %s (host's copy)" % expected_hash.substr(0, 12))
 	else:
-		Diag.warn("Snapshot: the host's planet bake could not be fetched or did not verify; keeping this client's own")
+		Diag.warn("Snapshot: the host's planet bake could not be fetched or did not verify; baking from the seed")
+	on_world_snapshot_received(data, true)
 
 ## Client-side: apply the host's world snapshot and begin rendering.
-func on_world_snapshot_received(data: Dictionary) -> void:
+func on_world_snapshot_received(data: Dictionary, bake_settled: bool = false) -> void:
 	if not root._is_client:
 		return
 	if data.has("seed"):
 		TerrainSlice.adopt_record_circumference(data)   # Phase 238: before any chunk is streamed
+		# Phase 302 — a host bake this client lacks is fetched BEFORE the world starts (the snapshot waits, up to the
+		# fetch's stall limit); a client that has it, or a host without one, joins as before.
+		if not bake_settled and _hold_for_bake_fetch(data):
+			return
 		# Phase 41 — adopt the host's world seed BEFORE anything is streamed (a
 		# chunk built from this machine's own random seed would be a different
 		# world, and every voxel edit the host sends would land elsewhere).
@@ -293,11 +327,6 @@ func on_world_snapshot_received(data: Dictionary) -> void:
 		if host_hash != "" and root._terrain.planet_bake_hash() != host_hash:
 			Diag.warn("Snapshot: this client's planet bake (%s) differs from the host's (%s): rivers may differ" % [
 				root._terrain.planet_bake_hash().substr(0, 12), host_hash.substr(0, 12)])
-			# Phase 302 — ask the host for its copy (checked against the hash it announced). The bake this client
-			# made from the seed stays in use when the fetch fails or does not verify.
-			var dims: Vector2i = root._terrain.planet_bake_dims()
-			if bool(data.get("planetBake", false)) and dims != Vector2i.ZERO and root._networking != null:
-				root._networking._m3.bake.start_fetch(host_hash, dims.x, dims.y)
 
 	if data.has("clock"):
 		root._clock.from_data(data["clock"])

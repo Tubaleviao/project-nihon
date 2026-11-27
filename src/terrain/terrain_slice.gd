@@ -286,7 +286,7 @@ func _adopt_planet_bake(seed_v: int, with_bake: bool = true, bake_macro: bool = 
 	# Phase 302 — the bake runs the algorithm of the world's worldgen version: a world recorded at 14 (whose
 	# macro height stays the noise shape, `bake_macro` false) keeps the Phase 245 bake and file, so its baked
 	# rivers never move beside its recorded chunks; a newer world (macro from the bake) gets the newest.
-	var plan := BakeJob.plan_for(seed_v, circ, WORLDGEN_VERSION if bake_macro else BAKE_WORLDGEN_VERSION)
+	var plan := plan_for_world(seed_v, bake_macro)
 	if plan.is_empty():   # an older, larger planet keeps the local river trace
 		return
 	_bake_plan = plan
@@ -307,30 +307,40 @@ var _bake_plan := {}   ## Phase 302: the `BakeJob.plan_for` of the bake in use (
 func planet_bake_plan() -> Dictionary:
 	return _bake_plan
 
-## Phase 302 — the cells of the planet bake this world's circumference calls for (Vector2i.ZERO when none).
-func planet_bake_dims() -> Vector2i:
-	var w := roundi(float(circumference_chunks()) * CHUNK_METERS / PlanetBake.CELL_M)
-	return Vector2i(w, w / 2) if w >= 8 and w * (w / 2) <= PlanetBake.MAX_CELLS else Vector2i.ZERO
+## Phase 302 — the bake plan (`BakeJob.plan_for`) a world of `seed_v` with or without the baked macro height would use
+## at the current circumference; {} when the planet is too large or small to bake.
+func plan_for_world(seed_v: int, bake_macro: bool) -> Dictionary:
+	return BakeJob.plan_for(seed_v, float(circumference_chunks()) * CHUNK_METERS, WORLDGEN_VERSION if bake_macro else BAKE_WORLDGEN_VERSION)
 
-## Phase 302 — the bytes of the bake in use, for a host to serve (empty without one).
-func planet_bake_bytes() -> PackedByteArray:
-	return PlanetBake.to_bytes(_bake_dict) if has_planet_bake() and not _bake_dict.is_empty() else PackedByteArray()
+## Phase 302 — the hash of the bake file of `plan` on this machine ("" without one). Only the hash file is read;
+## `PlanetBake.ensure` checks the contents against it when the bake is adopted.
+func local_bake_hash(plan: Dictionary) -> String:
+	var path := str(plan.get("path", ""))
+	if path == "" or not FileAccess.file_exists(path) or not FileAccess.file_exists(path + ".sha256"):
+		return ""
+	return FileAccess.get_file_as_string(path + ".sha256").strip_edges()
 
-## Phase 302 — use the host's bake, fetched over the wire: only bytes whose hash is `expected_hash` and whose
-## layout parses are taken (`PlanetBake.from_bytes`); they replace this machine's own bake and are saved beside it.
-func adopt_bake_bytes(bytes: PackedByteArray, expected_hash: String) -> bool:
-	var dims := planet_bake_dims()
-	var b := PlanetBake.from_bytes(bytes, expected_hash)
-	if b.is_empty() or dims == Vector2i.ZERO or int(b.w) != dims.x or int(b.h) != dims.y:
+## Phase 302 — the bytes of the bake in use, for a host to serve: the file it read or wrote, not a fresh
+## serialisation (about 500k cells in GDScript), and only when the file is the bake in use. Empty without one.
+func planet_bake_file_bytes() -> PackedByteArray:
+	var path := str(_bake_plan.get("path", ""))
+	if not has_planet_bake() or path == "" or local_bake_hash(_bake_plan) != _bake_hash:
+		return PackedByteArray()
+	return FileAccess.get_file_as_bytes(path)
+
+## Phase 302 — keep the host's bake, fetched over the wire BEFORE the world starts: only bytes whose hash is `expected_hash`,
+## whose layout parses and whose size is `plan`'s are saved, at the plan's own path (so the world's bake version and
+## file name are the ones `set_world_seed` then reads, macro flag and all). It never touches a bake in use: a bake is
+## adopted only through `set_world_seed`, never swapped under chunk workers.
+func store_fetched_bake(plan: Dictionary, bytes: PackedByteArray, expected_hash: String) -> bool:
+	if plan.is_empty():
 		return false
-	var circ := float(circumference_chunks()) * CHUNK_METERS
-	var path := PlanetBake.file_path("user://bake", _world_seed, WORLDGEN_VERSION, dims.x, dims.y)
+	var b := PlanetBake.from_bytes(bytes, expected_hash)
+	if b.is_empty() or int(b.w) != int(plan.w) or int(b.h) != int(plan.h):
+		return false
+	var path := str(plan.path)
 	DirAccess.make_dir_recursive_absolute(path.get_base_dir())
-	PlanetBake.save(b, path)
-	Hydrology.use_bake(_world_seed, b, circ)
-	_bake_hash = expected_hash
-	_bake_dict = b
-	return true
+	return PlanetBake.save(b, path)
 
 func planet_bake_hash() -> String:
 	return _bake_hash if has_planet_bake() else ""

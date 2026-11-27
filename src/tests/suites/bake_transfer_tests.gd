@@ -14,6 +14,10 @@ func register() -> void:
 	_run_test("bake transfer: pieces are refused out of range, repeated, over long or the wrong length", _test_piece_bounds)
 	_run_test("bake transfer: the host rate-limits offers and pieces per peer and caps what it serves", _test_host_limits)
 	_run_test("bake transfer: the host without a bake offers and serves nothing", _test_no_bake)
+	_run_test("bake transfer: a fetched bake is stored under the world's own plan and never swapped into a running world", _test_store_fetched)
+	_run_test("bake transfer: the world waits for a fetch only when the host's bake is one this client lacks", _test_needs_fetch)
+	_run_test("bake transfer: the host answers joined peers only and never keeps an empty answer", _test_host_gate)
+	_run_test("bake transfer: a fetch keeps four pieces in flight and ends with the host's bytes", _test_window)
 
 func _bake_bytes() -> PackedByteArray:
 	var b: Dictionary = Bake.bake_planet(7, W, H, 800000.0, 12)
@@ -126,3 +130,100 @@ func _test_host_limits() -> void:
 func _test_no_bake() -> void:
 	var srv := BT.Server.new()
 	assert_true(srv.offer(2, 0.0).is_empty() and srv.chunk(2, 0, 0.0).is_empty(), "nothing to serve")
+
+const SnapshotWiring := preload("res://src/persistence/snapshot_wiring.gd")
+
+## A stand-in for the networking slice: what `BakeNet` reads (role, joined ids) and writes (packets).
+class StubSlice extends Node:
+	enum Role { NONE, HOST, CLIENT }
+	var _role := Role.HOST
+	var sent: Array = []
+	var ids := {}
+	func get_player_id(peer: int) -> String:
+		return str(ids.get(peer, ""))
+	func _deliver(peer: int, payload: Dictionary) -> bool:
+		sent.append([peer, payload])
+		return true
+
+func _test_store_fetched() -> void:
+	TerrainSlice.set_world_circumference(96.0, false)   # 48 x 24 cells
+	var t := TerrainSlice.new()
+	var seed_v := 987654321
+	var circ := float(t.circumference_chunks()) * TerrainSlice.CHUNK_METERS
+	var macro: Dictionary = t.plan_for_world(seed_v, true)
+	var noise: Dictionary = t.plan_for_world(seed_v, false)
+	assert_true(not macro.is_empty() and int(macro.w) == W and int(macro.h) == H, "the plan is the world's grid")
+	assert_true(int(noise.version) == Bake.BAKE_VERSION_245 and int(macro.version) == Bake.BAKE_VERSION and noise.path != macro.path,
+		"a world without the baked macro keeps the Phase 245 bake and file")
+	var bytes: PackedByteArray = Bake.to_bytes(Bake.bake_planet(seed_v, W, H, circ, Bake.RIVER_FLOW, Callable(), int(noise.version)))
+	var hash := Bake.hash_hex(bytes)
+	assert_eq(t.local_bake_hash(noise), "", "no file yet")
+	assert_true(not t.store_fetched_bake(noise, bytes, "00" + hash.substr(2)), "bytes that are not the announced hash are refused")
+	assert_true(not t.store_fetched_bake(noise, Bake.to_bytes(Bake.bake_planet(seed_v, 24, 12, 48000.0, Bake.RIVER_FLOW)), Bake.hash_hex(Bake.to_bytes(Bake.bake_planet(seed_v, 24, 12, 48000.0, Bake.RIVER_FLOW)))),
+		"a bake of another grid is refused even when its own hash is right")
+	assert_true(not t.store_fetched_bake({}, bytes, hash), "no plan, no store")
+	assert_eq(t.local_bake_hash(noise), "", "nothing was written by a refusal")
+	assert_true(t.store_fetched_bake(noise, bytes, hash), "the host's bake is stored")
+	assert_eq(t.local_bake_hash(noise), hash, "at the plan's own path, with its hash")
+	assert_eq(t.local_bake_hash(macro), "", "and not under the other bake version")
+	assert_true(not t.has_planet_bake() and t.planet_bake_file_bytes().is_empty(), "storing never swaps a bake into the running world")
+	for f in [str(noise.path), str(noise.path) + ".sha256"]:
+		DirAccess.remove_absolute(f)
+	t.free()
+	TerrainSlice.set_world_circumference(TerrainSlice.DEFAULT_CIRCUMFERENCE_KM, false)
+
+func _test_needs_fetch() -> void:
+	assert_true(SnapshotWiring.needs_bake_fetch(true, "abc", ""), "a host bake this client lacks is fetched before the world starts")
+	assert_true(SnapshotWiring.needs_bake_fetch(true, "abc", "def"), "so is one whose hash differs")
+	assert_true(not SnapshotWiring.needs_bake_fetch(true, "abc", "abc"), "the same bake: the join is unchanged")
+	assert_true(not SnapshotWiring.needs_bake_fetch(false, "abc", ""), "a host without baked rivers needs none")
+	assert_true(not SnapshotWiring.needs_bake_fetch(true, "", ""), "a host that announced no hash needs none")
+
+func _test_host_gate() -> void:
+	var bytes := _bake_bytes()
+	var sl := StubSlice.new()
+	var bn := preload("res://src/networking/bake_net.gd").new(sl)
+	var offered := { "n": 0 }
+	bn.bytes_provider = func() -> PackedByteArray:
+		offered["n"] += 1
+		return bytes if int(offered["n"]) > 1 else PackedByteArray()
+	bn.on_request(5, { "op": "offer" })
+	assert_true(sl.sent.is_empty() and int(offered["n"]) == 0, "an unjoined peer gets nothing and costs no work")
+	sl.ids[5] = "player_5"
+	bn.on_request(5, { "op": "offer" })
+	assert_true(sl.sent.is_empty() and not bn.serve.has_bake(), "a host that has no bake yet answers nothing...")
+	bn.on_request(5, { "op": "offer" })
+	assert_true(sl.sent.size() == 1 and str(sl.sent[0][1].get("type")) == "bake_offer", "...and does not keep the empty answer: the next request is served")
+	sl.free()
+
+func _test_window() -> void:
+	var circ := 192000.0
+	var bytes: PackedByteArray = Bake.to_bytes(Bake.bake_planet(7, 96, 48, circ, Bake.RIVER_FLOW))
+	var count := BT.chunk_count(bytes.size())
+	assert_true(count > 4, "the test bake has more pieces than the window")
+	var sl := StubSlice.new()
+	sl._role = StubSlice.Role.CLIENT
+	var bn := preload("res://src/networking/bake_net.gd").new(sl)
+	var results: Array = []
+	var on_done := func(ok: bool, got: PackedByteArray, _h: String) -> void: results.append([ok, got])
+	GameBus.planet_bake_fetched.connect(on_done)
+	var hash := Bake.hash_hex(bytes)
+	bn.start_fetch(hash, 96, 48)
+	assert_eq(sl.sent.size(), 1, "the offer is asked for first")
+	bn.on_offer({ "hash": hash, "size": bytes.size(), "chunk": BT.CHUNK_BYTES, "count": count })
+	assert_eq(sl.sent.size(), 1 + 4, "four pieces are asked for at once")
+	var asked: Array = []
+	var answered := 0
+	var cursor := 1
+	while results.is_empty() and answered < count + 2:
+		while cursor < sl.sent.size():
+			asked.append(int(sl.sent[cursor][1].get("index", -1)))
+			cursor += 1
+		var i: int = asked[answered]
+		bn.on_chunk({ "index": i, "data": Marshalls.raw_to_base64(BT.chunk_at(bytes, i)) })
+		answered += 1
+		assert_true(bn._inflight <= 4, "never more than four in flight")
+	GameBus.planet_bake_fetched.disconnect(on_done)
+	assert_eq(sl.sent.size() - 1, count, "every piece asked for exactly once")
+	assert_true(results.size() == 1 and bool(results[0][0]) and results[0][1] == bytes, "the fetch ends with the host's bytes")
+	sl.free()
