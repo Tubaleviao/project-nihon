@@ -11,6 +11,8 @@ extends RefCounted
 ## exact length and place, and trusts the result only when its SHA-256 is the one it was told to expect.
 
 const PlanetBake := preload("res://src/terrain/planet_bake.gd")
+## This script, for the inner classes: they cannot name the outer `class_name` on a boot with no class cache.
+const Transfer := preload("res://src/networking/bake_transfer.gd")
 
 ## Raw bytes per piece; the wire carries them base64 (about 16.4 KB of text), well under an ENet packet.
 const CHUNK_BYTES := 12288
@@ -87,22 +89,22 @@ class Server extends RefCounted:
 		if now_ms - float(st["offer_ms"]) < OFFER_INTERVAL_MS:
 			return {}
 		st["offer_ms"] = now_ms
-		return { "hash": hash, "size": bytes.size(), "chunk": CHUNK_BYTES, "count": BakeTransfer.chunk_count(bytes.size()) }
+		return { "hash": hash, "size": bytes.size(), "chunk": CHUNK_BYTES, "count": Transfer.chunk_count(bytes.size()) }
 
 	## Piece `index` for a peer ({ index, data }), or {} when out of range, over the peer's rate or over its
 	## serve limit.
 	func chunk(peer: int, index: int, now_ms: float) -> Dictionary:
-		if not has_bake() or index < 0 or index >= BakeTransfer.chunk_count(bytes.size()):
+		if not has_bake() or index < 0 or index >= Transfer.chunk_count(bytes.size()):
 			return {}
 		var st := _state(peer, now_ms)
 		var elapsed := maxf(0.0, now_ms - float(st["at_ms"]))
 		st["at_ms"] = now_ms
 		st["tokens"] = minf(CHUNK_BURST, float(st["tokens"]) + elapsed * 0.001 * CHUNK_REFILL_PER_SEC)
-		if float(st["tokens"]) < 1.0 or int(st["served"]) >= SERVE_LIMIT_FACTOR * BakeTransfer.chunk_count(bytes.size()):
+		if float(st["tokens"]) < 1.0 or int(st["served"]) >= SERVE_LIMIT_FACTOR * Transfer.chunk_count(bytes.size()):
 			return {}
 		st["tokens"] = float(st["tokens"]) - 1.0
 		st["served"] = int(st["served"]) + 1
-		return { "index": index, "data": Marshalls.raw_to_base64(BakeTransfer.chunk_at(bytes, index)) }
+		return { "index": index, "data": Marshalls.raw_to_base64(Transfer.chunk_at(bytes, index)) }
 
 
 ## Client side: one download, sized from the client's own expectation.
@@ -126,12 +128,12 @@ class Fetch extends RefCounted:
 		if expected_hash == "" or not _is_int(offer.get("size")) or not _is_int(offer.get("chunk")) or not _is_int(offer.get("count")):
 			return false
 		var sz := int(offer["size"])
-		if str(offer.get("hash", "")) != expected_hash or not BakeTransfer.size_fits(sz, w, h) \
-				or int(offer["chunk"]) != CHUNK_BYTES or int(offer["count"]) != BakeTransfer.chunk_count(sz):
+		if str(offer.get("hash", "")) != expected_hash or not Transfer.size_fits(sz, w, h) \
+				or int(offer["chunk"]) != CHUNK_BYTES or int(offer["count"]) != Transfer.chunk_count(sz):
 			return false
 		size = sz
 		_buf.resize(size)
-		_got.resize(BakeTransfer.chunk_count(size))
+		_got.resize(Transfer.chunk_count(size))
 		_have = 0
 		return true
 
@@ -152,7 +154,7 @@ class Fetch extends RefCounted:
 		if (data as String).length() > MAX_CHUNK_TEXT:
 			return false
 		var raw := Marshalls.base64_to_raw(data)
-		if raw.size() != BakeTransfer.chunk_len(size, index):
+		if raw.size() != Transfer.chunk_len(size, index):
 			return false
 		for i in raw.size():
 			_buf[index * CHUNK_BYTES + i] = raw[i]

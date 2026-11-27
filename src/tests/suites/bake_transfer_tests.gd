@@ -193,6 +193,9 @@ func _test_host_gate() -> void:
 	bn.on_request(5, { "op": "offer" })
 	assert_true(sl.sent.is_empty() and not bn.serve.has_bake(), "a host that has no bake yet answers nothing...")
 	bn.on_request(5, { "op": "offer" })
+	assert_true(sl.sent.is_empty() and int(offered["n"]) == 1, "a peer asking again at once costs no second read")
+	bn.provider_next_ms = 0.0   # the interval has passed
+	bn.on_request(5, { "op": "offer" })
 	assert_true(sl.sent.size() == 1 and str(sl.sent[0][1].get("type")) == "bake_offer", "...and does not keep the empty answer: the next request is served")
 	sl.free()
 

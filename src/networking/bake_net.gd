@@ -17,6 +17,9 @@ var serve := BakeTransfer.Server.new()
 ## Host: returns the bake's bytes (empty without a bake yet). Asked until it returns something, then the bytes
 ## are kept until `serve_bake` is called again; an empty answer is never kept.
 var bytes_provider: Callable = Callable()
+## Host: when `bytes_provider` may next be asked. It reads files, so a joined peer's requests while the host has no
+## servable bake must not each cost a read: it is asked at most once per `BakeTransfer.OFFER_INTERVAL_MS`.
+var provider_next_ms := 0.0
 var _fetch: BakeTransfer.Fetch = null
 var _last_progress_ms := 0.0
 var _next_request := 0   ## the next piece index this fetch has not asked for
@@ -43,7 +46,8 @@ func on_request(sender: int, payload: Dictionary) -> void:
 	# Only a peer that has joined (a bound identity) may ask: an unjoined connection costs the host nothing here.
 	if str(sl.get_player_id(sender)) == "":
 		return
-	if not serve.has_bake() and bytes_provider.is_valid():
+	if not serve.has_bake() and bytes_provider.is_valid() and _now() >= provider_next_ms:
+		provider_next_ms = _now() + BakeTransfer.OFFER_INTERVAL_MS
 		serve_bake(bytes_provider.call())
 	var op := str(payload.get("op", ""))
 	if op == "offer":

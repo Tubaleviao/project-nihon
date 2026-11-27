@@ -4,6 +4,7 @@ extends "res://src/tests/test_support.gd"
 
 const Bake := preload("res://src/terrain/planet_bake.gd")
 const Csg := preload("res://src/terrain/terrain_csg.gd")
+const BakeJob := preload("res://src/terrain/bake_job.gd")
 const W := 48
 const H := 32
 const SEA := 0
@@ -312,7 +313,7 @@ func _test_bake_hydraulic() -> void:
 
 
 func _test_bake_biomes() -> void:
-	var circ := 16.0 * PlanetBake.CELL_M
+	var circ := 16.0 * Bake.CELL_M
 	var bk := Bake.bake_planet(7, 16, 8, circ, 6)
 	var biome: PackedByteArray = bk["biome"]
 	var keys: Array = TerrainSliceScript.BIOME_KEYS
