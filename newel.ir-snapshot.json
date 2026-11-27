@@ -1,5 +1,5 @@
 {
-  "schemaHash": "sha256:71d81405783ff635dfa595873f6b09f6a3f3798af54f76c264219a1b6a07c166",
+  "schemaHash": "sha256:5fbbf58522c55f1849356a83e7bff867b8b1b2ca171a5385d42ecc82b8c70d19",
   "schema": {
     "version": "3.0.0",
     "meta": {
@@ -44611,6 +44611,153 @@
               "Leyframe": 6,
               "Thornwood": 4,
               "Duskfiber": 5
+            }
+          }
+        },
+        "relations": {},
+        "behaviors": {},
+        "pii": [],
+        "gdpr": {}
+      },
+      "DigBrushes": {
+        "name": "DigBrushes",
+        "tags": [
+          "world-system"
+        ],
+        "description": "Which brush a dig makes: bare hands and each shovel or pick have a shape, a radius and the materials they cut; Mining skill grows the radius up to a cap; the rim is blended; yield is removed volume over a unit volume per material.",
+        "goal": "A dig moves a shovelful, not a slab, and the tool decides what it can cut (Phase 300)",
+        "fields": {
+          "id": {
+            "name": "id",
+            "type": "uuid",
+            "nullable": false,
+            "primaryKey": true,
+            "pii": false
+          },
+          "radiusCap": {
+            "name": "radiusCap",
+            "type": "decimal",
+            "description": "Largest brush radius in metres, skill growth included",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 1.5
+          },
+          "skillRadiusPerTier": {
+            "name": "skillRadiusPerTier",
+            "type": "decimal",
+            "description": "Metres of brush radius added per Mining skill tier",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 0.05
+          },
+          "blend": {
+            "name": "blend",
+            "type": "decimal",
+            "description": "Default smooth-blend k in metres for the rim of a dig",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 0.25
+          },
+          "minRadius": {
+            "name": "minRadius",
+            "type": "decimal",
+            "description": "Under this radius a dig is the single slab (one tile)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 0.25
+          },
+          "brushes": {
+            "name": "brushes",
+            "type": "json",
+            "description": "{ hands | <tool item>: { shape: sphere|cylinder|box, radius, cuts: [material] } }",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "hands": {
+                "shape": "sphere",
+                "radius": 0.35,
+                "cuts": [
+                  "Grass",
+                  "Soil",
+                  "Sand",
+                  "Snow"
+                ]
+              },
+              "FerritePick": {
+                "shape": "sphere",
+                "radius": 0.5,
+                "cuts": [
+                  "Ferrite",
+                  "Veilsteel",
+                  "Aethermite",
+                  "Voidite",
+                  "Ashite",
+                  "Lumenfite",
+                  "Grass",
+                  "Soil",
+                  "Sand",
+                  "Snow"
+                ]
+              },
+              "VeilsteelPick": {
+                "shape": "sphere",
+                "radius": 0.5,
+                "cuts": [
+                  "Ferrite",
+                  "Veilsteel",
+                  "Aethermite",
+                  "Voidite",
+                  "Ashite",
+                  "Lumenfite",
+                  "Grass",
+                  "Soil",
+                  "Sand",
+                  "Snow"
+                ]
+              },
+              "StonePick": {
+                "shape": "sphere",
+                "radius": 0.5,
+                "cuts": [
+                  "Ferrite",
+                  "Veilsteel",
+                  "Aethermite",
+                  "Voidite",
+                  "Ashite",
+                  "Lumenfite",
+                  "Grass",
+                  "Soil",
+                  "Sand",
+                  "Snow"
+                ]
+              },
+              "StoneShovel": {
+                "shape": "sphere",
+                "radius": 0.75,
+                "cuts": [
+                  "Grass",
+                  "Soil",
+                  "Sand",
+                  "Snow"
+                ]
+              }
+            }
+          },
+          "unitVolume": {
+            "name": "unitVolume",
+            "type": "json",
+            "description": "{ default: m3 per yielded unit, overrides: { <material>: m3 } }",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "default": 0.03125,
+              "overrides": {}
             }
           }
         },

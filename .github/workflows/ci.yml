@@ -551,6 +551,9 @@ jobs:
       - name: Check the work-time validation rejects bad tables
         run: node tools/check_work_times.js
 
+      - name: Check the dig-brush validation rejects bad tables (Phase 300)
+        run: node tools/check_dig_brush.js
+
       - name: Check the equipment validation rejects bad tables (Phase 295)
         run: node tools/check_equipment.js
 
