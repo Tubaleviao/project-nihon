@@ -12,7 +12,7 @@ const EditRemesh := preload("res://src/terrain/edit_remesh.gd")
 const SLAB_M3 := 0.5 * 0.5 * 0.125
 
 var s: Node
-## player id -> material -> volume (m³) not yet paid out (below one unit). Host only.
+## player id -> material -> volume (m³) not yet paid out; only when no player registry is wired (the registry saves it).
 var remainder: Dictionary = {}
 
 func _init(slice: Node) -> void:
@@ -109,7 +109,8 @@ func apply_plan(cells: Array, level: int) -> Dictionary:
 ## small digs yield what one big one does. Returns material -> whole units.
 func pay_units(player_id: String, volumes: Dictionary) -> Dictionary:
 	var out := {}
-	var mine: Dictionary = remainder.get(player_id, {})
+	var reg: Node = s.player_registry
+	var mine: Dictionary = reg.get_dig_remainder(player_id) if reg != null and reg.has_method("get_dig_remainder") else remainder.get(player_id, {})
 	for material in volumes:
 		var unit := unit_volume(str(material))
 		var total := float(mine.get(material, 0.0)) + float(volumes[material])
@@ -117,7 +118,10 @@ func pay_units(player_id: String, volumes: Dictionary) -> Dictionary:
 		mine[material] = maxf(total - float(units) * unit, 0.0)
 		if units > 0:
 			out[material] = units
-	remainder[player_id] = mine
+	if reg != null and reg.has_method("set_dig_remainder"):
+		reg.set_dig_remainder(player_id, mine)   # saved with the player
+	else:
+		remainder[player_id] = mine
 	return out
 
 ## Client side of a dig the host broadcast: rasterise the same op and apply it.

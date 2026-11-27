@@ -159,6 +159,23 @@ func on_host_edit(action: String, position: Vector3, normal: Vector3, material: 
 	return true
 
 ## Per frame on a client: a prediction the host has not answered in `TIMEOUT_MSEC` is taken out.
+## Phase 300 — the host's dig brush arrived while predictions are pending: applied to the host's state under them
+## and the pending ones made again on top, as `on_host_edit` does for a single span. False when nothing is pending.
+func on_host_dig(position: Vector3, params: Vector3, tool: String) -> bool:
+	_confirming = {}
+	if _pending.is_empty():
+		return false
+	s._build.sink = {}
+	_rewind()
+	s._dig.apply_wire(position, params, tool, EditRemesh.NEIGHBOUR)
+	for k in _auth.keys():
+		_auth[k] = _log(k)
+	s._build.sink = {}
+	_replay()
+	s._build.sink = null
+	_untrack_unused()
+	return true
+
 func tick() -> void:
 	if _pending.is_empty():
 		return

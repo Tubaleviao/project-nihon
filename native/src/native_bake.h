@@ -45,6 +45,10 @@ public:
 	int64_t box3(const Vector3i &p_p, const Vector3i &p_c, const Vector3i &p_h) const;
 	int64_t capsule3(const Vector3i &p_p, const Vector3i &p_a, const Vector3i &p_b, int64_t p_r) const;
 	int64_t capsule2(const Vector2i &p_p, const Vector2i &p_a, const Vector2i &p_b, int64_t p_r) const;
+	// Phase 300 — the cells a dig brush removes, geometry only: `shape` 0 sphere, 1 cylinder, 2 box; the centre,
+	// radius (already widened by the reach bias), `k` and half height in mm; cells under `min_n` (the bedrock
+	// step) are skipped. Triples (tile x, step n, tile z), tile-major then bottom-up, as `DigRasteriser.geometry`.
+	PackedInt32Array dig_cells(int64_t p_shape, const Vector3i &p_c, int64_t p_r, int64_t p_k, int64_t p_hh, int64_t p_min_n) const;
 };
 
 } // namespace godot

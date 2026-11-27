@@ -315,10 +315,11 @@ void NativeBake::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("smooth_intersection", "a", "b", "k"), &NativeBake::smooth_intersection);
 	ClassDB::bind_method(D_METHOD("smooth_subtract", "a", "b", "k"), &NativeBake::smooth_subtract);
 	ClassDB::bind_method(D_METHOD("capsule2", "p", "a", "b", "r"), &NativeBake::capsule2);
+	ClassDB::bind_method(D_METHOD("dig_cells", "shape", "c", "r", "k", "hh", "min_n"), &NativeBake::dig_cells);
 }
 
 int NativeBake::version() const {
-	return 7;   // 1 = Phase 245: bake and the CSG operations; 2 = thermal erosion; 3 = every CSG shape; 4 = hydraulic erosion (Phase 302); 5 = thermal talus 500 m per cell; 6 = the bake profile (talus, hydraulic on/off) as parameters, so a worldgen-14 world bakes its Phase 245 bytes; 7 = the east-west wrap (Phase 232) as a parameter
+	return 8;   // 8 = Phase 300 dig_cells; 1 = Phase 245: bake and the CSG operations; 2 = thermal erosion; 3 = every CSG shape; 4 = hydraulic erosion (Phase 302); 5 = thermal talus 500 m per cell; 6 = the bake profile (talus, hydraulic on/off) as parameters, so a worldgen-14 world bakes its Phase 245 bytes; 7 = the east-west wrap (Phase 232) as a parameter
 }
 
 PackedStringArray NativeBake::functions() const {
@@ -331,6 +332,7 @@ PackedStringArray NativeBake::functions() const {
 	out.push_back("smooth_intersection");
 	out.push_back("smooth_subtract");
 	out.push_back("capsule2");
+	out.push_back("dig_cells");
 	for (const char *f : { "disc", "box2", "polyline", "sphere", "cylinder", "box3", "capsule3" }) {
 		out.push_back(f);
 	}
@@ -473,4 +475,54 @@ int64_t NativeBake::capsule3(const Vector3i &p_p, const Vector3i &p_a, const Vec
 
 PackedInt32Array NativeBake::hydraulic(const PackedInt32Array &p_base, int64_t p_w, int64_t p_h, int64_t p_sea_mm, int64_t p_river_flow, bool p_wrap) const {
 	return ::hydraulic(p_base, p_w, p_h, p_sea_mm, p_river_flow, p_wrap);
+}
+
+// Phase 300 — floor division the way GDScript's `floori(float(a) / b)` rounds, for the brush bounds.
+static int64_t dig_floor_div(int64_t p_a, int64_t p_b) {
+	int64_t q = p_a / p_b;
+	if ((p_a % p_b != 0) && ((p_a < 0) != (p_b < 0))) {
+		q--;
+	}
+	return q;
+}
+
+PackedInt32Array NativeBake::dig_cells(int64_t p_shape, const Vector3i &p_c, int64_t p_r, int64_t p_k, int64_t p_hh, int64_t p_min_n) const {
+	const int64_t TILE_MM = 500;
+	const int64_t STEP_MM = 125;
+	PackedInt32Array out;
+	const int64_t reach_xz = p_r + p_k;
+	const int64_t reach_y = (p_shape == 1 ? p_hh : p_r) + p_k;
+	const int64_t tx0 = dig_floor_div(p_c.x - reach_xz, TILE_MM);
+	const int64_t tx1 = dig_floor_div(p_c.x + reach_xz, TILE_MM);
+	const int64_t tz0 = dig_floor_div(p_c.z - reach_xz, TILE_MM);
+	const int64_t tz1 = dig_floor_div(p_c.z + reach_xz, TILE_MM);
+	const int64_t n0 = dig_floor_div(p_c.y - reach_y, STEP_MM);
+	const int64_t n1 = dig_floor_div(p_c.y + reach_y, STEP_MM);
+	for (int64_t tx = tx0; tx <= tx1; tx++) {
+		for (int64_t tz = tz0; tz <= tz1; tz++) {
+			const int64_t px = tx * TILE_MM + TILE_MM / 2;
+			const int64_t pz = tz * TILE_MM + TILE_MM / 2;
+			for (int64_t n = n0; n <= n1; n++) {
+				if (n < p_min_n) {
+					continue;
+				}
+				const Vector3i p(px, n * STEP_MM + STEP_MM / 2, pz);
+				int64_t d;
+				if (p_shape == 1) {
+					d = cylinder(p, p_c, p_r, p_hh);
+				} else if (p_shape == 2) {
+					d = box3(p, p_c, Vector3i(p_r, p_r, p_r));
+				} else {
+					d = sphere(p, p_c, p_r);
+				}
+				if (smooth_subtract(-STEP_MM / 2, d, p_k) <= 0) {
+					continue;
+				}
+				out.push_back(tx);
+				out.push_back(n);
+				out.push_back(tz);
+			}
+		}
+	}
+	return out;
 }

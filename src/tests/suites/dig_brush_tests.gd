@@ -15,7 +15,9 @@ func register() -> void:
 	_run_test("dig brush: a shovel dig is one brush op that moves a shovelful", _test_dig_shovel_host)
 	_run_test("dig brush: yield is conserved however a volume is split", _test_dig_yield_conservation)
 	_run_test("dig brush: a client applying the wire op holds the host's runs", _test_dig_wire_parity)
+	_run_test("dig brush: the dig remainder is saved with the player", _test_dig_remainder_saved)
 	_run_test("dig brush: the fabric brushes stay under the radius cap", _test_dig_fabric_caps)
+	_run_test("dig brush: the GDScript and native rasterisers agree on 200 random brushes", _test_dig_native_parity)
 	_run_test("dig brush: the cells repeat for the same brush and runs", _test_dig_deterministic)
 
 func _flat(top: float) -> Callable:
@@ -154,3 +156,44 @@ func _test_dig_fabric_caps() -> void:
 		assert_true(float(b["radiusMax"]) <= cap, "%s stays under the cap" % tool)
 	var shovel: Dictionary = res.get("brushes")["StoneShovel"]
 	assert_true(not (shovel["materials"] as Array).has("Ashite"), "a shovel cuts no rock")
+
+func _test_dig_remainder_saved() -> void:
+	var v := _make_voxel()
+	var reg := PlayerRegistry.new()
+	v.player_registry = reg
+	reg.ensure_player("p")
+	v._dig.pay_units("p", { "Soil": 0.01 })
+	assert_true(absf(float(reg.get_dig_remainder("p").get("Soil", 0.0)) - 0.01) < 0.000001, "the remainder is on the record")
+	var reg2 := PlayerRegistry.new()
+	reg2.apply_player_data("p", reg.get_player_data("p"))
+	assert_true(absf(float(reg2.get_dig_remainder("p").get("Soil", 0.0)) - 0.01) < 0.000001, "and survives a save")
+	reg2.apply_player_data("q", { "dig_remainder": { "Soil": "bad", "Sand": -4.0, "Snow": 99.0 } })
+	var clean := reg2.get_dig_remainder("q")
+	assert_true(not clean.has("Soil") and float(clean["Sand"]) == 0.0 and float(clean["Snow"]) == 1.0, "a hostile payload is clamped")
+	v.player_registry = null
+	reg2.free()
+	reg.free()
+	v.queue_free()
+
+func _test_dig_native_parity() -> void:
+	if not NativeLoaderScript.use_native("NativeBake", "dig_cells"):
+		return   # no native build here: the GDScript is the only implementation, nothing to compare
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 300
+	var shapes := ["sphere", "cylinder", "box"]
+	var same := true
+	var cells := 0
+	for i in 200:
+		var brush := {
+			"shape": shapes[rng.randi() % 3],
+			"centre": Vector3(rng.randf_range(-500.0, 500.0), rng.randf_range(-97.0, 60.0), rng.randf_range(-500.0, 500.0)),
+			"radius": rng.randf_range(0.2, 1.5), "half_height": rng.randf_range(0.2, 1.5), "k": rng.randf_range(0.0, 0.5),
+		}
+		var a := Ras.geometry_gd(brush)
+		var b := Ras.geometry(brush)
+		cells += a.size()
+		if a != b:
+			same = false
+			print("parity mismatch on brush %d: %s (%d vs %d cells)" % [i, brush, a.size(), b.size()])
+			break
+	assert_true(same and cells > 0, "identical cells for 200 random brushes (%d ints)" % cells)

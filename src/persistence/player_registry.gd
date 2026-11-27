@@ -463,6 +463,8 @@ func ensure_player(player_id: String) -> Dictionary:
 			"companions": [],
 			"professions": {},
 			"craft_counter": 0,
+			# Phase 300 — volume (m³) dug but not yet paid out as a whole unit, per material.
+			"dig_remainder": {},
 			"skills":     {},
 			# Phase 161 — skill experience points, { skill: xp }; the level follows from the fabric's table.
 			"skill_xp":   {},
@@ -954,6 +956,23 @@ func record_craft_counter(player_id: String, counter: int) -> void:
 		return
 	rec["craft_counter"] = counter
 
+## Phase 300 — the dug volume not yet paid out, `{ material: m³ }`, each under one yield unit (a metre cube).
+func get_dig_remainder(player_id: String) -> Dictionary:
+	return _sanitize_dig_remainder(get_record(player_id).get("dig_remainder", {}))
+
+func set_dig_remainder(player_id: String, remainder: Dictionary) -> void:
+	var rec := ensure_player(player_id)
+	if not rec.is_empty():
+		rec["dig_remainder"] = _sanitize_dig_remainder(remainder)
+
+static func _sanitize_dig_remainder(raw: Variant) -> Dictionary:
+	var out := {}
+	if raw is Dictionary:
+		for k in raw:
+			if typeof(raw[k]) in [TYPE_INT, TYPE_FLOAT] and is_finite(float(raw[k])):
+				out[str(k)] = clampf(float(raw[k]), 0.0, 1.0)
+	return out
+
 ## The instance ids this player has tamed (Phase 35). Instance ids are derived
 ## from the chunk, creature and spawn index, so they are stable across restarts
 ## and a restored binding resolves to the same creature.
@@ -1258,6 +1277,7 @@ func get_player_data(player_id: String) -> Dictionary:
 		"professions": rec.get("professions", {}),
 		"titles": TitleRules.of_record(rec),
 		"craft_counter": int(rec.get("craft_counter", 0)),
+		"dig_remainder": get_dig_remainder(player_id),
 		"skills":     rec.get("skills", {}),
 		"skill_xp":   rec.get("skill_xp", {}),
 		"skill_focus": SkillFocus.sanitize(rec.get("skill_focus", {})),
@@ -1330,6 +1350,7 @@ func apply_player_data(player_id: String, data: Dictionary) -> void:
 	rec["professions"] = data.get("professions", {}) if data.get("professions", {}) is Dictionary else {}
 	rec["titles"] = TitleRules.of_record(data)   # Phase 273
 	rec["craft_counter"] = maxi(0, int(data.get("craft_counter", 0)))
+	rec["dig_remainder"] = _sanitize_dig_remainder(data.get("dig_remainder", {}))
 	# Phase 36: skill tiers ride the record too; a payload without `skills` restores empty (every skill novice).
 	rec["skills"]     = data.get("skills", {})
 	# Phase 161: skill XP rides the record; a payload from before it restores to none.

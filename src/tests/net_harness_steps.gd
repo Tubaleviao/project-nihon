@@ -1276,3 +1276,32 @@ func _served_at_least(bake: RefCounted, n: int) -> bool:
 		if int(bake.serve._peers[peer]["served"]) >= n:
 			return true
 	return false
+
+## Phase 300 — a client digs with a shovel: the host gives the client a stone shovel, the client asks for one mine at a
+## spot beside the rendezvous, the host resolves it as ONE brush op and broadcasts it. Both machines then hold the same
+## runs for every tile the brush could touch (the step compares the hash of them across both logs).
+const DIG_SPOT := Vector2(17.5, 16.25)
+func shovel_dig(h: Node) -> void:
+	await h._await_settle(1.0 * h._time_scale)
+	var voxel: Node = h._root._voxel
+	var top0: float = voxel.get_voxel_height_at(DIG_SPOT)
+	if h._role == "host":
+		var bound: String = h._live_bound_id()
+		if bound == "":
+			h._report("shovel_dig", "fail", "no_bound_peer")
+			return
+		h._root._registry.get_inventory(bound).add_item("StoneShovel", 1)
+		h._root._chest_wiring._push_inventory(bound)
+	else:
+		var armed: bool = await h._await_until(func() -> bool: return h._root._inventory.get_item_count("StoneShovel") >= 1, h._step_timeout())
+		if not armed:
+			h._report("shovel_dig", "fail", "no_shovel")
+			return
+		GameBus.block_mine_requested.emit(Vector3(DIG_SPOT.x, top0 - 0.05, DIG_SPOT.y), Vector3.UP, "", {})
+	var dug: bool = await h._await_until(func() -> bool: return voxel.get_voxel_height_at(DIG_SPOT) < top0 - 0.2, h._step_timeout() * 2.0)
+	await h._await_settle(1.0 * h._time_scale)
+	var runs := []
+	for dx in range(-4, 5):
+		for dz in range(-4, 5):
+			runs.append(voxel.get_runs_at_tile(Vector2i(floori(DIG_SPOT.x / 0.5) + dx, floori(DIG_SPOT.y / 0.5) + dz)))
+	h._report("shovel_dig", h.verdict(dug, true), ("runs-%d" % str(runs).hash()) if dug else "not_dug")

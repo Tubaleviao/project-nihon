@@ -897,7 +897,9 @@ func _on_mine_requested(position: Vector3, normal: Vector3, player_id: String, e
 	if s.is_authoritative:
 		s.mine_block(position, normal, player_id, exact)
 	else:
-		GameBus.block_edit_intent.emit("mine", position, normal, "", exact, s._predict.predict("mine", position, normal, ""))
+		# Phase 300 — a brush digger's mine is one dig op the host resolves: no single-slab prediction for it.
+		var brush_digger: bool = s.VoxelDig.is_brush(_held_shovel(inventory_for("")))
+		GameBus.block_edit_intent.emit("mine", position, normal, "", exact, 0 if brush_digger else s._predict.predict("mine", position, normal, ""))
 
 ## The inventory an edit by `player_id` resolves against: that player's own pack from
 ## the registry when one is wired, else this slice's (`""` = this machine's own

@@ -212,7 +212,7 @@ static func steps() -> Array:
 		{ "name": "book_teaches_client", "compare": true },
 		{ "name": "mount_dismount", "compare": true },
 		{ "name": "self_respawn", "compare": true },
-		{ "name": "loose_pick_synced", "compare": true }, { "name": "station_from_hotbar", "compare": true }, { "name": "station_craft", "compare": true }, { "name": "predicted_edit", "compare": true }, { "name": "client_attack_lands", "compare": true }, { "name": "client_loot_synced", "compare": true }, { "name": "market_names_seller", "compare": true }, { "name": "character_roster", "compare": true }, { "name": "planet_bake_fetch", "compare": true }, { "name": "menu_join", "compare": true }, { "name": "version_refused", "compare": true },
+		{ "name": "loose_pick_synced", "compare": true }, { "name": "station_from_hotbar", "compare": true }, { "name": "station_craft", "compare": true }, { "name": "predicted_edit", "compare": true }, { "name": "client_attack_lands", "compare": true }, { "name": "client_loot_synced", "compare": true }, { "name": "market_names_seller", "compare": true }, { "name": "character_roster", "compare": true }, { "name": "planet_bake_fetch", "compare": true }, { "name": "menu_join", "compare": true }, { "name": "version_refused", "compare": true }, { "name": "shovel_dig", "compare": true },
 	]
 
 ## The step names, comma-joined — the payload of the `plan` line the runner prints
@@ -475,7 +475,7 @@ func run(root: Node, role: String) -> void:
 	await LateSteps.new().book_teaches_client(self)
 	await LateSteps.new().mount_dismount(self)
 	await _step_self_respawn()
-	await LateSteps.new().loose_pick_synced(self); await LateSteps.new().station_from_hotbar(self); await LateSteps.new().station_craft(self); await LateSteps.new().predicted_edit(self); await LateSteps.new().client_attack_lands(self); await LateSteps.new().client_loot_synced(self); await LateSteps.new().market_names_seller(self); await LateSteps.new().character_roster(self); await LateSteps.new().planet_bake_fetch(self); await LateSteps.new().menu_join(self); await LateSteps.new().version_refused(self)
+	await LateSteps.new().loose_pick_synced(self); await LateSteps.new().station_from_hotbar(self); await LateSteps.new().station_craft(self); await LateSteps.new().predicted_edit(self); await LateSteps.new().client_attack_lands(self); await LateSteps.new().client_loot_synced(self); await LateSteps.new().market_names_seller(self); await LateSteps.new().character_roster(self); await LateSteps.new().planet_bake_fetch(self); await LateSteps.new().menu_join(self); await LateSteps.new().version_refused(self); await LateSteps.new().shovel_dig(self)
 	_finish()
 
 ## End this process, with the run's own verdict carried in the exit code.

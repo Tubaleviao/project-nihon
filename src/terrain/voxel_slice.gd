@@ -1287,6 +1287,11 @@ func _on_cycle_requested() -> void:
 ## tile-resolution and span math as mine_block/place_block, but does NOT touch
 ## the inventory or emit block_changed — the host already did both.
 func _on_block_changed(action: String, position: Vector3, normal: Vector3, material: String) -> void:
+	if action == "dig":
+		# Phase 300 — one brush op; a client with predictions pending applies it under them.
+		if not is_authoritative and not _predict.on_host_dig(position, normal, material):
+			apply_block_change(action, position, normal, material)
+		return
 	if is_authoritative or _predict.on_host_edit(action, position, normal, material):
 		return   # host already applied this edit locally; or (Phase 263) applied under this client's predictions
 	apply_block_change(action, position, normal, material)
