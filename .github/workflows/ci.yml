@@ -381,11 +381,19 @@ jobs:
   planet-bake:
     name: Planet bake (fabric seed, same command as release)
     # Phase 302 — the release bake step, run on every pull request so a broken bake shows before a tag.
-    needs: changes
+    # It needs the Linux native library: without it the bake runs the slow GDScript path (minutes).
+    needs: [changes, native-linux]
     if: github.event_name != 'workflow_dispatch' && needs.changes.outputs.light != 'true'
     runs-on: ubuntu-latest
+    # The GDScript fallback is slow; a hung bake should fail fast rather than hold the runner.
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: native-linux
+          path: native/bin
 
       - name: Download Godot 4.7
         run: |
