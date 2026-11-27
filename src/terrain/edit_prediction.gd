@@ -110,6 +110,8 @@ func on_acked(seq: int, accepted: bool, span: Dictionary = {}) -> void:
 ## pending ones made again on top (see the header). False (nothing done) when nothing is pending: the caller
 ## applies it as usual.
 func on_host_edit(action: String, position: Vector3, normal: Vector3, material: String) -> bool:
+	if action == "dig":
+		return on_host_dig(position, normal, material)   # Phase 300: one brush op, applied under the pending edits
 	var conf := _confirming
 	_confirming = {}
 	if _pending.is_empty():
@@ -167,7 +169,7 @@ func on_host_dig(position: Vector3, params: Vector3, tool: String) -> bool:
 		return false
 	s._build.sink = {}
 	_rewind()
-	s._dig.apply_wire(position, params, tool, EditRemesh.NEIGHBOUR)
+	s._edit.dig.apply_wire(position, params, tool, EditRemesh.NEIGHBOUR)
 	for k in _auth.keys():
 		_auth[k] = _log(k)
 	s._build.sink = {}

@@ -115,16 +115,16 @@ func _test_dig_shovel_host() -> void:
 	assert_true(sent.size() == 1 and sent[0][0] == "dig", "one dig op on the wire, not one per slab")
 	assert_true(int(r["quantity"]) > 4, "a shovelful yields many units, got %d" % int(r["quantity"]))
 	assert_true(v.get_voxel_height_at(Vector2(16.25, 16.25)) < top, "the ground is lower")
-	v.queue_free()
-	inv.queue_free()
+	v.free()
+	inv.free()
 
 func _test_dig_wire_parity() -> void:
 	var host := _make_voxel()
 	var client := _make_voxel()
 	var tool := "StoneShovel"
-	var plan := host._dig.plan(Vector3(16.25, 1.5, 16.25), 0.6, 0.0, "sphere", tool)
+	var plan: Dictionary = host._edit.dig.plan(Vector3(16.25, 1.5, 16.25), 0.6, 0.0, "sphere", tool)
 	assert_true(not (plan["cells"] as Array).is_empty(), "the host plan cuts something")
-	host._dig.apply_plan(plan["cells"], 0)
+	host._edit.dig.apply_plan(plan["cells"], 0)
 	client.apply_block_change("dig", Vector3(16.25, 1.5, 16.25), Vector3(0.6, 0.0, 0.0), tool)
 	var a := _runs_of(host, Vector2(16.25, 16.25), 3)
 	var b := _runs_of(client, Vector2(16.25, 16.25), 3)
@@ -134,20 +134,20 @@ func _test_dig_wire_parity() -> void:
 		if a[t] != _make_voxel().get_runs_at_tile(t):
 			changed += 1
 	assert_true(changed > 0, "the dig changed columns")
-	host.queue_free()
-	client.queue_free()
+	host.free()
+	client.free()
 
 func _test_dig_yield_conservation() -> void:
 	var v := _make_voxel()
 	var unit := 0.5 * 0.5 * 0.125
 	var small := {}
 	for _i in 20:
-		var paid: Dictionary = v._dig.pay_units("p1", { "Soil": unit * 0.1 })
+		var paid: Dictionary = v._edit.dig.pay_units("p1", { "Soil": unit * 0.1 })
 		for m in paid:
 			small[m] = int(small.get(m, 0)) + int(paid[m])
-	var big: Dictionary = v._dig.pay_units("p2", { "Soil": unit * 0.1 * 20.0 })
+	var big: Dictionary = v._edit.dig.pay_units("p2", { "Soil": unit * 0.1 * 20.0 })
 	assert_eq(int(small.get("Soil", 0)), int(big.get("Soil", 0)), "20 small digs yield what one big dig does")
-	v.queue_free()
+	v.free()
 
 func _test_dig_fabric_caps() -> void:
 	var res: Resource = GameData.WORLD_SYSTEMS.get("DigBrush", null)
@@ -164,18 +164,18 @@ func _test_dig_remainder_saved() -> void:
 	var reg := PlayerRegistry.new()
 	v.player_registry = reg
 	reg.ensure_player("p")
-	v._dig.pay_units("p", { "Soil": 0.01 })
-	assert_true(absf(float(reg.get_dig_remainder("p").get("Soil", 0.0)) - 0.01) < 0.000001, "the remainder is on the record")
+	v._edit.dig.pay_units("p", { "Soil": 0.01 })
+	assert_true(absf(float(reg.get_record("p")["dig_remainder"].get("Soil", 0.0)) - 0.01) < 0.000001, "the remainder is on the record")
 	var reg2 := PlayerRegistry.new()
 	reg2.apply_player_data("p", reg.get_player_data("p"))
-	assert_true(absf(float(reg2.get_dig_remainder("p").get("Soil", 0.0)) - 0.01) < 0.000001, "and survives a save")
+	assert_true(absf(float(reg2.get_record("p")["dig_remainder"].get("Soil", 0.0)) - 0.01) < 0.000001, "and survives a save")
 	reg2.apply_player_data("q", { "dig_remainder": { "Soil": "bad", "Sand": -4.0, "Snow": 99.0 } })
-	var clean := reg2.get_dig_remainder("q")
+	var clean: Dictionary = reg2.get_record("q")["dig_remainder"]
 	assert_true(not clean.has("Soil") and float(clean["Sand"]) == 0.0 and float(clean["Snow"]) == 1.0, "a hostile payload is clamped")
 	v.player_registry = null
 	reg2.free()
 	reg.free()
-	v.queue_free()
+	v.free()
 
 func _test_dig_native_parity() -> void:
 	if not NativeLoaderScript.use_native("NativeBake", "dig_cells"):
@@ -212,9 +212,9 @@ func _test_dig_vein_reserve() -> void:
 	var want := int(vein["reserve"]) + 3   # more ore cells than the vein holds
 	for i in want:
 		cells.append({ "tile": tile, "bottom": -40.0 - 0.125 * float(i), "top": -40.0 - 0.125 * float(i) + 0.125, "material": str(vein["material"]), "vein": vein, "host": false })
-	var applied: Dictionary = v._dig.apply_plan(cells, 0)
+	var applied: Dictionary = v._edit.dig.apply_plan(cells, 0)
 	var taken := int(v._vein_taken.get(str(vein["id"]), 0))
 	assert_eq(taken, int(vein["reserve"]), "the reserve falls to zero and no further")
 	var volume := float(applied["volumes"].get(str(vein["material"]), 0.0))
 	assert_true(absf(volume - float(taken) * VoxelDig.SLAB_M3) < 0.000001, "the yield is the ore taken: %f" % volume)
-	v.queue_free()
+	v.free()

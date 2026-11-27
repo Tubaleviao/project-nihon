@@ -8,11 +8,15 @@ const TerrainSlice := preload("res://src/terrain/terrain_slice.gd")
 const WorkTime := preload("res://src/core/work_time.gd")
 const StoneTools := preload("res://src/world/stone_tools.gd")
 const EditRemesh := preload("res://src/terrain/edit_remesh.gd")
+const VoxelDig := preload("res://src/terrain/voxel_dig.gd")   # Phase 300
+const DigRasteriser := preload("res://src/terrain/dig_rasteriser.gd")
 
 var s: Node
+var dig: RefCounted   # Phase 300: a dig is one brush op (VoxelDig)
 
 func _init(slice: Node) -> void:
 	s = slice
+	dig = VoxelDig.new(slice)
 
 func mine_block(world_pos: Vector3, normal: Vector3 = Vector3.UP, player_id: String = "", exact: Dictionary = {}) -> Dictionary:
 	# Resolve the span BEFORE spending tool durability, so a blocked mine never
@@ -34,7 +38,7 @@ func mine_block(world_pos: Vector3, normal: Vector3 = Vector3.UP, player_id: Str
 	# Phase 300 — a shovel (any digger whose brush reaches a whole tile) digs a shovelful, not a slab.
 	if str(span["material"]) == "":
 		var digger := _held_shovel(inventory)
-		if s.VoxelDig.is_brush(digger) and s.VoxelDig.brush_for(digger)["materials"].has(str(s.natural_yield(tile, span)["material"])):
+		if VoxelDig.is_brush(digger) and VoxelDig.brush_for(digger)["materials"].has(str(s.natural_yield(tile, span)["material"])):
 			return dig_brush(world_pos, normal, player_id, digger, inventory)
 
 	# Phase 205 — whose block this is, decided before anything is spent: free ground, the owner taking it
@@ -149,20 +153,20 @@ func mine_block(world_pos: Vector3, normal: Vector3 = Vector3.UP, player_id: Str
 ## durability point, one op on the wire (`block_changed("dig", centre, (radius, k, shape), tool)`), yield by volume.
 func dig_brush(world_pos: Vector3, normal: Vector3, player_id: String, tool: String, inventory: Node) -> Dictionary:
 	var fail := { "success": false, "material": "", "quantity": 0, "position": world_pos, "player_id": player_id }
-	var spec: Dictionary = s.VoxelDig.brush_for(tool)
+	var spec: Dictionary = VoxelDig.brush_for(tool)
 	var radius := float(spec["radius"])
 	var shape := str(spec["shape"])
 	# Snapped here, so the centre on the wire is exact in float32 and a client snaps to the same cell.
-	var snapped: Vector3i = s.DigRasteriser.snap_centre(s.DigRasteriser.centre_from_hit(world_pos, normal, radius))
+	var snapped: Vector3i = DigRasteriser.snap_centre(DigRasteriser.centre_from_hit(world_pos, normal, radius))
 	var centre := Vector3(snapped) / 1000.0
-	var p: Dictionary = s._dig.plan(centre, radius, 0.0, shape, tool)
+	var p: Dictionary = dig.plan(centre, radius, 0.0, shape, tool)
 	if (p["cells"] as Array).is_empty():
 		return fail
 	if tool != "" and inventory != null and inventory.has_method("use_item"):
 		if not inventory.use_item(tool, "dig"):
 			return fail
-	var applied: Dictionary = s._dig.apply_plan(p["cells"], _edit_level(player_id))
-	var paid: Dictionary = s._dig.pay_units(player_id, applied["volumes"])
+	var applied: Dictionary = dig.apply_plan(p["cells"], _edit_level(player_id))
+	var paid: Dictionary = dig.pay_units(player_id, applied["volumes"])
 	var total := 0
 	var first := ""
 	for material in paid:
@@ -181,15 +185,15 @@ func dig_brush(world_pos: Vector3, normal: Vector3, player_id: String, tool: Str
 	s._push_inventory(player_id)
 	var first_tile: Vector2i = (applied["tiles"] as Array)[0]
 	GameBus.block_edit_resolved.emit(first_tile, centre.y)
-	GameBus.block_changed.emit("dig", centre, Vector3(radius, 0.0, float(s.DigRasteriser.SHAPES.find(shape))), tool)
+	GameBus.block_changed.emit("dig", centre, Vector3(radius, 0.0, float(DigRasteriser.SHAPES.find(shape))), tool)
 	return { "success": true, "material": first, "quantity": total, "position": centre, "player_id": player_id, "destroyed": false }
 
 ## Phase 300 — the cells a brush dig by `tool` would remove at this hit, for the host's work timer.
 func dig_preview_cells(world_pos: Vector3, normal: Vector3, tool: String) -> int:
-	var spec: Dictionary = s.VoxelDig.brush_for(tool)
+	var spec: Dictionary = VoxelDig.brush_for(tool)
 	var radius := float(spec["radius"])
-	var snapped: Vector3i = s.DigRasteriser.snap_centre(s.DigRasteriser.centre_from_hit(world_pos, normal, radius))
-	return (s._dig.plan(Vector3(snapped) / 1000.0, radius, 0.0, str(spec["shape"]), tool)["cells"] as Array).size()
+	var snapped: Vector3i = DigRasteriser.snap_centre(DigRasteriser.centre_from_hit(world_pos, normal, radius))
+	return (dig.plan(Vector3(snapped) / 1000.0, radius, 0.0, str(spec["shape"]), tool)["cells"] as Array).size()
 
 ## Phase 43 — what mining a NATURAL span of `tile` yields, off the ore field:
 ## `{ material, quantity, vein }`. Inside a LIVE vein it is the vein's material and its
@@ -712,7 +716,7 @@ func _apply_edit(action: String, position: Vector3, normal: Vector3, material: S
 	if action == "settle":
 		return s._apply_settle(position, normal, material)
 	if action == "dig":
-		return s._dig.apply_wire(position, normal, material, level)
+		return dig.apply_wire(position, normal, material, level)
 	var r = s._resolve_edit_tile(action, position, normal)
 	var tile: Vector2i = r["tile"]
 	var xz: Vector2 = r["xz"]
@@ -905,7 +909,7 @@ func _on_mine_requested(position: Vector3, normal: Vector3, player_id: String, e
 		s.mine_block(position, normal, player_id, exact)
 	else:
 		# Phase 300 — a brush digger's mine is one dig op the host resolves: no single-slab prediction for it.
-		var brush_digger: bool = s.VoxelDig.is_brush(_held_shovel(inventory_for("")))
+		var brush_digger: bool = VoxelDig.is_brush(_held_shovel(inventory_for("")))
 		GameBus.block_edit_intent.emit("mine", position, normal, "", exact, 0 if brush_digger else s._predict.predict("mine", position, normal, ""))
 
 ## The inventory an edit by `player_id` resolves against: that player's own pack from

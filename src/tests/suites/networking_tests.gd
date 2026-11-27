@@ -2086,6 +2086,7 @@ func _test_net_harness_step_table() -> void:
 	steps = steps.slice(0, steps.size() - 1)
 	assert_eq(str(steps.pop_back().get("name", "")), "menu_join", "after a client re-joining through the main menu's join path (Phase 223)")
 	assert_eq(str(steps.pop_back().get("name", "")), "planet_bake_fetch", "after a client fetching the host's planet bake, refusing a corrupted one (Phase 302)")
+	assert_eq(str(steps.pop_back().get("name", "")), "shovel_dig", "after a client digging with a shovel, the host and client holding the same runs (Phase 300)")
 	assert_eq(str(steps.pop_back().get("name", "")), "character_roster", "after a client listing, making and entering its characters (Phase 226)")
 	assert_eq(str(steps.pop_back().get("name", "")), "market_names_seller", "after each side's market naming the other seller (Phase 292)")
 	assert_eq(str(steps.pop_back().get("name", "")), "client_loot_synced", "after ground loot taken and dropped by a client")

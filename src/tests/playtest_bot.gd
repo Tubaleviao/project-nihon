@@ -1320,42 +1320,10 @@ func _step_mine() -> Array:
 	await _until(func(): return own.call() >= 1 + MINE_EXTRA_DIGS, STEP_TIMEOUT_SECS)
 	_edit_visible = edit_visible_record(remesh.samples.slice(n0))
 	var e := _edit_visible
-	# Phase 300 — a stone shovel digs a pit 1 m deep and 1.5 m wide in at most PIT_HOLDS holds.
-	var pit: Dictionary = await _dig_pit(Vector3(p.x + 3.0, 0.0, p.z + 3.0))
-	if not bool(pit["ok"]):
-		return [false, "pit: %s" % str(pit["note"])]
+	var pit: Dictionary = await load("res://src/tests/playtest_dig_pit.gd").dig(self, _root, Vector3(p.x + 3.0, 0.0, p.z + 3.0)); if not bool(pit["ok"]): return [false, "pit: %s" % str(pit["note"])]   # Phase 300: a shovel pit 1 m deep, 1.5 m wide
 	return [int(e["edits"]) > 0, "mined %s after holding work %.1f s; %d edits visible in %.0f frames / %.1f ms p95 (queue %.1f, build %.1f of which the job %.1f, %d on the main thread, %d prebuilt, misses %s)" % [
 		str(_mined.back()), held, int(e["edits"]), float(e["frames_p95"]), float(e["ms_p95"]), float(e["queue_ms_p95"]),
 		float(e["build_ms_p95"]), float(e["job_ms_p95"]), int(e["on_main_thread"]), int(e["prebuilt"]), JSON.stringify(e["misses"])]]
-
-## Phase 300 — digs a pit with a stone shovel around `centre` (xz): hold work and complete one dig per hold, until the
-## ground at the centre is 1 m under where it started and the ground 0.75 m to each side of it is at least half a
-## metre under. `{ ok, note }`; fails past `PIT_HOLDS` holds.
-const PIT_HOLDS := 6
-func _dig_pit(centre: Vector3) -> Dictionary:
-	if int(_root._inventory.get_item_count("StoneShovel")) < 1:
-		_root._inventory.add_item("StoneShovel", 1)
-	var voxel: Node = _root._voxel
-	var c := Vector2(centre.x, centre.z)
-	var start: float = voxel.get_voxel_height_at(c)
-	var offsets := [Vector2.ZERO, Vector2(0.75, 0.0), Vector2(-0.75, 0.0), Vector2(0.0, 0.75), Vector2(0.0, -0.75), Vector2.ZERO]
-	var holds := 0
-	for i in PIT_HOLDS:
-		var q: Vector2 = c + offsets[i]
-		var y: float = voxel.get_voxel_height_at(q)
-		var spot := Vector3(q.x, y - 0.05, q.y)
-		if await _hold_work("block", "", spot) < 0.0:
-			return { "ok": false, "note": "the host never answered hold %d" % i }
-		GameBus.block_mine_requested.emit(spot, Vector3.UP, "", {})
-		await get_tree().process_frame
-		holds += 1
-		var deep: bool = start - voxel.get_voxel_height_at(c) >= 1.0
-		var wide := true
-		for d in [Vector2(0.75, 0.0), Vector2(-0.75, 0.0), Vector2(0.0, 0.75), Vector2(0.0, -0.75)]:
-			wide = wide and start - voxel.get_voxel_height_at(c + d) >= 0.5
-		if deep and wide:
-			return { "ok": true, "note": "%d holds" % holds }
-	return { "ok": false, "note": "%d holds left the centre %.2f m down" % [holds, start - voxel.get_voxel_height_at(c)] }
 
 ## Phase 259 — hold work on a target the way the player does: ask the host to start it, wait for its duration, and
 ## return the seconds the work took (-1.0 when the host never answered). The completion request is the caller's.

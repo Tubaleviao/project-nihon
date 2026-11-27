@@ -7,6 +7,7 @@ extends RefCounted
 const Ras := preload("res://src/terrain/dig_rasteriser.gd")
 const VoxelConsts := preload("res://src/terrain/voxel_consts.gd")
 const EditRemesh := preload("res://src/terrain/edit_remesh.gd")
+const RecordSanitize := preload("res://src/persistence/record_sanitize.gd")
 
 ## Yield volume of one slab: a tile (0.5 m)² by one STEP_HEIGHT.
 const SLAB_M3 := 0.5 * 0.5 * 0.125
@@ -116,7 +117,8 @@ func apply_plan(cells: Array, level: int) -> Dictionary:
 func pay_units(player_id: String, volumes: Dictionary) -> Dictionary:
 	var out := {}
 	var reg: Node = s.player_registry
-	var mine: Dictionary = reg.get_dig_remainder(player_id) if reg != null and reg.has_method("get_dig_remainder") else remainder.get(player_id, {})
+	var rec: Dictionary = reg.ensure_player(player_id) if reg != null and reg.has_method("ensure_player") else {}
+	var mine: Dictionary = RecordSanitize.sanitize_dig_remainder(rec.get("dig_remainder", {})) if not rec.is_empty() else remainder.get(player_id, {})
 	for material in volumes:
 		var unit := unit_volume(str(material))
 		var total := float(mine.get(material, 0.0)) + float(volumes[material])
@@ -124,8 +126,8 @@ func pay_units(player_id: String, volumes: Dictionary) -> Dictionary:
 		mine[material] = maxf(total - float(units) * unit, 0.0)
 		if units > 0:
 			out[material] = units
-	if reg != null and reg.has_method("set_dig_remainder"):
-		reg.set_dig_remainder(player_id, mine)   # saved with the player
+	if not rec.is_empty():
+		rec["dig_remainder"] = mine   # saved with the player
 	else:
 		remainder[player_id] = mine
 	return out

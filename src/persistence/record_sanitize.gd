@@ -24,3 +24,12 @@ static func sanitize_skill_xp(raw: Variant) -> Dictionary:
 			if k is String and k != "" and k.length() <= 32 and (raw[k] is int or raw[k] is float) and is_finite(float(raw[k])):
 				out[k] = clampi(int(raw[k]), 0, 100000000)
 	return out
+
+## Phase 300 — the dug volume not yet paid out as a whole unit, `{ material: m³ }`, each clamped to [0, 1].
+static func sanitize_dig_remainder(raw: Variant) -> Dictionary:
+	var out := {}
+	if raw is Dictionary:
+		for k in raw:
+			if typeof(raw[k]) in [TYPE_INT, TYPE_FLOAT] and is_finite(float(raw[k])):
+				out[str(k)] = clampf(float(raw[k]), 0.0, 1.0)
+	return out
