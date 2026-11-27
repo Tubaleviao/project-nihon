@@ -27,6 +27,7 @@ func register() -> void:
 	_run_test("bake (302): a worldgen-14 world bakes the Phase 245 bytes, a newer one the new profile", _test_bake_profiles, true)
 	_run_test("bake (302): the baked macro height is interpolated continuously across its cells", _test_bake_macro_interpolated)
 	_run_test("bake (302): the generator reads the baked macro height when a bake is loaded, native and GDScript alike", _test_bake_macro_used, true)
+	_run_test("bake (232): the grid wraps east-west, so a river crosses the X seam in one cell step, and the native twin matches", _test_bake_wraps_seam, true)
 	_run_test("bake (302): along 50 baked rivers the runtime ground lies below the water and no bank step exceeds 0.5 m", _test_bake_runtime_carve, true)
 
 ## A hill-and-sea grid: a ridge with noise-free integer bumps, sea on the east side.
@@ -128,13 +129,13 @@ func _test_bake_native_parity() -> void:
 	var mism := 0
 	if NativeLoaderScript.use_native("NativeBake", "bake"):
 		for c: Array in cases:
-			for v in [Bake.BAKE_VERSION_245, Bake.BAKE_VERSION]:   # Phase 302: both bake profiles
+			for v in [Bake.BAKE_VERSION_245, Bake.BAKE_VERSION_WRAP - 1, Bake.BAKE_VERSION]:   # Phase 302 and 232: every bake profile
 				var pf := Bake.profile(v)
 				var a: Dictionary = Bake.bake_gd(c[0], c[1], c[2], c[3], c[4], Callable(), v)
-				var b: Dictionary = NativeLoaderScript.instance("NativeBake").callv("bake", c + [int(pf.talus), bool(pf.hydraulic)])
+				var b: Dictionary = NativeLoaderScript.instance("NativeBake").callv("bake", c + [int(pf.talus), bool(pf.hydraulic), bool(pf.wrap)])
 				if a.height != b.height or a.dir != b.dir or a.flow != b.flow or a.river != b.river:
 					mism += 1
-		assert_eq(mism, 0, "native bake equals the reference on %d grids, both profiles" % cases.size())
+		assert_eq(mism, 0, "native bake equals the reference on %d grids, every profile" % cases.size())
 	var op: Array = []
 	for i in 3000:
 		op.append([rng.randi_range(-30000, 30000), rng.randi_range(-30000, 30000), rng.randi_range(-3, 4000)])
@@ -598,7 +599,8 @@ func _test_bake_profiles() -> void:
 	assert_true(Bake.bake_planet(302245, 64, 32, circ, 12).has("biome"), "a newest-profile planet carries the biome byte")
 	# The plan picks the file and the profile from the world's version; the boot's job and the slice read the same plan.
 	assert_eq(BakeJob.bake_version_for(14), 14, "a world recorded at 14 bakes profile 14")
-	assert_eq(BakeJob.bake_version_for(15), Bake.BAKE_VERSION, "a world recorded at 15 bakes the newest")
+	assert_eq(BakeJob.bake_version_for(15), Bake.BAKE_VERSION_WRAP - 1, "a world recorded at 15 keeps the bake whose X edges are boundaries")
+	assert_eq(BakeJob.bake_version_for(Bake.BAKE_VERSION_WRAP), Bake.BAKE_VERSION, "a world recorded at 18 bakes the newest")
 	assert_eq(BakeJob.bake_version_for(-1), Bake.BAKE_VERSION, "a new world bakes the newest")
 	var p14 := BakeJob.plan_for(7, 1000.0 * Bake.CELL_M, 14)
 	var p15 := BakeJob.plan_for(7, 1000.0 * Bake.CELL_M, 15)
@@ -611,3 +613,69 @@ func _test_bake_profiles() -> void:
 	assert_eq(str(Bake.ensure(path, 302245, 64, 32, circ, 12, "", Callable(), Bake.BAKE_VERSION_245).hash), BAKE_245_PLANET_HASH, "and reads it back")
 	DirAccess.remove_absolute(path)
 	DirAccess.remove_absolute(path + ".sha256")
+
+
+## Phase 232 — a ridge at x = W - 6 that falls east across the seam to a sea at x = 10 and west to a sea at x = 14: the
+## river down its east flank must cross the X seam in one cell step, not end at the grid edge or span the planet.
+func _seam_grid() -> PackedInt32Array:
+	var g := PackedInt32Array()
+	g.resize(W * H)
+	for z in H:
+		for x in W:
+			var east := posmod(x - (W - 6), W)   # cells east of the ridge
+			var west := W - east
+			g[z * W + x] = 80000 - 5000 * east if east <= 16 else 80000 - 2900 * west
+	return g
+
+
+func _test_bake_wraps_seam() -> void:
+	var Hydrology := preload("res://src/terrain/hydrology.gd")
+	var cell := Bake.CELL_M
+	var circ := float(W) * cell
+	var half_h := cell * float(H) * 0.5
+	var row := 10
+	var last := row * W + (W - 1)
+	var first := row * W
+	var bk := Bake.bake_gd(_seam_grid(), W, H, SEA, 3)
+	assert_true(int(bk["river"][last]) != 0 and int(bk["river"][first]) != 0, "river cells stand on both sides of the seam")
+	assert_eq(int(bk["dir"][last]), first, "the cell beside the seam drains over it to the first column")
+	assert_eq(int(bk["river"][last]), int(bk["river"][first]), "and both reach the same outlet")
+	# Trace: the segment out of the last column ends where the segment out of the first column starts (one river width at most).
+	var segs: Array = Hydrology.baked_segs(bk, cell, 0.0, -half_h, circ, half_h)
+	var az := (float(row) + 0.5) * cell - half_h
+	var out_seg: Array = []
+	var in_seg: Array = []
+	var longest := 0.0
+	for sg: Array in segs:
+		longest = maxf(longest, Vector2(float(sg[0]) - float(sg[2]), float(sg[1]) - float(sg[3])).length())
+		if absf(float(sg[1]) - az) < 1.0 and absf(float(sg[0]) - (float(W) - 0.5) * cell) < 1.0:
+			out_seg = sg
+		if absf(float(sg[1]) - az) < 1.0 and absf(float(sg[0]) - 0.5 * cell) < 1.0:
+			in_seg = sg
+	assert_true(longest <= cell * 1.5, "no river segment is longer than a cell step (none spans the planet)")
+	assert_true(not out_seg.is_empty() and not in_seg.is_empty(), "the river has a segment on each side of the seam")
+	if not out_seg.is_empty() and not in_seg.is_empty():
+		var gap := absf(SeamWrapScript.delta_f(float(out_seg[2]), float(in_seg[0]), circ)) + absf(float(out_seg[3]) - float(in_seg[1]))
+		assert_true(gap <= 2.0 * float(out_seg[6]) + 1.0, "its two ends meet within one river width (gap %.1f m)" % gap)
+	# The Phase 302 profile keeps the X edges as boundaries: the same ridge does not carry the river over the seam.
+	var old := Bake.bake_gd(_seam_grid(), W, H, SEA, 3, Callable(), Bake.BAKE_VERSION_WRAP - 1)
+	assert_true(int(old["dir"][last]) != first, "a bake before worldgen 18 does not cross the seam")
+	if NativeLoaderScript.use_native("NativeBake", "bake"):
+		var nb: Dictionary = Bake.bake(_seam_grid(), W, H, SEA, 3)
+		assert_true(nb["height"] == bk["height"] and nb["dir"] == bk["dir"] and nb["flow"] == bk["flow"] and nb["river"] == bk["river"], "the native bake wraps the same way")
+		var pf := Bake.profile(Bake.BAKE_VERSION)
+		var rng := RandomNumberGenerator.new()
+		rng.seed = 232
+		var bad := 0
+		for t in 4:
+			var r := PackedInt32Array()
+			r.resize(W * H)
+			for i in W * H:
+				r[i] = rng.randi_range(-8000, 3000000)
+			var nat: Object = NativeLoaderScript.instance("NativeBake")
+			if nat.call("erode", r, W, H, SEA, Bake.ERODE_TALUS_MM, true) != Bake.erode(r, W, H, SEA, Bake.ERODE_TALUS_MM, true):
+				bad += 1
+			if nat.call("hydraulic", r, W, H, SEA, 12, true) != Bake.hydraulic(r, W, H, SEA, 12, true):
+				bad += 1
+		assert_eq(bad, 0, "native wrapped erosion equals the reference")
+		assert_true(bool(pf.wrap), "the newest profile wraps")

@@ -65,7 +65,11 @@ static func lake_cell() -> float:
 	return LAKE_CELL_SMALL_M if _small_planet() else LAKE_CELL_M
 
 static func river_cell() -> float:
-	return RIVER_CELL_SMALL_M if _small_planet() else RIVER_CELL_M
+	var base := RIVER_CELL_SMALL_M if _small_planet() else RIVER_CELL_M
+	# Phase 232 (#573): the cell is made an exact divisor of the circumference (the count rounds w / 1024, so the
+	# wrap `posmod(cx, cells)` closes on the lap and a river crossing the X seam continues on the other side).
+	var w := float(TerrainSlice.circumference_chunks()) * TerrainSlice.CHUNK_METERS
+	return w / float(_cells(w, base))
 const RIVER_CHANCE := 0.3
 const RIVER_STEP_M := 64.0
 const RIVER_MAX_STEPS := 60
@@ -601,7 +605,12 @@ static func baked_segs(bake: Dictionary, cell: float, x0: float, z0: float, x1: 
 				continue
 			var ax := (float(cx) + 0.5) * cell
 			var az := (float(cz) + 0.5) * cell - half_h
-			var bx := ax + float((d % w) - xi) * cell
+			var dxc := (d % w) - xi   # Phase 232: a drain across the X seam is one cell away, not w - 1
+			if dxc > w / 2:
+				dxc -= w
+			elif dxc < -(w / 2):
+				dxc += w
+			var bx := ax + float(dxc) * cell
 			var bz := az + float(d / w - cz) * cell
 			var wa := clampf(float(PlanetBake.river_width_mm(flow[i])) * 0.001, _wmin, _wmax * 4.0)
 			var wb := clampf(float(PlanetBake.river_width_mm(flow[d])) * 0.001, _wmin, _wmax * 4.0)

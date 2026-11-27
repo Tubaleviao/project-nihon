@@ -576,12 +576,14 @@ thread for every chunk). Mounts still refuse any river, even a stream their own 
 - Any change to world-gen output bumps `TerrainSlice.WORLDGEN_VERSION` with a history line and
   updates `_test_worldgen_golden`.
 
-**Progress (in flight, worldgen 17):** the spawn plain extent (lakes by disc, rivers by segment and width), the build-cost skip
+**Progress (in flight, worldgen 18):** the spawn plain extent (lakes by disc, rivers by segment and width), the build-cost skip
 (`FreshWaterMesh.worker_arrays`), the mount ford (#593), the lake shores (surface clamped under the ground around the disc with
 detail noise and massifs, a smooth-subtracted bowl and bank and a low levee from `terrain_csg.gd`, `lakeFreeboard` / `lakeMaxLevee`
 in the fabric) and the frontier water ease (`Hydrology._eased`, `Frontier.water_weight`) are in with tests; the #573 items fixed by
-#589 (cache reset, record changes, crossing width, ice) keep theirs. Still open: the river seam (the bake grid does not wrap
-east-west: its drains, fill and erosion need a new bake profile with a native twin).
+#589 (cache reset, record changes, crossing width, ice) keep theirs. The river seam is in (worldgen 18, bake 18): the bake profile `wrap` (version 18 and later)
+makes drains, fill, thermal and hydraulic erosion treat the X edges as neighbours, in the GDScript reference and in `NativeBake` (version 7);
+`Hydrology.baked_segs` steps a drain over the seam as one cell; the local trace cell is an exact divisor of the circumference.
+A test traces a baked river across the seam. Worlds recorded before 18 keep the non-wrapping bake.
 
 **Closes:** #573, #593
 

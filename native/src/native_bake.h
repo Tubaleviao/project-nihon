@@ -25,12 +25,12 @@ public:
 	PackedStringArray functions() const;
 
 	// `PlanetBake.bake`.
-	Dictionary bake(const PackedInt32Array &p_base, int64_t p_w, int64_t p_h, int64_t p_sea_mm, int64_t p_river_flow, int64_t p_talus_mm, bool p_hydraulic) const;
+	Dictionary bake(const PackedInt32Array &p_base, int64_t p_w, int64_t p_h, int64_t p_sea_mm, int64_t p_river_flow, int64_t p_talus_mm, bool p_hydraulic, bool p_wrap = false) const;
 
 	// `PlanetBake.erode`.
-	PackedInt32Array erode(const PackedInt32Array &p_base, int64_t p_w, int64_t p_h, int64_t p_sea_mm, int64_t p_talus_mm) const;
+	PackedInt32Array erode(const PackedInt32Array &p_base, int64_t p_w, int64_t p_h, int64_t p_sea_mm, int64_t p_talus_mm, bool p_wrap = false) const;
 	// `PlanetBake.hydraulic`.
-	PackedInt32Array hydraulic(const PackedInt32Array &p_base, int64_t p_w, int64_t p_h, int64_t p_sea_mm, int64_t p_river_flow) const;
+	PackedInt32Array hydraulic(const PackedInt32Array &p_base, int64_t p_w, int64_t p_h, int64_t p_sea_mm, int64_t p_river_flow, bool p_wrap = false) const;
 
 	// `TerrainCsg` operations and the shapes the bake's carve uses.
 	int64_t isqrt(int64_t p_n) const;

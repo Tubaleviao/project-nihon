@@ -33,10 +33,12 @@ static func plan_for(seed_v: int, circumference_m: float, worldgen_version: int,
 
 
 ## Phase 302 — the bake version of a world recorded at `world_version` (-1 or less for a new world): the Phase 245
-## algorithm for worldgen 14, the newest for 15 and later and for a new world.
+## algorithm for worldgen 14, the Phase 302 one for 15 to 17, the newest for 18 and later and for a new world.
 static func bake_version_for(world_version: int) -> int:
 	if world_version >= 0 and world_version <= PlanetBake.BAKE_VERSION_245:
 		return PlanetBake.BAKE_VERSION_245
+	if world_version >= 0 and world_version < PlanetBake.BAKE_VERSION_WRAP:
+		return PlanetBake.BAKE_VERSION_WRAP - 1   # Phase 232: worlds of 15 to 17 keep the bake whose X edges are boundaries
 	return PlanetBake.BAKE_VERSION
 
 

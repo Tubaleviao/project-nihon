@@ -51,7 +51,9 @@ const HEIGHT_SCALE := 5.0    # world units peak-to-valley of the small-scale DET
 ## 16 = Phase 232 lakes and rivers stay off the whole spawn plain: a lake by its full disc, a river by its segments and width, not by centre or vertices.
 ## 17 = Phase 232 lake shores: the surface is clamped under the ground around the disc (detail noise and massifs included), the basin is a
 ## smooth-subtracted bowl with a sloping bank and a low levee (`lakeFreeboard`, `lakeMaxLevee`), and beside an older recorded chunk the water eases to its ground.
-const WORLDGEN_VERSION := 17
+## 18 = Phase 232 river seam: the planet bake wraps east-west (drains, fill, erosion treat the X edges as neighbours), baked rivers
+## cross the seam as one cell step, and the local river cell is an exact divisor of the circumference.
+const WORLDGEN_VERSION := 18
 ## The first worldgen version whose rivers are the planet bake's; a world recorded earlier keeps the local trace.
 const BAKE_WORLDGEN_VERSION := 14
 ## The first worldgen version whose macro height is the planet bake's; a world recorded at 14 keeps the noise shape.
