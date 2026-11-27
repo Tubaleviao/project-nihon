@@ -23,6 +23,9 @@ func register() -> void:
 	_run_test("bake: ensure loads a good file, and bakes again when it is damaged or not the host's", _test_bake_ensure)
 	_run_test("bake: the bake-only boot skips the main menu and the file name carries seed and version", _test_bake_cli)
 	_run_test("bake: a carved river lies below the water with soft banks", _test_bake_carve)
+	_run_test("bake (302): the baked macro height is interpolated continuously across its cells", _test_bake_macro_interpolated)
+	_run_test("bake (302): the generator reads the baked macro height when a bake is loaded, native and GDScript alike", _test_bake_macro_used, true)
+	_run_test("bake (302): along 50 baked rivers the runtime ground lies below the water and no bank step exceeds 0.5 m", _test_bake_runtime_carve, true)
 
 ## A hill-and-sea grid: a ridge with noise-free integer bumps, sea on the east side.
 func _grid() -> PackedInt32Array:
@@ -367,3 +370,167 @@ func _test_bake_cli() -> void:
 	const MenuWiring := preload("res://src/menu/menu_wiring.gd")
 	assert_true(not MenuWiring.should_show_main_menu(["--bake-planet", "build/bake"]), "--bake-planet boots without the menu")
 	assert_eq(Bake.file_path("d", 238, 13, 1000, 500), "d/planet_238_v13_1000x500.bin", "file name")
+
+
+# ---- Phase 302 — macro height from the bake, soft banks at runtime ----
+
+const MACRO_SEED := 302302
+
+## The bake's macro height: equal to the baked height at every cell centre, continuous across cell borders,
+## bounded by the four surrounding cells inside a cell, and wrapping round the planet in X.
+func _test_bake_macro_interpolated() -> void:
+	var bk := Bake.bake(_grid(), W, H, SEA, 12)
+	var cell := 2000.0
+	var half := cell * H * 0.5
+	var centres_ok := true
+	for i in [0, 7, W + 3, 5 * W + 20, (H - 1) * W + W - 1]:
+		var x := (float(i % W) + 0.5) * cell
+		var z := (float(i / W) + 0.5) * cell - half
+		centres_ok = centres_ok and absf(Bake.sample_height(bk, cell, x, z) - float(bk.height[i]) * 0.001) < 1e-9
+	assert_true(centres_ok, "the macro height equals the baked height at each cell centre")
+	# C0: across every vertical and horizontal cell border of a strip the two sides agree.
+	var worst := 0.0
+	var jump := 0.0
+	for k in 200:
+		var bx := float(k % W) * cell + 1000.0   # a border between centres (k, k+1) lies at (k + 1) * cell
+		var bz := (float(k % (H - 1)) + 1.0) * cell - half
+		var e := 1e-4
+		worst = maxf(worst, absf(Bake.sample_height(bk, cell, bx + 1000.0 - e, bz - 300.0) - Bake.sample_height(bk, cell, bx + 1000.0 + e, bz - 300.0)))
+		worst = maxf(worst, absf(Bake.sample_height(bk, cell, bx + 300.0, bz - e) - Bake.sample_height(bk, cell, bx + 300.0, bz + e)))
+		# A 0.5 m step anywhere changes the height by at most the cell's steepest gradient times 0.5 m.
+		jump = maxf(jump, absf(Bake.sample_height(bk, cell, bx, bz) - Bake.sample_height(bk, cell, bx + 0.5, bz)))
+	assert_true(worst < 0.01, "no step across a 2 km cell border (worst %.6f m over 0.2 mm)" % worst)
+	assert_true(jump < 50.0, "the field has no jump between neighbouring tiles (worst %.3f m)" % jump)
+	var bounded := true
+	for k in 100:
+		var x := 731.0 + float(k) * 997.3
+		var z := -half + 1500.0 + float(k) * 523.1
+		var gx := floori(x / cell - 0.5)
+		var gz := clampi(floori((z + half) / cell - 0.5), 0, H - 2)
+		var cs: Array = []
+		for c in [Vector2i(0, 0), Vector2i(1, 0), Vector2i(0, 1), Vector2i(1, 1)]:
+			cs.append(float(bk.height[(gz + c.y) * W + posmod(gx + c.x, W)]) * 0.001)
+		var v := Bake.sample_height(bk, cell, x, z)
+		bounded = bounded and v >= float(cs.min()) - 1e-9 and v <= float(cs.max()) + 1e-9
+	assert_true(bounded, "inside a cell the height lies between its four centres")
+	assert_true(absf(Bake.sample_height(bk, cell, 123.0, 4567.0) - Bake.sample_height(bk, cell, 123.0 + cell * W, 4567.0)) < 1e-9, "X wraps round the planet")
+	assert_true(absf(Bake.sample_height(bk, cell, -10.0, 100.0) - Bake.sample_height(bk, cell, cell * W - 10.0, 100.0)) < 1e-9, "the antimeridian is seamless")
+
+## With a bake loaded the generator's macro height is the bake's (spawn plain kept), native and GDScript
+## heightmaps agree on it, and without one (or with a worldgen-14 bake) it is `WorldShape.height` again.
+func _test_bake_macro_used() -> void:
+	var circ := float(TerrainSlice.circumference_chunks()) * TerrainSlice.CHUNK_METERS
+	var w := 64
+	var bk := Bake.bake_planet(MACRO_SEED, w, w / 2, circ, 12)
+	var cell := circ / float(w)
+	var far := Vector2(circ * 0.25 + 777.0, 3210.0)   # far from the spawn plain
+	var shape := WorldShape.height(MACRO_SEED, far.x, far.y, circ)
+	assert_eq(TerrainSlice.macro_height(MACRO_SEED, far.x, far.y, circ), shape, "no bake: the macro height is the world shape")
+	Hydrology.use_bake(MACRO_SEED, bk, circ, false)
+	assert_eq(TerrainSlice.macro_height(MACRO_SEED, far.x, far.y, circ), shape, "a worldgen-14 bake (rivers only) keeps the world shape")
+	Hydrology.use_bake(MACRO_SEED, bk, circ)
+	var t := TerrainSlice.new()
+	t._world_seed = MACRO_SEED
+	assert_true(t.has_bake_macro(), "the slice reports the baked macro height")
+	var baked := Bake.sample_height(bk, cell, far.x, far.y)
+	assert_eq(TerrainSlice.macro_height(MACRO_SEED, far.x, far.y, circ), baked, "with the bake the macro height is the bake's")
+	var differs := 0
+	for k in 32:
+		var x := float(k) * circ / 32.0 + 911.0
+		var z := float(k - 16) * 9000.0
+		if absf(TerrainSlice.macro_height(MACRO_SEED, x, z, circ) - WorldShape.height(MACRO_SEED, x, z, circ)) > 0.5:
+			differs += 1
+	assert_true(differs >= 4, "the baked macro height is not the noise shape (%d of 32 points differ)" % differs)
+	var spawn := WorldShape.SPAWN_CENTER
+	assert_eq(TerrainSlice.macro_height(MACRO_SEED, spawn.x, spawn.y, circ), WorldShape.spawn_plain_height(MACRO_SEED, circ), "the spawn plain stays flat on a baked world")
+	# The 32 m lattice reads the bake: a corner of the generator's cell is the bake's macro height.
+	var corner := Vector2i(floori(far.x / 32.0), floori(far.y / 32.0))
+	var cache := TerrainSlice.new_corner_cache()
+	var got := TerrainSlice.shape_cached(MACRO_SEED, float(corner.x) * 32.0, float(corner.y) * 32.0, circ, cache)
+	assert_true(absf(got - Bake.sample_height(bk, cell, float(corner.x) * 32.0, float(corner.y) * 32.0)) < 1e-9, "the generator's corner lattice reads the bake")
+	assert_eq(TerrainSlice.generated_corner_height(corner, MACRO_SEED), clampf(TerrainSlice.macro_height(MACRO_SEED, float(corner.x) * 32.0, float(corner.y) * 32.0, circ), WorldShape.min_height(), WorldShape.max_height()), "a generation record stores the baked corners")
+	# The player-facing height (macro + detail, carved) over a dry tile is the bake's plus the detail noise.
+	var noise := FastNoiseLite.new()
+	TerrainSlice.configure_noise(noise, MACRO_SEED)
+	t._noise = noise
+	var plain := clampf(got + TerrainSlice.detail_of(noise, float(corner.x) * 32.0, float(corner.y) * 32.0), WorldShape.min_height(), WorldShape.max_height())
+	var expect := Hydrology.carved_height(MACRO_SEED, float(corner.x) * 32.0, float(corner.y) * 32.0, TerrainSlice.polar_ground(MACRO_SEED, plain, float(corner.x) * 32.0, float(corner.y) * 32.0, circ))
+	assert_true(absf(t.get_height_at(Vector2(float(corner.x) * 32.0, float(corner.y) * 32.0)) - expect) < 1e-6, "get_height_at reads the baked macro height plus the detail noise")
+	# Native and GDScript heightmaps agree on the baked macro height (the native builder gets the bake's corners).
+	var cases: Array = []
+	for pos in [corner, Vector2i(0, 0), Vector2i(roundi(circ / 32.0 * 0.5) - 1, 40), Vector2i(-roundi(circ / 32.0 * 0.5), -300), Vector2i(1234, 5678)]:
+		cases.append([pos, MACRO_SEED, noise])
+	assert_native_parity("NativeChunkBuilder", "heightmap_for", cases, TerrainSlice.heightmap_for_gd, TerrainSlice.heightmap_for, "heightmap_for on the baked macro height")
+	var strips: Array = []
+	for side in [Vector2i(-1, 0), Vector2i(1, 1), Vector2i(0, -1)]:
+		strips.append([corner, side, MACRO_SEED, noise, 2])
+	assert_native_parity("NativeChunkBuilder", "heightmap_strip_for", strips, TerrainSlice.heightmap_strip_for_gd, TerrainSlice.heightmap_strip_for, "heightmap_strip_for on the baked macro height")
+	Hydrology.clear_bake(MACRO_SEED)
+	assert_eq(TerrainSlice.macro_height(MACRO_SEED, far.x, far.y, circ), shape, "released: the world shape again")
+	t.free()
+
+## Acceptance (Phase 302): along 50 baked river segments of a planet baked from the world shape, the runtime
+## ground (baked macro height + detail noise, carved) at the centreline lies below the water, and no step between
+## adjacent tiles across the bank exceeds 0.5 m where the natural ground had none.
+func _test_bake_runtime_carve() -> void:
+	var circ := float(TerrainSlice.circumference_chunks()) * TerrainSlice.CHUNK_METERS
+	var w := 200
+	var bk := Bake.bake_planet(MACRO_SEED, w, w / 2, circ, 12)
+	var cell := circ / float(w)
+	Hydrology.use_bake(MACRO_SEED, bk, circ)
+	var noise := FastNoiseLite.new()
+	TerrainSlice.configure_noise(noise, MACRO_SEED)
+	var half_h := cell * float(w / 2) * 0.5
+	var all: Array = Hydrology.baked_segs(bk, cell, 0.0, -half_h, circ, half_h)
+	assert_true(all.size() >= 50, "the planet has at least 50 baked river segments (%d)" % all.size())
+	var stride := maxi(1, all.size() / 50)
+	var cache := TerrainSlice.new_corner_cache()
+	var row := TerrainSlice.new_polar_row()
+	var checked := 0
+	var centre_ok := true
+	var worst_centre := -INF
+	var bank_ok := true
+	var worst_bank := 0.0
+	var bank_pairs := 0
+	var hm_ok := true
+	for n in 50:
+		var sg: Array = all[mini(n * stride, all.size() - 1)]
+		var mid := Vector2((float(sg[0]) + float(sg[2])) * 0.5, (float(sg[1]) + float(sg[3])) * 0.5)
+		mid = Vector2(snappedf(mid.x, TerrainSlice.TILE_SIZE), snappedf(mid.y, TerrainSlice.TILE_SIZE))
+		var water := Hydrology.surface_at(MACRO_SEED, mid.x, mid.y)
+		var ground := Hydrology.carved_height(MACRO_SEED, mid.x, mid.y, TerrainSlice.height_wrapped_in(MACRO_SEED, noise, mid.x, mid.y, circ, cache, row))
+		if is_nan(water):
+			centre_ok = false
+			continue
+		worst_centre = maxf(worst_centre, ground - water)
+		centre_ok = centre_ok and ground < water
+		checked += 1
+		# Walk the tile row across the river (the axis nearer perpendicular to it), 50 tiles each side.
+		var along := Vector2(float(sg[2]) - float(sg[0]), float(sg[3]) - float(sg[1]))
+		var step := Vector2(TerrainSlice.TILE_SIZE, 0.0) if absf(along.x) < absf(along.y) else Vector2(0.0, TerrainSlice.TILE_SIZE)
+		var prev_u := 0.0
+		var prev_c := 0.0
+		for k in range(-50, 51):
+			var p := mid + step * float(k)
+			var u := TerrainSlice.height_wrapped_in(MACRO_SEED, noise, p.x, p.y, circ, cache, row)
+			var c := Hydrology.carved_height(MACRO_SEED, p.x, p.y, u)
+			if k > -50 and (c != u or prev_c != prev_u):
+				var s := absf(c - prev_c)
+				var allowed := maxf(0.5, absf(u - prev_u)) + 0.002
+				worst_bank = maxf(worst_bank, s - maxf(0.0, absf(u - prev_u) - 0.5))
+				bank_ok = bank_ok and s <= allowed
+				bank_pairs += 1
+			prev_u = u
+			prev_c = c
+		# The chunk heightmap carves the same ground as the point query.
+		if n < 6:
+			var chunk := Vector2i(floori(mid.x / TerrainSlice.CHUNK_METERS), floori(mid.y / TerrainSlice.CHUNK_METERS))
+			var hm := TerrainSlice.heightmap_for(chunk, MACRO_SEED, noise)
+			var tx := roundi((mid.x - float(chunk.x) * TerrainSlice.CHUNK_METERS) / TerrainSlice.TILE_SIZE)
+			var tz := roundi((mid.y - float(chunk.y) * TerrainSlice.CHUNK_METERS) / TerrainSlice.TILE_SIZE)
+			hm_ok = hm_ok and absf(float(hm[tz * TerrainSlice.CHUNK_SIZE + tx]) - ground) < 1e-6
+	Hydrology.clear_bake(MACRO_SEED)
+	assert_eq(checked, 50, "50 baked river segments hold water at their midpoint")
+	assert_true(centre_ok, "the ground at each centreline lies below the water (worst %.3f m)" % worst_centre)
+	assert_true(bank_pairs > 500 and bank_ok, "no bank step between adjacent tiles over 0.5 m (%d carved pairs, worst %.3f m)" % [bank_pairs, worst_bank])
+	assert_true(hm_ok, "the chunk heightmap carves the same ground as the point query")

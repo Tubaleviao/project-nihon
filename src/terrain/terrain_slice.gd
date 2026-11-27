@@ -45,9 +45,14 @@ const HEIGHT_SCALE := 5.0    # world units peak-to-valley of the small-scale DET
 ## 13 = Phase 238 one world: a 2,000 km planet with one open continent (`WorldShape.continent_mask`); ridge
 ## and massif lattices rescaled to the small circumference. Worlds saved earlier keep their own circumference.
 ## 14 = Phase 245 the planet bake: rivers are the baked ones (`Hydrology.use_bake`, thermal erosion and flow on a 2 km grid) instead of the local trace.
-const WORLDGEN_VERSION := 14
+## 15 = Phase 302 macro height from the bake: with a planet bake loaded the large-scale shape is the bake's eroded
+## height interpolated bilinearly between its 2 km cell centres (`macro_height`), the detail noise on top, and rivers
+## are carved with soft banks (`Hydrology.soft_carve`, a smooth CSG subtraction) instead of a hard edge at the water.
+const WORLDGEN_VERSION := 15
 ## The first worldgen version whose rivers are the planet bake's; a world recorded earlier keeps the local trace.
 const BAKE_WORLDGEN_VERSION := 14
+## The first worldgen version whose macro height is the planet bake's; a world recorded at 14 keeps the noise shape.
+const MACRO_BAKE_WORLDGEN_VERSION := 15
 
 ## Phase 106 — a hash of every fabric parameter world-gen reads that `WORLDGEN_VERSION` cannot see:
 ## the `WorldSystem` shape fields (`sea`, `min/max height`, `oceanShare`, `ridgeAmplitude`,
@@ -248,20 +253,22 @@ static func adopt_record_circumference(rec: Dictionary) -> void:
 ## off the world record (authoritative boot) or out of the host's join snapshot
 ## (client) BEFORE any chunk is requested, so every height in the session comes
 ## from the same noise field.
-func set_world_seed(seed_v: int, with_bake: bool = true) -> void:
+func set_world_seed(seed_v: int, with_bake: bool = true, bake_macro: bool = true) -> void:
 	_world_seed = seed_v
 	seed_adopted = true
 	_corner_mutex.lock()
 	_corner_caches.clear()
 	_corner_mutex.unlock()
 	_noise.seed = seed_v
-	_adopt_planet_bake(seed_v, with_bake)
+	_adopt_planet_bake(seed_v, with_bake, bake_macro)
 
 ## Phase 245 — the planet bake for this seed: read from `user://bake/` when its hash checks out, else baked
 ## now (about 6 s natively) and saved, then handed to `Hydrology` so the rivers are the baked ones. A client
 ## bakes itself from the seed it adopted (the bake is deterministic, so it equals the host's) and a damaged
 ## file is baked again. Off under `--run-tests`, whose many seeds would each pay for a bake.
-func _adopt_planet_bake(seed_v: int, with_bake: bool = true) -> void:
+## Phase 302: with `bake_macro` (a world recorded at `MACRO_BAKE_WORLDGEN_VERSION` or later) the macro height is
+## the bake's too.
+func _adopt_planet_bake(seed_v: int, with_bake: bool = true, bake_macro: bool = true) -> void:
 	Hydrology.clear_all_bakes()   # no bake of another seed or circumference outlives this call
 	_bake_hash = ""
 	if not with_bake:   # the caller keeps the local river trace (an old world, a host without a bake): no bake to pay for
@@ -275,7 +282,7 @@ func _adopt_planet_bake(seed_v: int, with_bake: bool = true) -> void:
 		return
 	var path := PlanetBake.file_path("user://bake", seed_v, WORLDGEN_VERSION, w, h)
 	var r := PlanetBake.ensure(path, seed_v, w, h, circ, PlanetBake.RIVER_FLOW)
-	Hydrology.use_bake(seed_v, r.bake, circ)
+	Hydrology.use_bake(seed_v, r.bake, circ, bake_macro)
 	_bake_hash = str(r.hash)
 	print("[World] planet bake %s (%s)" % [str(r.hash).substr(0, 12), "read" if r.loaded else "baked"])
 
@@ -288,6 +295,10 @@ func planet_bake_hash() -> String:
 ## True while the rivers of the current seed are the baked ones.
 func has_planet_bake() -> bool:
 	return Hydrology.has_bake(_world_seed)
+
+## True while the macro height of the current seed is the bake's (Phase 302).
+func has_bake_macro() -> bool:
+	return Hydrology.macro_bake(_world_seed) != null
 
 ## Go back to the local river trace: a world recorded before `BAKE_WORLDGEN_VERSION` keeps its rivers
 ## (the stable-world rule), and a client follows a host that has no bake.
@@ -373,7 +384,7 @@ static func generated_biome_for_chunk(chunk_pos: Vector2i, seed_v: int = BIOME_S
 ## detail noise, so it matches the mean ground the heightmap actually lays down.
 ## The polar ice shelf counts too, so frozen sea is not picked as Ocean.
 static func biome_altitude(seed_v: int, x: float, z: float, w: float) -> float:
-	return polar_ground(seed_v, WorldShape.height(seed_v, x, z, w) + HEIGHT_SCALE * 0.5, x, z, w) - WorldShape.sea_level()
+	return polar_ground(seed_v, macro_height(seed_v, x, z, w) + HEIGHT_SCALE * 0.5, x, z, w) - WorldShape.sea_level()
 
 ## The rounding step of a stored height (`RegionStore.GEN_HEIGHT_STEP` is this).
 const GEN_HEIGHT_STEP := 0.0001
@@ -382,7 +393,7 @@ const GEN_HEIGHT_STEP := 0.0001
 ## `WorldShape` range, unrounded. Shared by `generation_record` and `Frontier`.
 static func generated_corner_height(p: Vector2i, seed_v: int) -> float:
 	var w := float(circumference_chunks()) * CHUNK_METERS
-	var h := WorldShape.height(seed_v, float(p.x) * CHUNK_METERS, float(p.y) * CHUNK_METERS, w)
+	var h := macro_height(seed_v, float(p.x) * CHUNK_METERS, float(p.y) * CHUNK_METERS, w)
 	return clampf(h, WorldShape.min_height(), WorldShape.max_height())
 
 ## Phase 108 — the generation record the CURRENT generator would write for `chunk` (canonical):
@@ -394,6 +405,24 @@ static func generation_record(chunk: Vector2i, seed_v: int) -> Dictionary:
 		hs.append(snappedf(generated_corner_height(chunk + c, seed_v), GEN_HEIGHT_STEP))
 	return { "v": WORLDGEN_VERSION, "f": worldgen_fingerprint(), "b": generated_biome_for_chunk(chunk, seed_v), "h": hs }
 
+## Phase 302 — the large-scale (macro) height at world (x, z), `w` the circumference in metres: with a planet bake
+## whose macro height this seed reads (`Hydrology.macro_bake`) it is the bake's height interpolated between its
+## cell centres (`PlanetBake.sample_height`, continuous across cells) with the spawn plain on top; otherwise
+## `WorldShape.height`. Every generator read of the shape goes through this. Pure, any thread.
+static func macro_height(seed_v: int, x: float, z: float, w: float) -> float:
+	var bk: Variant = Hydrology.macro_bake(seed_v)
+	if bk == null:
+		return WorldShape.height(seed_v, x, z, w)
+	return WorldShape.with_spawn_plain(seed_v, x, z, w, PlanetBake.sample_height(bk["bake"], float(bk["cell"]), x, z))
+
+## The macro height at the four corners of the 32 m cell (ix, iz), in `shape_cached`'s order (x0,z0) (x1,z0)
+## (x0,z1) (x1,z1).
+static func macro_corners(seed_v: int, ix: int, iz: int, w: float) -> PackedFloat64Array:
+	var x0 := float(ix) * CHUNK_METERS
+	var z0 := float(iz) * CHUNK_METERS
+	return PackedFloat64Array([macro_height(seed_v, x0, z0, w), macro_height(seed_v, x0 + CHUNK_METERS, z0, w),
+		macro_height(seed_v, x0, z0 + CHUNK_METERS, w), macro_height(seed_v, x0 + CHUNK_METERS, z0 + CHUNK_METERS, w)])
+
 ## Phase 108 — `WorldShape.height` for a read that is not a chunk heightmap (the distant ring): inside a
 ## recorded chunk's cell the recorded corners are interpolated, as `_shape_at` does; elsewhere the
 ## generator answers. Pure; reads the record table only.
@@ -402,7 +431,7 @@ static func shape_height(seed_v: int, x: float, z: float, w: float) -> float:
 		var rec := ChunkRecords.get_record(wrap_chunk(Vector2i(floori(x / CHUNK_METERS), floori(z / CHUNK_METERS))))
 		if not rec.is_empty():
 			return _record_height(rec, x, z)
-	return WorldShape.height(seed_v, x, z, w)
+	return macro_height(seed_v, x, z, w)
 
 ## The recorded corners of `rec` interpolated at world XZ.
 static func _record_height(rec: Dictionary, x: float, z: float) -> float:
@@ -427,7 +456,7 @@ static func shape_height_in(snap: Dictionary, seed_v: int, x: float, z: float, w
 			var fx := gx - float(ix)
 			var fz := gz - float(iz)
 			return lerpf(lerpf(float(rh[0]), float(rh[1]), fx), lerpf(float(rh[2]), float(rh[3]), fx), fz)
-	return WorldShape.height(seed_v, x, z, w)
+	return macro_height(seed_v, x, z, w)
 
 ## Phase 120 — fill the static caches `polar_ground` reads (circumference, polar rows) on the calling
 ## (main) thread, so no worker is the first to resolve them.
@@ -692,16 +721,21 @@ static func heightmap_for(pos: Vector2i, seed_v: int, noise: FastNoiseLite) -> A
 ## un-wrapped cell the native code looks up (`records`: {Vector2i cell: PackedFloat64Array [h00, h10,
 ## h01, h11]}). The first cell is the chunk's own, the second the one a tile in the antimeridian
 ## blend band reads at `x - w`.
+## Phase 302: with a bake macro loaded, an unrecorded cell gets the bake's corners (`macro_corners`) the same way,
+## so the native builder needs no copy of the bake.
 static func _native_cfg(pos: Vector2i, seed_v: int) -> Dictionary:
 	var c := circumference_chunks()
 	var records := {}
-	if not ChunkRecords.is_empty():
+	var baked := Hydrology.macro_bake(seed_v) != null
+	if baked or not ChunkRecords.is_empty():
 		var own := wrap_chunk(pos)
 		for cell in [own, Vector2i(own.x - c, own.y)]:
-			var rec := ChunkRecords.get_record(wrap_chunk(cell))
+			var rec := ChunkRecords.get_record(wrap_chunk(cell)) if not ChunkRecords.is_empty() else {}
 			if not rec.is_empty():
 				var rh: Array = rec["h"]
 				records[cell] = PackedFloat64Array([float(rh[0]), float(rh[1]), float(rh[2]), float(rh[3])])
+			elif baked:   # Phase 302: the bake's macro corners, as `shape_cached` reads them, so native and GDScript agree
+				records[cell] = macro_corners(seed_v, cell.x, cell.y, float(c) * CHUNK_METERS)
 	return {
 		"circumference_chunks": c,
 		"sea": WorldShape.sea_level(),
@@ -884,10 +918,10 @@ static func shape_cached(seed_v: int, x: float, z: float, w: float, cache: Array
 			cache[6] = float(rh[2])
 			cache[7] = float(rh[3])
 		else:
-			cache[4] = WorldShape.height(seed_v, x0, z0, w)
-			cache[5] = WorldShape.height(seed_v, x0 + CHUNK_METERS, z0, w)
-			cache[6] = WorldShape.height(seed_v, x0, z0 + CHUNK_METERS, w)
-			cache[7] = WorldShape.height(seed_v, x0 + CHUNK_METERS, z0 + CHUNK_METERS, w)
+			cache[4] = macro_height(seed_v, x0, z0, w)
+			cache[5] = macro_height(seed_v, x0 + CHUNK_METERS, z0, w)
+			cache[6] = macro_height(seed_v, x0, z0 + CHUNK_METERS, w)
+			cache[7] = macro_height(seed_v, x0 + CHUNK_METERS, z0 + CHUNK_METERS, w)
 	var fx := gx - float(ix)
 	var fz := gz - float(iz)
 	return lerpf(lerpf(cache[4], cache[5], fx), lerpf(cache[6], cache[7], fx), fz)

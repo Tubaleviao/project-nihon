@@ -2,7 +2,7 @@ extends RefCounted
 ## Phase 217 — static lakes and rivers on unrecorded land (no flow).
 ##
 ## A pure, seed-deterministic field read from any thread. Every decision uses the smooth large-scale
-## shape (`WorldShape.height`), never the detail noise or a heightmap, so the field is the same for every
+## shape (`TerrainSlice.macro_height`: `WorldShape.height`, or the planet bake's since Phase 302), never the detail noise or a heightmap, so the field is the same for every
 ## chunk, whatever has loaded.
 ##
 ##   lake   one candidate per 512 m cell: a disc of radius 40–100 m whose surface is the lowest of the
@@ -18,8 +18,21 @@ const TerrainSlice := preload("res://src/terrain/terrain_slice.gd")
 const WorldShape := preload("res://src/terrain/world_shape.gd")
 const ChunkRecords := preload("res://src/terrain/chunk_records.gd")
 const PlanetBake := preload("res://src/terrain/planet_bake.gd")
+const Csg := preload("res://src/terrain/terrain_csg.gd")
 
 const HYDROLOGY_VERSION := 12   ## the first `TerrainSlice.WORLDGEN_VERSION` with water
+## Phase 302 — the first `TerrainSlice.WORLDGEN_VERSION` whose rivers have soft banks (`soft_carve`); a chunk
+## recorded earlier keeps the hard edge of `water_at`'s bed, so its ground never changes.
+const SOFT_BANK_VERSION := 15
+const BANK_SLOPE_NUM := 3   ## a soft bank rises 3 mm per 5 mm out from the channel (0.3 m per 0.5 m tile)
+const BANK_SLOPE_DEN := 5
+const BANK_K_MM := 1000   ## the smooth-union width where the bank meets the natural ground
+## How far (m) out from its line a river segment can change the ground: past BANK_SOFT_M the cut rises
+## BANK_WALL_SLOPE per metre, so by BANK_REACH_M it stands far above any ground near a river and the
+## segment has no effect. Features are gathered with this pad, so every tile sees each segment that can reach it.
+const BANK_SOFT_M := 32.0
+const BANK_REACH_M := 40.0
+const BANK_WALL_SLOPE := 20
 
 const LAKE_CELL_M := 512.0   ## the cell on a pre-238 planet; `lake_cell()` is the one in use
 const LAKE_CELL_SMALL_M := 500.0   ## Phase 238: divides the 2,000 km circumference (4,000 cells), so the wrap is exact
@@ -139,7 +152,7 @@ static func _cells(w: float, cell_m: float) -> int:
 	return maxi(1, int(round(w / cell_m)))
 
 static func _shape(seed_v: int, x: float, z: float, w: float) -> float:
-	return WorldShape.height(seed_v, x, z, w)
+	return TerrainSlice.macro_height(seed_v, x, z, w)   # Phase 302: the bake's macro height when one is loaded
 
 static func _biome_blocked(seed_v: int, x: float, z: float) -> bool:
 	var b := TerrainSlice.generated_biome_for_chunk(Vector2i(floori(x / TerrainSlice.CHUNK_METERS), floori(z / TerrainSlice.CHUNK_METERS)), seed_v)
@@ -335,7 +348,7 @@ static func _features_in(seed_v: int, x0: float, z0: float, x1: float, z1: float
 		out["segs"].append_array(baked_segs(bk["bake"], float(bk["cell"]), x0, z0, x1, z1))
 		return out
 	# Rivers: a river of RIVER_MAX_STEPS steps reaches that far from its source cell.
-	var reach := RIVER_STEP_M * float(RIVER_MAX_STEPS) + _wmax
+	var reach := RIVER_STEP_M * float(RIVER_MAX_STEPS) + _wmax + BANK_REACH_M
 	var rcx0 := floori((x0 - reach) / river_cell())
 	var rcx1 := floori((x1 + reach) / river_cell())
 	var rcz0 := floori((z0 - reach) / river_cell())
@@ -352,7 +365,8 @@ static func _features_in(seed_v: int, x0: float, z0: float, x1: float, z1: float
 				var a := pts[i]
 				var b := pts[i + 1]
 				var hw := maxf(wid[i], wid[i + 1]) * 0.5
-				if maxf(a.x, b.x) + hw < x0 or minf(a.x, b.x) - hw > x1 or maxf(a.y, b.y) + hw < z0 or minf(a.y, b.y) - hw > z1:
+				var rw := hw + BANK_REACH_M   # Phase 302: a soft bank reaches past the water
+				if maxf(a.x, b.x) + rw < x0 or minf(a.x, b.x) - rw > x1 or maxf(a.y, b.y) + rw < z0 or minf(a.y, b.y) - rw > z1:
 					continue
 				out["segs"].append([a.x, a.y, b.x, b.y, surf[i], surf[i + 1], hw, wid[i] * 0.5])
 			var pd: Dictionary = rv["pond"]
@@ -360,13 +374,20 @@ static func _features_in(seed_v: int, x0: float, z0: float, x1: float, z1: float
 				out["lakes"].append(pd)
 	return out
 
-static var _baked: Dictionary = {}   # seed → { bake: Dictionary, cell: float (m) }
+static var _baked: Dictionary = {}   # seed → { bake: Dictionary, cell: float (m), macro: bool }
 
 ## Phase 245 — read this seed's rivers from `bake` (`PlanetBake.bake_planet`), whose cells are `circumference_m / w`
 ## metres wide, instead of tracing them. Clears every cache. Main thread, before chunks build.
-static func use_bake(seed_v: int, bake: Dictionary, circumference_m: float) -> void:
-	_baked[seed_v] = { "bake": bake, "cell": circumference_m / float(int(bake["w"])) }
+## Phase 302: with `macro` the macro height is the bake's too (`TerrainSlice.macro_height`); a world recorded at
+## worldgen 14 keeps the noise macro height under its baked rivers.
+static func use_bake(seed_v: int, bake: Dictionary, circumference_m: float, macro: bool = true) -> void:
+	_baked[seed_v] = { "bake": bake, "cell": circumference_m / float(int(bake["w"])), "macro": macro }
 	reset_cache()
+
+## The bake entry (`{ bake, cell, macro }`) whose macro height this seed's ground reads, or null. Any thread.
+static func macro_bake(seed_v: int) -> Variant:
+	var bk: Variant = _baked.get(seed_v)
+	return bk if bk != null and bool(bk["macro"]) else null
 
 static func clear_bake(seed_v: int) -> void:
 	_baked.erase(seed_v)
@@ -405,7 +426,8 @@ static func baked_segs(bake: Dictionary, cell: float, x0: float, z0: float, x1: 
 			var wa := clampf(float(PlanetBake.river_width_mm(flow[i])) * 0.001, _wmin, _wmax * 4.0)
 			var wb := clampf(float(PlanetBake.river_width_mm(flow[d])) * 0.001, _wmin, _wmax * 4.0)
 			var hw := maxf(wa, wb) * 0.5
-			if maxf(ax, bx) + hw < x0 or minf(ax, bx) - hw > x1 or maxf(az, bz) + hw < z0 or minf(az, bz) - hw > z1:
+			var rw := hw + BANK_REACH_M   # Phase 302: a soft bank reaches past the water
+			if maxf(ax, bx) + rw < x0 or minf(ax, bx) - rw > x1 or maxf(az, bz) + rw < z0 or minf(az, bz) - rw > z1:
 				continue
 			out.append([ax, az, bx, bz, float(height[i]) * 0.001 - 0.5, float(height[d]) * 0.001 - 0.5, hw, wa * 0.5])
 	return out
@@ -449,11 +471,13 @@ static func water_at(features: Dictionary, x: float, z: float) -> Dictionary:
 	return {}
 
 ## Lower every tile of `hm` (a chunk heightmap, indexed `tz * CHUNK_SIZE + tx`; null tiles are skipped)
-## whose centre lies in water to that water's bed. In place; returns `hm`.
+## whose centre lies in water to that water's bed, and (Phase 302) carve the rivers with soft banks. In place;
+## returns `hm`.
 static func carve(chunk: Vector2i, seed_v: int, hm: Array) -> Array:
 	var f := features_for_chunk(chunk, seed_v)
 	if f["lakes"].is_empty() and f["segs"].is_empty():
 		return hm
+	var soft := soft_banks(chunk)
 	var ox := float(chunk.x * TerrainSlice.CHUNK_SIZE) * TerrainSlice.TILE_SIZE
 	var oz := float(chunk.y * TerrainSlice.CHUNK_SIZE) * TerrainSlice.TILE_SIZE
 	for tz in TerrainSlice.CHUNK_SIZE:
@@ -461,17 +485,73 @@ static func carve(chunk: Vector2i, seed_v: int, hm: Array) -> Array:
 			var cur: Variant = hm[tz * TerrainSlice.CHUNK_SIZE + tx]
 			if cur == null:
 				continue
-			var wt := water_at(f, ox + float(tx) * TerrainSlice.TILE_SIZE, oz + float(tz) * TerrainSlice.TILE_SIZE)
-			if not wt.is_empty():
-				hm[tz * TerrainSlice.CHUNK_SIZE + tx] = minf(float(cur), float(wt["bed"]))
+			hm[tz * TerrainSlice.CHUNK_SIZE + tx] = _carve_point(f, ox + float(tx) * TerrainSlice.TILE_SIZE, oz + float(tz) * TerrainSlice.TILE_SIZE, float(cur), soft)
 	return hm
 
 ## The ground height at one point after carving (what `get_height_at` returns).
 static func carved_height(seed_v: int, x: float, z: float, h: float) -> float:
 	var cm := TerrainSlice.CHUNK_METERS
-	var f := features_for_chunk(Vector2i(floori(x / cm), floori(z / cm)), seed_v)
-	var wt := water_at(f, x, z)
-	return h if wt.is_empty() else minf(h, float(wt["bed"]))
+	var chunk := Vector2i(floori(x / cm), floori(z / cm))
+	return _carve_point(features_for_chunk(chunk, seed_v), x, z, h, soft_banks(chunk))
+
+## Phase 302 — true when chunk `c` carves its rivers with soft banks: unrecorded, or recorded at SOFT_BANK_VERSION or later.
+static func soft_banks(c: Vector2i) -> bool:
+	if ChunkRecords.is_empty():
+		return true
+	var rec := ChunkRecords.get_record(TerrainSlice.wrap_chunk(c))
+	return rec.is_empty() or int(rec.get("v", 0)) >= SOFT_BANK_VERSION
+
+## Ground `h` at (x, z) carved by `f`: a lake lowers it to its bed; a river either the same (`soft` false, the
+## hard edge of worldgen 12–14) or by `soft_carve`.
+static func _carve_point(f: Dictionary, x: float, z: float, h: float, soft: bool) -> float:
+	if not soft:
+		var wt := water_at(f, x, z)
+		return h if wt.is_empty() else minf(h, float(wt["bed"]))
+	var out := h
+	for lk in f["lakes"]:   # as `water_at`: the first lake holding the point lowers it to its bed
+		var dx := x - float(lk["x"])
+		var dz := z - float(lk["z"])
+		var r := float(lk["r"])
+		var d2 := dx * dx + dz * dz
+		if d2 < r * r:
+			out = minf(out, float(lk["surface"]) - float(lk["depth"]) * (1.0 - d2 / (r * r)) - 0.05)
+			break
+	return soft_carve(f["segs"], x, z, out)
+
+## Phase 302 — ground `h` (m) at (x, z) with every river segment of `segs` subtracted smoothly, in integer mm
+## through `terrain_csg.gd`: each segment is a tapered capsule (a disc at the closest point of its line) whose floor lies `min(RIVER_BED_DEPTH, slope × half
+## width)` under its water, with banks rising BANK_SLOPE_NUM / BANK_SLOPE_DEN from the floor so they meet the
+## water at its edge; the segments' cuts are joined sharply (so a joint between two does not dip) and the result
+## is joined to the ground by a smooth union of width BANK_K_MM. Continuous everywhere; a tile
+## the carve does not lower keeps its exact height. Pure.
+static func soft_carve(segs: Array, x: float, z: float, h: float) -> float:
+	if segs.is_empty():
+		return h
+	var g := roundi(h * 1000.0)
+	var cut_all := 0x3FFFFFFFFFFFFFFF
+	var reach_mm := roundi(BANK_REACH_M * 1000.0)
+	var soft_mm := roundi(BANK_SOFT_M * 1000.0)
+	for sg in segs:
+		var ax: float = sg[0]
+		var az: float = sg[1]
+		var abx: float = float(sg[2]) - ax
+		var abz: float = float(sg[3]) - az
+		var len2 := abx * abx + abz * abz
+		var t := clampf(((x - ax) * abx + (z - az) * abz) / len2, 0.0, 1.0) if len2 > 0.0 else 0.0
+		var water_mm := roundi(lerpf(float(sg[4]), float(sg[5]), t) * 1000.0)
+		var half_mm := roundi(lerpf(float(sg[7]), float(sg[6]), t) * 1000.0)
+		var depth_mm := mini(roundi(RIVER_BED_DEPTH * 1000.0), half_mm * BANK_SLOPE_NUM / BANK_SLOPE_DEN)
+		var r0 := maxi(half_mm - depth_mm * BANK_SLOPE_DEN / BANK_SLOPE_NUM, 0)
+		# The capsule's distance is the disc's at the closest point of the line (`t` above), in mm local to that
+		# point, so the integer maths stays small for a segment of any length anywhere on the planet.
+		var d := Csg.disc(Vector2i(roundi((x - ax - abx * t) * 1000.0), roundi((z - az - abz * t) * 1000.0)), Vector2i.ZERO, r0)
+		if d > reach_mm:
+			continue
+		var cut := water_mm - depth_mm + maxi(d, 0) * BANK_SLOPE_NUM / BANK_SLOPE_DEN + maxi(d - soft_mm, 0) * BANK_WALL_SLOPE
+		cut_all = Csg.union(cut_all, cut)   # sharp between segments, so a joint does not dip below the water
+	if cut_all - g >= BANK_K_MM:
+		return h
+	return float(Csg.smooth_union(g, cut_all, BANK_K_MM)) * 0.001
 
 ## The fresh-water surface at (x, z) (metres), or NAN when there is none. Used for swimming, the
 ## creature path cost and the water mesh.

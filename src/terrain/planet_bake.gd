@@ -309,6 +309,29 @@ static func carved_height(ground_mm: int, p: Vector2i, a: Vector2i, b: Vector2i,
 	return Csg.smooth_union(ground_mm, cut, k_mm)
 
 
+## Phase 302 — the bake's macro height (m) at world (x, z): its cell heights (the filled, eroded ground, held at
+## the cell centres as `base_grid` sampled them) interpolated bilinearly, so the field is continuous (C0) across
+## every 2 km cell border and equals the baked height at each centre. `cell` is the cell width in metres; X wraps
+## round the `w` cells, Z holds the first and last rows' heights past their centres (the poles). Pure.
+static func sample_height(b: Dictionary, cell: float, x: float, z: float) -> float:
+	var w: int = b["w"]
+	var h: int = b["h"]
+	var height: PackedInt32Array = b["height"]
+	var gx := x / cell - 0.5
+	var gz := (z + cell * float(h) * 0.5) / cell - 0.5
+	var ix := floori(gx)
+	var iz := floori(gz)
+	var fx := gx - float(ix)
+	var fz := gz - float(iz)
+	var x0 := posmod(ix, w)
+	var x1 := posmod(ix + 1, w)
+	var z0 := clampi(iz, 0, h - 1) * w
+	var z1 := clampi(iz + 1, 0, h - 1) * w
+	var top := lerpf(float(height[z0 + x0]), float(height[z0 + x1]), fx)
+	var bottom := lerpf(float(height[z1 + x0]), float(height[z1 + x1]), fx)
+	return lerpf(top, bottom, fz) * 0.001
+
+
 ## The base height grid, in mm, sampled from `WorldShape.height` at the centre of each `cell_m` cell:
 ## `w` cells round the circumference `circumference_m` and `h` cells from pole to pole.
 static func base_grid(seed_v: int, w: int, h: int, circumference_m: float) -> PackedInt32Array:

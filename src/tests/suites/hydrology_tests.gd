@@ -123,11 +123,30 @@ func _test_carve() -> void:
 	hm.resize(4096)
 	hm.fill(10000.0)
 	Hydrology.carve(chunk, SEED, hm)
+	# Phase 302: a river's soft bank also lowers dry tiles within its reach, but never below its water.
+	var segs: Array = Hydrology.features_for_chunk(chunk, SEED)["segs"]
+	var ox := float(chunk.x) * TerrainSlice.CHUNK_METERS
+	var oz := float(chunk.y) * TerrainSlice.CHUNK_METERS
+	var ok_dry := true
+	var ok_wet := true
+	var banks := 0
 	for i in 4096:
-		if is_nan(surf[i]):
-			assert_eq(hm[i], 10000.0, "a dry tile is untouched")
-		else:
-			assert_true(float(hm[i]) < surf[i], "a water tile is carved below its surface")
+		if not is_nan(surf[i]):
+			ok_wet = ok_wet and float(hm[i]) < surf[i]
+			continue
+		if float(hm[i]) == 10000.0:
+			continue
+		var p := Vector2(ox + float(i % 64) * TerrainSlice.TILE_SIZE, oz + float(i / 64) * TerrainSlice.TILE_SIZE)
+		var water := INF
+		for sg in segs:
+			var a := Vector2(sg[0], sg[1])
+			var b := Vector2(sg[2], sg[3])
+			if Geometry2D.get_closest_point_to_segment(p, a, b).distance_to(p) <= float(sg[6]) + Hydrology.BANK_REACH_M:
+				water = minf(water, minf(float(sg[4]), float(sg[5])))
+		ok_dry = ok_dry and float(hm[i]) <= 10000.0 and float(hm[i]) >= water - 0.001
+		banks += 1
+	assert_true(ok_wet, "a water tile is carved below its surface")
+	assert_true(ok_dry, "a dry tile is untouched, or lowered by a river's bank no lower than its water (%d bank tiles)" % banks)
 
 func _first_lake() -> Dictionary:
 	return _window_features()["lakes"][0]
@@ -148,19 +167,27 @@ func _test_player_swims_in_lake() -> void:
 	terrain.free()
 
 func _test_creature_path_avoids_river() -> void:
-	var sg: Array = _window_features()["segs"][0]
-	var a := Vector2(sg[0], sg[1])
-	var b := Vector2(sg[2], sg[3])
-	var mid := (a + b) * 0.5
-	var dir := (b - a).normalized()
-	var n := Vector2(-dir.y, dir.x)
 	var ts := 0.5
-	var off := float(sg[6]) + 3.0
-	var from_t := Vector2i(roundi((mid - n * off).x / ts), roundi((mid - n * off).y / ts))
-	var to_t := Vector2i(roundi((mid + n * off).x / ts), roundi((mid + n * off).y / ts))
 	var wet := func(tile: Vector2i) -> bool:
 		return not is_nan(Hydrology.surface_at(SEED, (float(tile.x) + 0.5) * ts, (float(tile.y) + 0.5) * ts))
-	assert_false(bool(wet.call(from_t)) or bool(wet.call(to_t)), "both ends are on dry ground")
+	# The window's first segment with dry ground just past both banks (Phase 302: the features also list segments
+	# whose banks only reach the window, so the first one may run beside another).
+	var from_t := Vector2i.ZERO
+	var to_t := Vector2i.ZERO
+	var found := false
+	for sg: Array in _window_features()["segs"]:
+		var a := Vector2(sg[0], sg[1])
+		var b := Vector2(sg[2], sg[3])
+		var mid := (a + b) * 0.5
+		var dir := (b - a).normalized()
+		var n := Vector2(-dir.y, dir.x)
+		var off := float(sg[6]) + 3.0
+		from_t = Vector2i(roundi((mid - n * off).x / ts), roundi((mid - n * off).y / ts))
+		to_t = Vector2i(roundi((mid + n * off).x / ts), roundi((mid + n * off).y / ts))
+		if not is_nan(Hydrology.surface_at(SEED, mid.x, mid.y)) and not bool(wet.call(from_t)) and not bool(wet.call(to_t)):
+			found = true
+			break
+	assert_true(found, "both ends are on dry ground")
 	var rules := { "max_step": 100.0, "can_swim": false, "radius": 60, "sea_level": -1000.0, "lap_tiles": 0, "fresh_water": wet }
 	var flat := func(_t: Vector2i) -> float: return 10.0
 	var info := CreaturePath.search(from_t, to_t, rules, flat)

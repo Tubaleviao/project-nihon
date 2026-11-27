@@ -75,6 +75,7 @@ func build_snapshot(peer_id: int, include_own_record: bool = true,
 		"continentMask":   WorldShape.mask_enabled(),
 		"planetBakeHash":  root._terrain.planet_bake_hash(),
 		"planetBake":      root._terrain.has_planet_bake(),   # Phase 245: whether the host's rivers are the baked ones
+		"planetBakeMacro": root._terrain.has_bake_macro(),   # Phase 302: whether the host's macro height is the bake's
 		# Phase 54 — the host's clock, so the client starts in step and only slews afterwards.
 		"clock":     root._clock.to_data(),
 		# Phase 128 — the host's weather overrides; the weather itself is computed from the seed.
@@ -274,7 +275,8 @@ func on_world_snapshot_received(data: Dictionary) -> void:
 		# world, and every voxel edit the host sends would land elsewhere).
 		# Phase 245: a host without a bake draws its rivers from the local trace, so this client skips the bake.
 		var host_hash := str(data.get("planetBakeHash", ""))
-		root._terrain.set_world_seed(int(data["seed"]), bool(data.get("planetBake", false)))
+		# Phase 302: a host that sends no macro flag (worldgen 14) keeps the noise macro height under its baked rivers.
+		root._terrain.set_world_seed(int(data["seed"]), bool(data.get("planetBake", false)), bool(data.get("planetBakeMacro", false)))
 		if host_hash != "" and root._terrain.planet_bake_hash() != host_hash:
 			Diag.warn("Snapshot: this client's planet bake (%s) differs from the host's (%s): rivers may differ" % [
 				root._terrain.planet_bake_hash().substr(0, 12), host_hash.substr(0, 12)])
