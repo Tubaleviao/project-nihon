@@ -184,6 +184,13 @@ func dig_brush(world_pos: Vector3, normal: Vector3, player_id: String, tool: Str
 	GameBus.block_changed.emit("dig", centre, Vector3(radius, 0.0, float(s.DigRasteriser.SHAPES.find(shape))), tool)
 	return { "success": true, "material": first, "quantity": total, "position": centre, "player_id": player_id, "destroyed": false }
 
+## Phase 300 — the cells a brush dig by `tool` would remove at this hit, for the host's work timer.
+func dig_preview_cells(world_pos: Vector3, normal: Vector3, tool: String) -> int:
+	var spec: Dictionary = s.VoxelDig.brush_for(tool)
+	var radius := float(spec["radius"])
+	var snapped: Vector3i = s.DigRasteriser.snap_centre(s.DigRasteriser.centre_from_hit(world_pos, normal, radius))
+	return (s._dig.plan(Vector3(snapped) / 1000.0, radius, 0.0, str(spec["shape"]), tool)["cells"] as Array).size()
+
 ## Phase 43 — what mining a NATURAL span of `tile` yields, off the ore field:
 ## `{ material, quantity, vein }`. Inside a LIVE vein it is the vein's material and its
 ## per-slice `quantity`, capped by the reserve still left; anywhere else the biome's ground,

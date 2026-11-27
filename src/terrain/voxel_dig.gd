@@ -34,6 +34,12 @@ static func is_brush(tool: String) -> bool:
 	var b := brush_for(tool)
 	return not b.is_empty() and float(b["radius"]) >= VoxelConsts.TILE_SIZE
 
+## How many times longer a hold is than one slab's: the cells the brush would remove here × the fabric's share, at least 1.
+func work_factor(cells: int) -> float:
+	var res: Resource = GameData.WORLD_SYSTEMS.get("DigBrush", null)
+	var share := float(res.get("workSlabShare")) if res != null else 1.0
+	return maxf(1.0, float(cells) * share)
+
 static func unit_volume(material: String) -> float:
 	var t := _table()
 	return float((t.get("unit", {}) as Dictionary).get(material, t.get("default_unit", SLAB_M3)))

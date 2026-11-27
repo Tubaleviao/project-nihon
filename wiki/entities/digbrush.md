@@ -7,7 +7,7 @@ title: "DigBrush"
 
 `world-system`
 
-What a dig removes (Phase 300): per held tool a brush shape, a radius that grows with the Mining skill up to a cap, and the materials it cuts, plus the volume of one yielded unit per material.
+What a dig removes (Phase 300): per held tool a brush shape, a radius under a cap, and the materials it cuts, plus the volume of one yielded unit per material.
 
 > A dig that moves a shovelful, not a slab, and yields the same however it is split
 
@@ -18,6 +18,7 @@ What a dig removes (Phase 300): per held tool a brush shape, a radius that grows
 | shapes | json | Brush shapes the rasteriser knows |
 | radiusCap | decimal | Metres; no brush is wider, at any skill |
 | defaultUnitVolume | decimal | m³ of one yielded unit unless the material says otherwise |
+| workSlabShare | decimal | A hold lasts slab seconds x cells removed x this share (0, 1] |
 | unitVolume | json | material -> m³ per yielded unit |
-| brushes | json | held item ("" = hands) -> { shape, radius, radiusMax, growth, materials } |
+| brushes | json | held item ("" = hands) -> { shape, radius, radiusMax, materials } |
 

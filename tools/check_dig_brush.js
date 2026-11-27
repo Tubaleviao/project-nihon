@@ -23,6 +23,7 @@ expect('a material that is not a terrain material fails', (d) => { d.brushes.Sto
 expect('an unknown shape fails', (d) => { d.brushes.StoneShovel.shape = 'torus'; }, /shape torus/);
 expect('a tool that is not an item fails', (d) => { d.brushes.Spoon = { ...d.brushes.StoneShovel }; }, /Spoon: not an item/);
 expect('no bare-hands brush fails', (d) => { delete d.brushes['']; }, /bare hands/);
+expect('a work share over 1 fails', (d) => { d.workSlabShare = 2; }, /workSlabShare/);
 expect('an empty material list fails', (d) => { d.brushes.StonePick.materials = []; }, /at least one material/);
 expect('a non-positive unit volume fails', (d) => { d.unitVolume.Soil = 0; }, /unitVolume.Soil must be positive/);
 expect('a unit volume for a non-material fails', (d) => { d.unitVolume.Mud = 0.1; }, /unitVolume.Mud: not a terrain material/);

@@ -381,8 +381,13 @@ func _test_fast_shovel() -> void:
 	inv.add_item("StoneShovel", 1)
 	var shovel := host.resolve("", "block", "", top, Vector3.UP, {})
 	var secs := float(shovel.get("duration", 0.0))
-	assert_true(secs > 0.0 and secs <= 0.7, "the host digs a soil block with the stone shovel at novice in at most 0.7 s (%.3f)" % secs)
-	assert_true(absf(secs - 0.8 / 1.2) < 0.001, "0.8 s over the shovel's 1.2 (%.3f)" % secs)
+	# Phase 300 — a shovel hold is one brush: the slab time (0.8 s over the shovel's 1.2) times the cells it will
+	# remove times the fabric's share, so it digs faster per cell than the slab (share below 1) and a hold is longer.
+	var cells: int = v._edit.dig_preview_cells(top, Vector3.UP, "StoneShovel")
+	var factor: float = v._dig.work_factor(cells)
+	assert_true(cells > 1 and factor > 1.0, "the shovel's brush covers several cells (%d)" % cells)
+	assert_true(absf(secs - 0.8 / 1.2 * factor) < 0.001, "0.8 s over the shovel's 1.2, times the brush's volume (%.3f)" % secs)
+	assert_true(secs / float(cells) < 0.8 / 1.2, "and a cell is dug faster than a slab alone would be")
 	assert_eq(WorkTime.speed("dig", "StoneShovel"), 1.2, "the stone shovel works at 1.2")
 	# Unchanged: the base times and the other tools.
 	assert_true(absf(WorkTime.seconds("Grass", "dig", "") - 2.4) < 0.001, "bare hands on grass: 2.4 s")

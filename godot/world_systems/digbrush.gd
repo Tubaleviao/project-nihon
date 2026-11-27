@@ -7,5 +7,6 @@ extends Resource
 @export var shapes: Array
 @export var radiusCap: float
 @export var defaultUnitVolume: float
+@export var workSlabShare: float
 @export var unitVolume: Dictionary
 @export var brushes: Dictionary

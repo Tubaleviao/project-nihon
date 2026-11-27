@@ -1,6 +1,7 @@
 extends "res://src/tests/test_support.gd"
 ## Phase 300 — the dig brush rasteriser: volume, bounds, placed blocks, bedrock, cut rules and a side dig.
 
+const VoxelDig := preload("res://src/terrain/voxel_dig.gd")
 const Ras := preload("res://src/terrain/dig_rasteriser.gd")
 
 const CELL_M3 := 0.5 * 0.5 * 0.125
@@ -15,6 +16,7 @@ func register() -> void:
 	_run_test("dig brush: a shovel dig is one brush op that moves a shovelful", _test_dig_shovel_host)
 	_run_test("dig brush: yield is conserved however a volume is split", _test_dig_yield_conservation)
 	_run_test("dig brush: a client applying the wire op holds the host's runs", _test_dig_wire_parity)
+	_run_test("dig brush: an ore vein's reserve falls by what was yielded and never below zero", _test_dig_vein_reserve)
 	_run_test("dig brush: the dig remainder is saved with the player", _test_dig_remainder_saved)
 	_run_test("dig brush: the fabric brushes stay under the radius cap", _test_dig_fabric_caps)
 	_run_test("dig brush: the GDScript and native rasterisers agree on 200 random brushes", _test_dig_native_parity)
@@ -197,3 +199,22 @@ func _test_dig_native_parity() -> void:
 			print("parity mismatch on brush %d: %s (%d vs %d cells)" % [i, brush, a.size(), b.size()])
 			break
 	assert_true(same and cells > 0, "identical cells for 200 random brushes (%d ints)" % cells)
+
+func _test_dig_vein_reserve() -> void:
+	var found := _find_surface_vein(0)
+	if found.is_empty():
+		assert_true(false, "a vein breaks the surface of a flat chunk somewhere")
+		return
+	var vein: Dictionary = found["vein"]
+	var v := _make_voxel()
+	var tile: Vector2i = vein["anchor"]
+	var cells: Array = []
+	var want := int(vein["reserve"]) + 3   # more ore cells than the vein holds
+	for i in want:
+		cells.append({ "tile": tile, "bottom": -40.0 - 0.125 * float(i), "top": -40.0 - 0.125 * float(i) + 0.125, "material": str(vein["material"]), "vein": vein, "host": false })
+	var applied: Dictionary = v._dig.apply_plan(cells, 0)
+	var taken := int(v._vein_taken.get(str(vein["id"]), 0))
+	assert_eq(taken, int(vein["reserve"]), "the reserve falls to zero and no further")
+	var volume := float(applied["volumes"].get(str(vein["material"]), 0.0))
+	assert_true(absf(volume - float(taken) * VoxelDig.SLAB_M3) < 0.000001, "the yield is the ore taken: %f" % volume)
+	v.queue_free()

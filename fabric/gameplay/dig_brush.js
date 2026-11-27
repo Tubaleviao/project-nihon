@@ -9,21 +9,22 @@ const { defineEntity } = require('@newel/core')
 const SHAPES = ['sphere', 'cylinder', 'box']
 const RADIUS_CAP = 1.5            // metres: no tool brush, at any skill level, is wider than this
 const DEFAULT_UNIT_VOLUME = 0.03125 // m³, one slab
+const WORK_SLAB_SHARE = 0.25      // a hold lasts the slab time × cells removed × this share, so a shovelful digs faster per m³ than slabs
 const SOFT = ['Grass', 'Soil', 'Sand', 'Snow']
 const ROCK = ['Ashite', 'Lumenfite']
 const ORE = ['Ferrite', 'Veilsteel', 'Aethermite', 'Voidite']
 
-/** Held item ('' = bare hands) -> brush. `growth` is metres of radius per Mining skill level, up to `radiusMax`. */
+/** Held item ('' = bare hands) -> brush. `radiusMax` is the most a tool's radius may reach (a skill-grown radius never passes it or `radiusCap`). */
 const BRUSHES = {
-  '':            { shape: 'sphere', radius: 0.3, radiusMax: 0.3, growth: 0,     materials: ['Grass', 'Soil', 'Sand'] },
-  StoneShovel:   { shape: 'sphere', radius: 0.6, radiusMax: 1.0, growth: 0.004, materials: SOFT, speed: 1.2 },
-  StonePick:     { shape: 'sphere', radius: 0.4, radiusMax: 0.6, growth: 0.002, materials: [...SOFT, ...ROCK, ...ORE], speed: 0.6 },
-  FerritePick:   { shape: 'sphere', radius: 0.4, radiusMax: 0.7, growth: 0.002, materials: [...SOFT, ...ROCK, ...ORE], speed: 1.0 },
-  VeilsteelPick: { shape: 'sphere', radius: 0.5, radiusMax: 0.8, growth: 0.002, materials: [...SOFT, ...ROCK, ...ORE], speed: 1.5 },
+  '':            { shape: 'sphere', radius: 0.3, radiusMax: 0.3, materials: ['Grass', 'Soil', 'Sand'] },
+  StoneShovel:   { shape: 'sphere', radius: 0.6, radiusMax: 1.0, materials: SOFT, speed: 1.2 },
+  StonePick:     { shape: 'sphere', radius: 0.4, radiusMax: 0.6, materials: [...SOFT, ...ROCK, ...ORE], speed: 0.6 },
+  FerritePick:   { shape: 'sphere', radius: 0.4, radiusMax: 0.7, materials: [...SOFT, ...ROCK, ...ORE], speed: 1.0 },
+  VeilsteelPick: { shape: 'sphere', radius: 0.5, radiusMax: 0.8, materials: [...SOFT, ...ROCK, ...ORE], speed: 1.5 },
 }
 
 function digBrushData() {
-  return JSON.parse(JSON.stringify({ shapes: SHAPES, radiusCap: RADIUS_CAP, defaultUnitVolume: DEFAULT_UNIT_VOLUME, unitVolume: {}, brushes: BRUSHES }))
+  return JSON.parse(JSON.stringify({ shapes: SHAPES, radiusCap: RADIUS_CAP, defaultUnitVolume: DEFAULT_UNIT_VOLUME, workSlabShare: WORK_SLAB_SHARE, unitVolume: {}, brushes: BRUSHES }))
 }
 
 /** The fabric's material and item keys, in the plain shape the validator reads. */
@@ -38,6 +39,7 @@ function digBrushRefs() {
 function digBrushProblems(d, refs) {
   const p = []
   if (!(typeof d.radiusCap === 'number' && d.radiusCap > 0)) p.push('radiusCap must be a positive number')
+  if (!(typeof d.workSlabShare === 'number' && d.workSlabShare > 0 && d.workSlabShare <= 1)) p.push('workSlabShare must be in (0, 1]')
   if (!(typeof d.defaultUnitVolume === 'number' && d.defaultUnitVolume > 0)) p.push('defaultUnitVolume must be positive')
   for (const [m, v] of Object.entries(d.unitVolume || {})) {
     if (!refs.materials.includes(m)) p.push(`unitVolume.${m}: not a terrain material`)
@@ -54,7 +56,6 @@ function digBrushProblems(d, refs) {
     if (max < b.radius) p.push(`${who}: radiusMax ${max} is below radius ${b.radius}`)
     if (max > d.radiusCap) p.push(`${who}: radius ${max} is over the cap ${d.radiusCap}`)
     if (b.radius > d.radiusCap) p.push(`${who}: radius ${b.radius} is over the cap ${d.radiusCap}`)
-    if (!(typeof b.growth === 'number' && b.growth >= 0)) p.push(`${who}: growth must be >= 0`)
     if (!Array.isArray(b.materials) || !b.materials.length) p.push(`${who}: materials must name at least one material`)
     for (const m of b.materials || []) if (!refs.materials.includes(m)) p.push(`${who}: ${m} is not a terrain material`)
   }
@@ -69,7 +70,7 @@ function validateDigBrush(d, refs) {
 const DigBrush = defineEntity({
   tags: ['world-system'],
   description:
-    'What a dig removes (Phase 300): per held tool a brush shape, a radius that grows with the Mining skill up to a cap, and the materials it cuts, ' +
+    'What a dig removes (Phase 300): per held tool a brush shape, a radius under a cap, and the materials it cuts, ' +
     'plus the volume of one yielded unit per material.',
   goal: 'A dig that moves a shovelful, not a slab, and yields the same however it is split',
   fields: {
@@ -77,8 +78,9 @@ const DigBrush = defineEntity({
     shapes:            { type: 'json', description: 'Brush shapes the rasteriser knows', defaultValue: SHAPES },
     radiusCap:         { type: 'decimal', description: 'Metres; no brush is wider, at any skill', defaultValue: RADIUS_CAP },
     defaultUnitVolume: { type: 'decimal', description: 'm³ of one yielded unit unless the material says otherwise', defaultValue: DEFAULT_UNIT_VOLUME },
+    workSlabShare:     { type: 'decimal', description: 'A hold lasts slab seconds x cells removed x this share (0, 1]', defaultValue: WORK_SLAB_SHARE },
     unitVolume:        { type: 'json', description: 'material -> m³ per yielded unit', defaultValue: {} },
-    brushes:           { type: 'json', description: 'held item ("" = hands) -> { shape, radius, radiusMax, growth, materials }', defaultValue: BRUSHES },
+    brushes:           { type: 'json', description: 'held item ("" = hands) -> { shape, radius, radiusMax, materials }', defaultValue: BRUSHES },
   },
 })
 

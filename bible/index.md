@@ -348,7 +348,7 @@ Open-source sandbox MMORPG where players build a civilization. The world is pers
 - [ClanTiers](entities/clantiers.md) — A clan's tier, from every building it owns wherever it stands, weighed by how durable and how rare each block's material is
 - [CombatCombos](entities/combatcombos.md) — Attack combos and hit timing: per weapon class the clip order, the window that keeps a chain going, the damage multiplier and impact time of each step, the stagger share and the knock-back of a struck target
 - [CombatSystem](entities/combatsystem.md) — Defines the rules governing all combat interactions — player vs creature, player vs player, and structure damage
-- [DigBrush](entities/digbrush.md) — What a dig removes (Phase 300): per held tool a brush shape, a radius that grows with the Mining skill up to a cap, and the materials it cuts, plus the volume of one yielded unit per material
+- [DigBrush](entities/digbrush.md) — What a dig removes (Phase 300): per held tool a brush shape, a radius under a cap, and the materials it cuts, plus the volume of one yielded unit per material
 - [Equipment](entities/equipment.md) — Equipment categories and traits (Phase 295): every held item is equipment of a category, and what it can do in the world (fell, mine, dig, build, pick a lock, dissect, cut bone) follows from its traits by the work table
 - [GearTiers](entities/geartiers.md) — Skills capped by the gear (Phase 229): a combat ability needs an equipped weapon of its tier, and a recipe needs a tool and a crafting station of its tier
 - [GovernanceSystem](entities/governancesystem.md) — Defines the rules of in-game community governance

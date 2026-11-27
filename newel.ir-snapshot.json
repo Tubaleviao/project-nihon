@@ -1,5 +1,5 @@
 {
-  "schemaHash": "sha256:b9c69e228978f521a021c75727bbd718f16450c23eacdbee6fd7c354ee9815e7",
+  "schemaHash": "sha256:a86c9697d642d049cc94ca61486287e712153e493c24dc0e3f56aca02d67f9eb",
   "schema": {
     "version": "3.0.0",
     "meta": {
@@ -47358,7 +47358,7 @@
         "tags": [
           "world-system"
         ],
-        "description": "What a dig removes (Phase 300): per held tool a brush shape, a radius that grows with the Mining skill up to a cap, and the materials it cuts, plus the volume of one yielded unit per material.",
+        "description": "What a dig removes (Phase 300): per held tool a brush shape, a radius under a cap, and the materials it cuts, plus the volume of one yielded unit per material.",
         "goal": "A dig that moves a shovelful, not a slab, and yields the same however it is split",
         "fields": {
           "id": {
@@ -47399,6 +47399,15 @@
             "pii": false,
             "defaultValue": 0.03125
           },
+          "workSlabShare": {
+            "name": "workSlabShare",
+            "type": "decimal",
+            "description": "A hold lasts slab seconds x cells removed x this share (0, 1]",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 0.25
+          },
           "unitVolume": {
             "name": "unitVolume",
             "type": "json",
@@ -47411,7 +47420,7 @@
           "brushes": {
             "name": "brushes",
             "type": "json",
-            "description": "held item (\"\" = hands) -> { shape, radius, radiusMax, growth, materials }",
+            "description": "held item (\"\" = hands) -> { shape, radius, radiusMax, materials }",
             "nullable": false,
             "primaryKey": false,
             "pii": false,
@@ -47420,7 +47429,6 @@
                 "shape": "sphere",
                 "radius": 0.3,
                 "radiusMax": 0.3,
-                "growth": 0,
                 "materials": [
                   "Grass",
                   "Soil",
@@ -47431,7 +47439,6 @@
                 "shape": "sphere",
                 "radius": 0.6,
                 "radiusMax": 1,
-                "growth": 0.004,
                 "materials": [
                   "Grass",
                   "Soil",
@@ -47444,7 +47451,6 @@
                 "shape": "sphere",
                 "radius": 0.4,
                 "radiusMax": 0.6,
-                "growth": 0.002,
                 "materials": [
                   "Grass",
                   "Soil",
@@ -47463,7 +47469,6 @@
                 "shape": "sphere",
                 "radius": 0.4,
                 "radiusMax": 0.7,
-                "growth": 0.002,
                 "materials": [
                   "Grass",
                   "Soil",
@@ -47482,7 +47487,6 @@
                 "shape": "sphere",
                 "radius": 0.5,
                 "radiusMax": 0.8,
-                "growth": 0.002,
                 "materials": [
                   "Grass",
                   "Soil",
