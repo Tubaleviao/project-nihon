@@ -576,6 +576,11 @@ thread for every chunk). Mounts still refuse any river, even a stream their own 
 - Any change to world-gen output bumps `TerrainSlice.WORLDGEN_VERSION` with a history line and
   updates `_test_worldgen_golden`.
 
+**Progress (in flight, worldgen 16):** the spawn plain extent (lakes by disc, rivers by segment and width), the build-cost skip
+(`FreshWaterMesh.worker_arrays`) and the mount ford (#593) are in with tests. Still open: lake shore clamp and CSG bowl and levee,
+the river seam (the bake grid does not wrap east-west: its drains, fill and erosion need a new bake profile with a native twin),
+the frontier water ease, and the #573 checklist.
+
 **Closes:** #573, #593
 
 **Acceptance criteria**

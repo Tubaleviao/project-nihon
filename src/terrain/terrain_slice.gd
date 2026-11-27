@@ -49,6 +49,7 @@ const HEIGHT_SCALE := 5.0    # world units peak-to-valley of the small-scale DET
 ## height interpolated bilinearly between its 2 km cell centres (`macro_height`), the detail noise on top, and rivers
 ## are carved with soft banks (`Hydrology.soft_carve`, a smooth CSG subtraction) instead of a hard edge at the water.
 ## 16 = Phase 232 lakes and rivers stay off the whole spawn plain: a lake by its full disc, a river by its segments and width, not by centre or vertices.
+
 const WORLDGEN_VERSION := 16
 ## The first worldgen version whose rivers are the planet bake's; a world recorded earlier keeps the local trace.
 const BAKE_WORLDGEN_VERSION := 14
