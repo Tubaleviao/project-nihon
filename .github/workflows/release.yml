@@ -170,12 +170,10 @@ jobs:
       - name: Bake the planet for the fabric seed
         # Phase 245 — the bake and its SHA-256 are published beside the packages (only
         # published for now: the game bakes locally and nothing downloads this file; Phase 302 tracks the exchange).
-        run: |
-          mkdir -p build/bake
-          /tmp/godot/Godot_v4.7-stable_linux.x86_64 --headless --path . --quit-after 5 -- --bake-planet build/bake | tee /tmp/bake.log
-          grep -q '^BAKE ' /tmp/bake.log
-          test -s build/bake/planet_*.bin
-          test -s build/bake/planet_*.bin.sha256
+        # The same command and checks as the pull-request job in ci.yml (tools/bake_planet.sh).
+        env:
+          GODOT: /tmp/godot/Godot_v4.7-stable_linux.x86_64
+        run: tools/bake_planet.sh build/bake
 
       - name: Package
         run: |
