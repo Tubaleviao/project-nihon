@@ -1,5 +1,5 @@
 {
-  "schemaHash": "sha256:71d81405783ff635dfa595873f6b09f6a3f3798af54f76c264219a1b6a07c166",
+  "schemaHash": "sha256:b9c69e228978f521a021c75727bbd718f16450c23eacdbee6fd7c354ee9815e7",
   "schema": {
     "version": "3.0.0",
     "meta": {
@@ -47345,6 +47345,158 @@
             "defaultValue": {
               "fellBranches": 2,
               "looseStoneChance": 0.25
+            }
+          }
+        },
+        "relations": {},
+        "behaviors": {},
+        "pii": [],
+        "gdpr": {}
+      },
+      "DigBrush": {
+        "name": "DigBrush",
+        "tags": [
+          "world-system"
+        ],
+        "description": "What a dig removes (Phase 300): per held tool a brush shape, a radius that grows with the Mining skill up to a cap, and the materials it cuts, plus the volume of one yielded unit per material.",
+        "goal": "A dig that moves a shovelful, not a slab, and yields the same however it is split",
+        "fields": {
+          "id": {
+            "name": "id",
+            "type": "uuid",
+            "nullable": false,
+            "primaryKey": true,
+            "pii": false
+          },
+          "shapes": {
+            "name": "shapes",
+            "type": "json",
+            "description": "Brush shapes the rasteriser knows",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": [
+              "sphere",
+              "cylinder",
+              "box"
+            ]
+          },
+          "radiusCap": {
+            "name": "radiusCap",
+            "type": "decimal",
+            "description": "Metres; no brush is wider, at any skill",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 1.5
+          },
+          "defaultUnitVolume": {
+            "name": "defaultUnitVolume",
+            "type": "decimal",
+            "description": "m³ of one yielded unit unless the material says otherwise",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 0.03125
+          },
+          "unitVolume": {
+            "name": "unitVolume",
+            "type": "json",
+            "description": "material -> m³ per yielded unit",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {}
+          },
+          "brushes": {
+            "name": "brushes",
+            "type": "json",
+            "description": "held item (\"\" = hands) -> { shape, radius, radiusMax, growth, materials }",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "": {
+                "shape": "sphere",
+                "radius": 0.3,
+                "radiusMax": 0.3,
+                "growth": 0,
+                "materials": [
+                  "Grass",
+                  "Soil",
+                  "Sand"
+                ]
+              },
+              "StoneShovel": {
+                "shape": "sphere",
+                "radius": 0.6,
+                "radiusMax": 1,
+                "growth": 0.004,
+                "materials": [
+                  "Grass",
+                  "Soil",
+                  "Sand",
+                  "Snow"
+                ],
+                "speed": 1.2
+              },
+              "StonePick": {
+                "shape": "sphere",
+                "radius": 0.4,
+                "radiusMax": 0.6,
+                "growth": 0.002,
+                "materials": [
+                  "Grass",
+                  "Soil",
+                  "Sand",
+                  "Snow",
+                  "Ashite",
+                  "Lumenfite",
+                  "Ferrite",
+                  "Veilsteel",
+                  "Aethermite",
+                  "Voidite"
+                ],
+                "speed": 0.6
+              },
+              "FerritePick": {
+                "shape": "sphere",
+                "radius": 0.4,
+                "radiusMax": 0.7,
+                "growth": 0.002,
+                "materials": [
+                  "Grass",
+                  "Soil",
+                  "Sand",
+                  "Snow",
+                  "Ashite",
+                  "Lumenfite",
+                  "Ferrite",
+                  "Veilsteel",
+                  "Aethermite",
+                  "Voidite"
+                ],
+                "speed": 1
+              },
+              "VeilsteelPick": {
+                "shape": "sphere",
+                "radius": 0.5,
+                "radiusMax": 0.8,
+                "growth": 0.002,
+                "materials": [
+                  "Grass",
+                  "Soil",
+                  "Sand",
+                  "Snow",
+                  "Ashite",
+                  "Lumenfite",
+                  "Ferrite",
+                  "Veilsteel",
+                  "Aethermite",
+                  "Voidite"
+                ],
+                "speed": 1.5
+              }
             }
           }
         },

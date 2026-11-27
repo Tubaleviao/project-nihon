@@ -37,6 +37,7 @@ const workTimes    = require('./gameplay/work_times')
 const combos       = require('./gameplay/combos')
 const workClips    = require('./gameplay/work_clips')
 const stoneTools   = require('./gameplay/stone_tools')
+const digBrush     = require('./gameplay/dig_brush')
 const newcomer     = require('./gameplay/newcomer_grounds')
 const clan         = require('./gameplay/clan')
 const structure    = require('./gameplay/structure')
@@ -79,6 +80,7 @@ skillWheel.validateSkillWheel(skillWheel.skillWheelData(), skillWheel.skillWheel
 skillFocus.validateSkillFocus(skillFocus.skillFocusData()) // Phase 272
 titles.validateTitles(titles.titlesData(), titles.titlesRefs()) // Phase 273
 stoneTools.validateStoneTools(stoneTools.stoneToolsData(), stoneTools.stoneToolsRefs()) // Phase 260
+digBrush.validateDigBrush(digBrush.digBrushData(), digBrush.digBrushRefs()) // Phase 300
 newcomer.validateNewcomerGrounds(newcomer.newcomerGroundsData(), newcomer.newcomerGroundsRefs()) // Phase 261
 stations.validateStations(stations.stationsData(), stations.stationsRefs()) // Phase 268
 gearTiers.validateGearTiers(gearTiers.gearTiersData(), gearTiers.gearTiersRefs()) // Phase 229
@@ -405,6 +407,7 @@ module.exports = defineFabric({
       SkillFocus:          skillFocus.SkillFocus,
       Titles:              titles.Titles,
       StoneTools:          stoneTools.StoneTools,
+      DigBrush:            digBrush.DigBrush,
       NewcomerGrounds:     newcomer.NewcomerGrounds,
       StationPlacement:    stations.StationPlacement,
       SoundEvents:         sounds.SoundEvents,
