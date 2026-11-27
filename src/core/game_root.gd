@@ -108,7 +108,6 @@ var _menu_wiring := MenuWiring.new()   # Phase 223 — the main menu
 var _audio_wiring := AudioWiring.new()   # Phase 276 — the first sounds wired in
 ## Phase 223 — a join started from the menu failed: `main.gd` swaps in a fresh root whose menu shows why.
 signal menu_return_requested(reason_key: String, args: Array)   # #706: args are the key's params
-
 var _terrain:     TerrainSlice
 var _voxel:       VoxelSlice
 var _chunk_manager: ChunkManager
@@ -630,6 +629,7 @@ func _build_and_boot() -> void:
 	_boot_wiring.prepare_stress_role()
 	_boot_wiring.prepare_playtest_bot()
 	_menu_wiring.apply_world(); _boot_wiring.apply_save_dir()   # Phase 298 — `--save-dir`
+	await preload("res://src/core/bake_boot.gd").new(self).warm()   # Phase 302 — bake off the main thread, progress screen
 	_boot_world()
 	_boot_wiring.start_stress_recorder()
 	_boot_wiring.start_playtest_bot()

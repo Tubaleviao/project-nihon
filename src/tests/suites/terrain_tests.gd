@@ -1,5 +1,6 @@
 extends "res://src/tests/test_support.gd"
 const TerrainMaterialScript := preload("res://src/terrain/terrain_material.gd")
+const HydrologyScript := preload("res://src/terrain/hydrology.gd")
 ## Phase 133 — the terrain tests, moved unchanged from the old single-file suite.
 
 
@@ -1752,6 +1753,14 @@ func _test_worldgen_golden() -> void:
 	for i in 16:
 		var c := Vector2i((i * 65537) % 600000 - 300000, (i * 104729) % 300000 - 150000)
 		assert_eq(TerrainSlice.biome_for_chunk(c, 100 + i), biomes[i], "biome of golden chunk %d" % i)
+	# Phase 302 (worldgen 15): the soft-bank river carve across a pinned segment, from the centreline out to where
+	# the bank meets the 9 m ground through the smooth union.
+	var sg := [0.0, 0.0, 40.0, 10.0, 5.0, 4.5, 3.0, 2.5]
+	var banks: Array = [3.25, 3.966, 4.831, 5.698, 6.563, 7.43, 8.275, 8.825]
+	for i in 8:
+		var got: float = HydrologyScript.soft_carve([sg], 20.0, 5.0 + float(i) * 1.5, 9.0)
+		assert_true(absf(got - float(banks[i])) < 1e-9, "soft-bank carve %d matches the golden value (got %.4f)" % [i, got])
+	assert_eq(HydrologyScript.soft_carve([sg], 20.0, 65.0, 9.0), 9.0, "ground past the bank's reach keeps its exact height")
 
 
 # ---- Phase 112 — a biome adjacency table in the fabric and an offline scan ----

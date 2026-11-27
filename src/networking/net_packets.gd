@@ -363,6 +363,8 @@ func _route_c2h(sender: int, payload: Dictionary) -> void:
 	if (ptype == "join_intent" or ptype == "roster_intent") and not protocol_ok(sender, payload):
 		return
 	match ptype:
+		"bake_request":
+			sl._m3.bake.on_request(sender, payload)   # Phase 302: bounded and rate-limited there
 		"join_intent":
 			# Phase 33 — the client presents its cached id ("" on a first join).
 			# The registry owns resolution; the host answers with player_joined.

@@ -22,7 +22,7 @@ issues are open. Burn them down first (fix, fold into the next phase, or close w
 
 ## Phase index
 
-Phases 1–225, 238–244, 248–250, 252–257, 259–276, 281–283, 289 are done (200 and 201 were aborted). Their specs and acceptance criteria, and the
+Phases 1–225, 238–245, 248–250, 252–257, 259–276, 281–283, 289, 302 are done (200 and 201 were aborted). Their specs and acceptance criteria, and the
 introductions of the arcs they belonged to, are archived in
 [docs/roadmap-history/](docs/roadmap-history/README.md).
 
@@ -39,17 +39,16 @@ work in order.
 
 | Priority | Phase | Title |
 |---|---|---|
-| 1 | 302 | The planet bake, part 2: hydraulic erosion, biomes, macro height from the bake and the host's copy |
-| 2 | 232 | Water that holds up: lake shores, the river seam and mounts at fords |
-| 3 | 300 | Digging with a brush: one dig moves a shovelful, not a slab |
-| 4 | 301 | Shaping the ground: fill, flatten and smooth, and a dug surface that shows what it is |
-| 5 | 247 | Ground cover: grass and bushes by biome |
-| 6 | 235 | Roads |
-| 7 | 234 | Boats |
-| 8 | 258 | The public wiki and the community channels |
-| 9 | 299 | Many registries: signed entries, gossip and no single owner |
-| 10 | 236 | Changing hair style and colour (parked: picked up only when un-parked) |
-| 11 | 251 | A human playtest: what would make the game fun (a standing checkpoint, when the owner has time) |
+| 1 | 232 | Water that holds up: lake shores, the river seam and mounts at fords |
+| 2 | 300 | Digging with a brush: one dig moves a shovelful, not a slab |
+| 3 | 301 | Shaping the ground: fill, flatten and smooth, and a dug surface that shows what it is |
+| 4 | 247 | Ground cover: grass and bushes by biome |
+| 5 | 235 | Roads |
+| 6 | 234 | Boats |
+| 7 | 258 | The public wiki and the community channels |
+| 8 | 299 | Many registries: signed entries, gossip and no single owner |
+| 9 | 236 | Changing hair style and colour (parked: picked up only when un-parked) |
+| 10 | 251 | A human playtest: what would make the game fun (a standing checkpoint, when the owner has time) |
 
 Why this order:
 
@@ -66,7 +65,7 @@ Why this order:
   the terrain and net code easier to read for 245 onward.
 - **245 split (2026-11-26, owner).** Four autopilot runs did not finish 245 in one PR, so its built half
   (the bake, the CSG helper, thermal erosion, baked rivers at world creation, `WORLDGEN_VERSION` 14)
-  ships as 245 and the rest is Phase 302, which keeps 245's place at the head of the world work.
+  ships as 245 and the rest is Phase 302, which keeps 245's place at the head of the world work. **302 done.**
 - **245 → 302 → 232 → 300 → 301 → 247 → 235 → 234: the world.** Phase 245 replaces Phase 217's river trace, so 232's
   river-seam fix applies to the baked rivers (its lake-shore and ford work stays as written). Phase 245 also
   brings the terrain CSG helper (smooth subtract/union of distance shapes) that 232 carves lake basins with
@@ -199,7 +198,7 @@ detail and caching (243–244), and later flight (237), the planet bake (245) an
 | 245 | The planet bake: continents, rivers with flow, erosion and biomes at 2 km | Done (split; the rest is 302) |
 | 246 | The regional bake: 2 m erosion detail in 4 km regions, on demand around players | Parked |
 | 247 | Ground cover: grass and bushes by biome, culled by distance | Open |
-| 302 | The planet bake, part 2: hydraulic erosion, biomes, macro height from the bake and the host's copy | Open |
+| 302 | The planet bake, part 2: hydraulic erosion, biomes, macro height from the bake and the host's copy | Done |
 
 ### Arc: digging worth doing (Phases 300–301)
 
@@ -782,85 +781,6 @@ velocity; the steady worker cap starts at half the cores and moves once a second
 the body; the ground surface of a chunk is a `ChunkSurface` (RenderingServer mesh and instance) when
 `VoxelBuild.render_server_surfaces` is on (the game, not the suite's rigs). The `flight` step is gated
 by CI's playtest run; no release-build numbers were recorded in this PR.
-
-## Phase 245 — The planet bake: continents, rivers with flow, erosion and biomes at 2 km
-
-Phase 217 traces rivers locally (steepest descent in 64 m steps from a source cell) with no flow or
-erosion, and continents come straight from noise.
-
-- A native, deterministic bake of the whole planet on a 2 km grid (about 0.5 M cells on the Phase 238
-  planet, a 2,000 × 1,000 km grid): base height from `WorldShape`, then flow accumulation, river networks from source to sea,
-  hydraulic and thermal erosion, and the climate and biome fields read from the result. The arithmetic
-  is fixed-point/integer, so every machine bakes the same bytes.
-- Output: one file per world seed and worldgen version (height, flow, river ids, biome; about 8 bytes
-  a cell, about 4 MB before compression). CI bakes it for the fabric seed and publishes it as a
-  release asset. A host that does not find it bakes it at world creation, with a progress screen. A
-  client downloads it from the host or bakes it itself, and checks the hash either way.
-- The runtime reads macro height and rivers from the bake (interpolated). The detail noise stays on
-  top. Phase 217's river trace is replaced. Lakes keep Phase 217's placement, fed by the baked flow;
-  Phase 232, which now comes after this phase, fixes their shores and fords on top of it.
-- **Carving the bake into the ground** (added 2026-11-25, after the GDVoxelTerrain review): rivers
-  are not only painted on the interpolated macro height. The runtime subtracts each baked river from
-  the ground as a chain of capsules along its polyline (radius from flow, depth from width) with a
-  smooth subtraction, so a river runs in a channel with soft banks at any detail-noise height. The
-  maths lives in one terrain CSG helper, `src/terrain/terrain_csg.gd` with a native twin on the
-  Phase 248 base: union, subtraction, intersection and their smooth (polynomial `k`) forms, as in
-  GDVoxelTerrain's `sdf_operations.h` (MIT; notice in the file and a row in `native/THIRD_PARTY.md`),
-  over 2D distance shapes (disc, capsule, polyline, box) for height fields and 3D shapes (sphere,
-  cylinder, box, capsule) for run columns, in fixed point. Phases 232 (lake basins), 300–301 (dig and
-  shape brushes) and 235 (road cut and fill) reuse it.
-- Continents come from Phase 238's mask (open continents only); a closed site bakes as ocean until it
-  is opened, and opening one re-bakes the planet under the bumped `WORLDGEN_VERSION`.
-- Built on the Phase 248 native base (fixed-point helpers, parity harness).
-- A world-gen change: bump `WORLDGEN_VERSION` (only unrecorded land changes, per the stable-world
-  rule; `frontier.gd` blends at recorded borders).
-
-**Progress (autopilot, 2026-11-26).** Done on `autopilot/1126-fd9b55-next`: `terrain_csg.gd`, the GDScript bake reference `planet_bake.gd` (fill, D8 flow, rivers, bytes, hash, save/load, carve profile), and the `NativeBake` twin with parity tests (a 1000 x 500 grid bakes natively in about 0.1 s). Thermal erosion (integer, order-independent, native twin, `NativeBake` version 2) and every CSG shape's native twin (`NativeBake` version 3) are done, and the steepest-descent test rounds drops up so a 1 mm diagonal still drains. Also done: `Hydrology.use_bake` / `baked_segs` read baked rivers as carve segments (opt-in, off by default so `WORLDGEN_VERSION` is unchanged), and `PlanetBake.ensure` (file, hash check against the host's hash, re-bake). Also done: `--bake-planet <dir> [seed]` (bakes the 1000 x 500 planet in about 6 s natively) and a release.yml step that publishes the bake and its hash beside the packages. Also done (part 10): `TerrainSlice.set_world_seed` reads or bakes the planet (`user://bake/`, hash checked, off under `--run-tests`, skipped for planets over `PlanetBake.MAX_CELLS`), `Hydrology` serves the baked rivers, `WORLDGEN_VERSION` is 14; the playtest `travel`, `far_peak` and `pole` steps pass on it locally. Open: the macro height read from the bake (interpolated), the bank-step carve test, the host-to-client hash exchange. Was open: calling the bake at world creation with a progress screen, hydraulic erosion and the biome field, the runtime read and carve replacing Phase 217's trace, the `WORLDGEN_VERSION` bump, host/client distribution, CI publishing and the playtest steps.
-
-**Split (2026-11-26, owner).** This phase ships what the progress note lists as done. Hydraulic
-erosion, the biome field, the macro height read from the bake, the bake progress screen, the
-soft-bank carve criterion, the host-to-client hash exchange and the CI check of the release bake
-step move to [Phase 302](#phase-302--the-planet-bake-part-2-hydraulic-erosion-biomes-macro-height-from-the-bake-and-the-hosts-copy).
-
-**Acceptance criteria**
-- A suite test bakes a small planet (a test circumference) twice and gets identical bytes, and the
-  same bytes from the GDScript reference and the native bake.
-- Suite tests on the baked rivers: every river reaches the sea or a lake, never flows uphill, and its
-  width grows with flow.
-- Suite tests on the carve: along baked river segments the ground at the centreline lies below the
-  water surface; `terrain_csg` matches reference values for each operation (including `k` → 0 equal
-  to the sharp form), and its GDScript and native results are identical.
-- A suite test: a bake file with a wrong hash is refused and re-baked.
-- `--bake-planet` writes the bake and its hash, and the playtest `travel`, `far_peak` and `pole`
-  steps pass on the baked rivers.
-
-## Phase 302 — The planet bake, part 2: hydraulic erosion, biomes, macro height from the bake and the host's copy
-
-The rest of Phase 245 (split 2026-11-26). Phase 245 bakes continents, flow, rivers and thermal
-erosion, and the runtime carves the baked rivers; macro height still comes from the noise, and every
-machine bakes its own copy.
-
-- **Hydraulic erosion** in the bake, integer and order-independent like the thermal pass, with a
-  native twin and a `NativeBake` version bump.
-- **The climate and biome fields** read from the eroded result and stored in the bake's biome byte.
-- **Macro height from the bake:** the runtime reads macro height from the bake (interpolated), with
-  the detail noise on top, and rivers are carved with soft banks (the CSG smooth subtraction, not
-  `Hydrology.water_at`'s hard edge). A world-gen change: bump `WORLDGEN_VERSION` and the golden values.
-- **A progress screen** while a host bakes at world creation, through `I18n.t()` keys in both locales.
-- **The host's copy:** a client asks the host for the bake's hash, downloads the bake from the host
-  (or bakes it itself from the seed) and checks the hash either way.
-
-**Acceptance criteria**
-- Suite tests: hydraulic erosion is deterministic and identical in GDScript and native; it lowers
-  river channels and keeps every river reaching the sea or a lake.
-- A suite test: every land cell of a small baked planet has a biome, and the field matches the
-  climate rules.
-- A suite test on the carve: along 50 baked river segments the ground at the centreline lies below
-  the water surface and no bank step between adjacent tiles exceeds 0.5 m.
-- A net harness step: a client gets the host's bake hash, refuses a corrupted bake and ends with the
-  host's bytes.
-- The release workflow's bake step runs green in CI, and the playtest `travel`, `far_peak` and
-  `pole` steps pass on the baked macro height.
 
 ## Phase 247 — Ground cover: grass and bushes by biome, culled by distance
 

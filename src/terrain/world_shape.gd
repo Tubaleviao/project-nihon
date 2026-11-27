@@ -308,8 +308,11 @@ static func spline_height(c: float) -> float:
 ## Large-scale terrain height in metres at world (x, z), `w` the circumference in metres. No
 ## small-scale detail (TerrainSlice adds that); this is what climate and biomes read.
 static func height(seed_v: int, x: float, z: float, w: float) -> float:
-	var h := natural_height(seed_v, x, z, w)
-	# The spawn plain.
+	return with_spawn_plain(seed_v, x, z, w, natural_height(seed_v, x, z, w))
+
+## `h` (a natural height at world (x, z)) eased into the spawn plain near the spawn. Phase 302: the planet
+## bake's macro height passes through this too, so the plain stays flat on a baked world.
+static func with_spawn_plain(seed_v: int, x: float, z: float, w: float, h: float) -> float:
 	var d := Vector2(x - SPAWN_CENTER.x, z - SPAWN_CENTER.y).length()
 	if d < SPAWN_EASE_M:
 		h = lerpf(spawn_plain_height(seed_v, w), h, smoothstep(SPAWN_PLAIN_M, SPAWN_EASE_M, d))

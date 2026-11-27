@@ -2300,7 +2300,7 @@ func _find_far_peak() -> Array:
 	await get_tree().process_frame
 	var t0 := Time.get_ticks_msec()
 	for sm in WorldShape.massif_summits(seed_v, w, FAR_PEAK_CANDIDATES * 2):
-		var hit: Array = WorldShape.highest_near(seed_v, sm[1], w, FAR_PEAK_SUMMIT_RADIUS_M, FAR_PEAK_SUMMIT_STEP_M)
+		var hit: Array = TerrainSlice.highest_macro_near(seed_v, sm[1], w, FAR_PEAK_SUMMIT_RADIUS_M, FAR_PEAK_SUMMIT_STEP_M)
 		if float(hit[0]) >= FAR_PEAK_MIN_HEIGHT:
 			peaks.append([sm[0], hit[1], hit[0]])
 		if Time.get_ticks_msec() - t0 > COAST_WORK_MS:
@@ -2316,11 +2316,11 @@ func _find_far_peak() -> Array:
 			t0 = Time.get_ticks_msec()
 		var peak: Vector2 = peaks[k][1]
 		var best: Array = []
-		var height_at := func(p: Vector2) -> float: return WorldShape.height(seed_v, p.x, p.y, w)
+		var height_at := func(p: Vector2) -> float: return TerrainSlice.macro_height(seed_v, p.x, p.y, w)
 		for b in 16:
 			var dir := Vector2.from_angle(deg_to_rad(float(b) * 22.5))
 			var v := peak + dir * FAR_PEAK_DISTANCE_M
-			var vh := WorldShape.height(seed_v, v.x, v.y, w)
+			var vh := TerrainSlice.macro_height(seed_v, v.x, v.y, w)
 			if vh > sea + 3.0 and vh < FAR_PEAK_VANTAGE_MAX_M:
 				var clear := ridge_clearance(height_at, v, peak, w / TAU)
 				if best.is_empty() or clear > float(best[4]):
@@ -2511,7 +2511,7 @@ func _find_coast(from: Vector2) -> Array:
 				await get_tree().process_frame
 				t0 = Time.get_ticks_msec()
 			var p := from + dir * d
-			if WorldShape.height(seed_v, p.x, p.y, w) < sea - COAST_DEEP_M and _open_water(seed_v, w, p, dir, outer, sea - COAST_DEEP_M):
+			if TerrainSlice.macro_height(seed_v, p.x, p.y, w) < sea - COAST_DEEP_M and _open_water(seed_v, w, p, dir, outer, sea - COAST_DEEP_M):
 				crossings.append([d, dir])
 				break
 			d += COAST_MARCH_M
@@ -2557,7 +2557,7 @@ static func _open_water(seed_v: int, w: float, p: Vector2, dir: Vector2, reach: 
 	var d := COAST_MARCH_M
 	while d <= reach:
 		var q := p + dir * d
-		if WorldShape.height(seed_v, q.x, q.y, w) >= level:
+		if TerrainSlice.macro_height(seed_v, q.x, q.y, w) >= level:
 			return false
 		d += COAST_MARCH_M
 	return true
@@ -2990,7 +2990,7 @@ func _find_peak() -> Array:
 	var w := Horizon.default_circumference()
 	var t0 := Time.get_ticks_msec()
 	for sm in WorldShape.massif_summits(seed_v, w, FAR_PEAK_CANDIDATES * 2):
-		var hit: Array = WorldShape.highest_near(seed_v, sm[1], w, FAR_PEAK_SUMMIT_RADIUS_M, FAR_PEAK_SUMMIT_STEP_M)
+		var hit: Array = TerrainSlice.highest_macro_near(seed_v, sm[1], w, FAR_PEAK_SUMMIT_RADIUS_M, FAR_PEAK_SUMMIT_STEP_M)
 		if float(hit[0]) >= TOWER_PEAK_MIN_M:
 			return hit
 		if Time.get_ticks_msec() - t0 > COAST_WORK_MS:

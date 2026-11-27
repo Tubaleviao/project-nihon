@@ -99,11 +99,10 @@ int64_t seg_dist2(int64_t px, int64_t py, int64_t ax, int64_t ay, int64_t bx, in
 }
 
 constexpr int ERODE_PASSES = 6;
-constexpr int64_t ERODE_TALUS_MM = 2400;
 constexpr int64_t ERODE_SHARE = 8;
 
 // `PlanetBake.erode`.
-PackedInt32Array erode(const PackedInt32Array &base, int64_t w, int64_t h, int64_t sea) {
+PackedInt32Array erode(const PackedInt32Array &base, int64_t w, int64_t h, int64_t sea, int64_t talus) {
 	int64_t n = w * h;
 	std::vector<int32_t> cur(n), delta(n);
 	for (int64_t i = 0; i < n; i++) {
@@ -129,8 +128,8 @@ PackedInt32Array erode(const PackedInt32Array &base, int64_t w, int64_t h, int64
 						continue;
 					}
 					int64_t drop = int64_t(cur[i]) - cur[j];
-					if (drop > ERODE_TALUS_MM) {
-						int32_t amount = int32_t((drop - ERODE_TALUS_MM) / ERODE_SHARE);
+					if (drop > talus) {
+						int32_t amount = int32_t((drop - talus) / ERODE_SHARE);
 						delta[i] -= amount;
 						delta[j] += amount;
 					}
@@ -211,6 +210,71 @@ int64_t steepest(const std::vector<int32_t> &f, int64_t w, int64_t h, int64_t i,
 	return best;
 }
 
+constexpr int HYDRO_PASSES = 4;
+constexpr int64_t HYDRO_CUT_MM = 600;
+constexpr int64_t HYDRO_MAX_CUT_MM = 6000;
+
+// Flow accumulation: each cell counts itself and passes its count down its drain, highest cell first.
+std::vector<int32_t> accumulate(const std::vector<int32_t> &f, const std::vector<int32_t> &dir) {
+	int64_t n = int64_t(f.size());
+	std::vector<int64_t> order(n);
+	for (int64_t i = 0; i < n; i++) {
+		order[i] = key_of(f[i], i);
+	}
+	std::sort(order.begin(), order.end());
+	std::vector<int32_t> flow(n, 1);
+	for (int64_t k = n - 1; k >= 0; k--) {
+		int64_t c = order[k] & 0xFFFFFF;
+		int32_t d = dir[c];
+		if (d != -1) {
+			flow[d] += flow[c];
+		}
+	}
+	return flow;
+}
+
+// `PlanetBake.hydraulic`.
+PackedInt32Array hydraulic(const PackedInt32Array &base, int64_t w, int64_t h, int64_t sea, int64_t river_flow) {
+	int64_t n = w * h;
+	std::vector<int32_t> cur(n);
+	for (int64_t i = 0; i < n; i++) {
+		cur[i] = base[i];
+	}
+	for (int pass = 0; pass < HYDRO_PASSES; pass++) {
+		PackedInt32Array cur_arr;
+		cur_arr.resize(n);
+		for (int64_t i = 0; i < n; i++) {
+			cur_arr[i] = cur[i];
+		}
+		std::vector<int32_t> f = fill(cur_arr, w, h, sea);
+		std::vector<int32_t> dir(n);
+		for (int64_t i = 0; i < n; i++) {
+			dir[i] = int32_t(steepest(f, w, h, i, sea));
+		}
+		std::vector<int32_t> flow = accumulate(f, dir);
+		std::vector<int32_t> next = cur;
+		for (int64_t i = 0; i < n; i++) {
+			int32_t d = dir[i];
+			if (d == -1 || flow[i] < river_flow || cur[i] <= sea) {
+				continue;
+			}
+			int64_t floor_mm = std::max<int64_t>(int64_t(cur[d]) + 1, sea + 1);
+			int64_t cut = std::min<int64_t>(HYDRO_CUT_MM * flow[i] / river_flow, HYDRO_MAX_CUT_MM);
+			cut = std::min<int64_t>(cut, int64_t(cur[i]) - floor_mm);
+			if (cut > 0) {
+				next[i] = int32_t(cur[i] - cut);
+			}
+		}
+		cur = next;
+	}
+	PackedInt32Array out;
+	out.resize(n);
+	for (int64_t i = 0; i < n; i++) {
+		out[i] = cur[i];
+	}
+	return out;
+}
+
 int64_t length3(int64_t x, int64_t y, int64_t z) {
 	return isqrt_i(x * x + y * y + z * z);
 }
@@ -234,8 +298,9 @@ void NativeBake::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("capsule3", "p", "a", "b", "r"), &NativeBake::capsule3);
 	ClassDB::bind_method(D_METHOD("version"), &NativeBake::version);
 	ClassDB::bind_method(D_METHOD("functions"), &NativeBake::functions);
-	ClassDB::bind_method(D_METHOD("bake", "base", "w", "h", "sea_mm", "river_flow"), &NativeBake::bake);
-	ClassDB::bind_method(D_METHOD("erode", "base", "w", "h", "sea_mm"), &NativeBake::erode);
+	ClassDB::bind_method(D_METHOD("bake", "base", "w", "h", "sea_mm", "river_flow", "talus_mm", "hydraulic"), &NativeBake::bake);
+	ClassDB::bind_method(D_METHOD("erode", "base", "w", "h", "sea_mm", "talus_mm"), &NativeBake::erode);
+	ClassDB::bind_method(D_METHOD("hydraulic", "base", "w", "h", "sea_mm", "river_flow"), &NativeBake::hydraulic);
 	ClassDB::bind_method(D_METHOD("isqrt", "n"), &NativeBake::isqrt);
 	ClassDB::bind_method(D_METHOD("smooth_union", "a", "b", "k"), &NativeBake::smooth_union);
 	ClassDB::bind_method(D_METHOD("smooth_intersection", "a", "b", "k"), &NativeBake::smooth_intersection);
@@ -244,13 +309,14 @@ void NativeBake::_bind_methods() {
 }
 
 int NativeBake::version() const {
-	return 3;   // 1 = Phase 245: bake and the CSG operations; 2 = thermal erosion; 3 = every CSG shape
+	return 6;   // 1 = Phase 245: bake and the CSG operations; 2 = thermal erosion; 3 = every CSG shape; 4 = hydraulic erosion (Phase 302); 5 = thermal talus 500 m per cell; 6 = the bake profile (talus, hydraulic on/off) as parameters, so a worldgen-14 world bakes its Phase 245 bytes
 }
 
 PackedStringArray NativeBake::functions() const {
 	PackedStringArray out;
 	out.push_back("bake");
 	out.push_back("erode");
+	out.push_back("hydraulic");
 	out.push_back("isqrt");
 	out.push_back("smooth_union");
 	out.push_back("smooth_intersection");
@@ -262,9 +328,10 @@ PackedStringArray NativeBake::functions() const {
 	return out;
 }
 
-Dictionary NativeBake::bake(const PackedInt32Array &p_base, int64_t p_w, int64_t p_h, int64_t p_sea_mm, int64_t p_river_flow) const {
+Dictionary NativeBake::bake(const PackedInt32Array &p_base, int64_t p_w, int64_t p_h, int64_t p_sea_mm, int64_t p_river_flow, int64_t p_talus_mm, bool p_hydraulic) const {
 	int64_t n = p_w * p_h;
-	std::vector<int32_t> filled = fill(erode(p_base, p_w, p_h, p_sea_mm), p_w, p_h, p_sea_mm);
+	PackedInt32Array eroded = ::erode(p_base, p_w, p_h, p_sea_mm, p_talus_mm);
+	std::vector<int32_t> filled = fill(p_hydraulic ? ::hydraulic(eroded, p_w, p_h, p_sea_mm, p_river_flow) : eroded, p_w, p_h, p_sea_mm);
 	std::vector<int32_t> dir(n);
 	for (int64_t i = 0; i < n; i++) {
 		dir[i] = int32_t(steepest(filled, p_w, p_h, i, p_sea_mm));
@@ -315,8 +382,8 @@ Dictionary NativeBake::bake(const PackedInt32Array &p_base, int64_t p_w, int64_t
 	return d;
 }
 
-PackedInt32Array NativeBake::erode(const PackedInt32Array &p_base, int64_t p_w, int64_t p_h, int64_t p_sea_mm) const {
-	return ::erode(p_base, p_w, p_h, p_sea_mm);
+PackedInt32Array NativeBake::erode(const PackedInt32Array &p_base, int64_t p_w, int64_t p_h, int64_t p_sea_mm, int64_t p_talus_mm) const {
+	return ::erode(p_base, p_w, p_h, p_sea_mm, p_talus_mm);
 }
 
 int64_t NativeBake::isqrt(int64_t p_n) const {
@@ -393,4 +460,8 @@ int64_t NativeBake::capsule3(const Vector3i &p_p, const Vector3i &p_a, const Vec
 	int64_t cy = p_a.y + muldiv(aby, dot, len2);
 	int64_t cz = p_a.z + muldiv(abz, dot, len2);
 	return length3(int64_t(p_p.x) - cx, int64_t(p_p.y) - cy, int64_t(p_p.z) - cz) - p_r;
+}
+
+PackedInt32Array NativeBake::hydraulic(const PackedInt32Array &p_base, int64_t p_w, int64_t p_h, int64_t p_sea_mm, int64_t p_river_flow) const {
+	return ::hydraulic(p_base, p_w, p_h, p_sea_mm, p_river_flow);
 }

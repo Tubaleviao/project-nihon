@@ -23,8 +23,12 @@ var status_local_players: int = 0
 var _max_clients: int = 0
 var _game_port: int = 0
 
+## Phase 302 — the host's copy of the planet bake (serving and fetching).
+var bake: RefCounted
+
 func _init(slice: Node) -> void:
 	sl = slice
+	bake = preload("res://src/networking/bake_net.gd").new(slice)
 	GameBus.peer_connected.connect(_send_server_hello)
 
 ## Start an authoritative ENet server. Sets the slice to HOST role.
@@ -687,6 +691,10 @@ func _route_h2c(payload: Dictionary) -> void:
 			# Phase 131 — a catalog key (+ args), rendered here in this client's locale.
 			var note = sl.I18n.sanitize_msg(payload.get("key", null), payload.get("args", null))
 			GameBus.spawn_notice.emit(sl.I18n.render(note))
+		"bake_offer":
+			bake.on_offer(payload)   # Phase 302
+		"bake_chunk":
+			bake.on_chunk(payload)
 		"snapshot_chunk":
 			sl._accumulate_snapshot_chunk(payload)
 		"roster":

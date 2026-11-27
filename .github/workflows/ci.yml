@@ -378,6 +378,36 @@ jobs:
             exit 1
           fi
 
+  planet-bake:
+    name: Planet bake (fabric seed, same command as release)
+    # Phase 302 — the release bake step, run on every pull request so a broken bake shows before a tag.
+    # It needs the Linux native library: without it the bake runs the slow GDScript path (minutes).
+    needs: [changes, native-linux]
+    if: github.event_name != 'workflow_dispatch' && needs.changes.outputs.light != 'true'
+    runs-on: ubuntu-latest
+    # The GDScript fallback is slow; a hung bake should fail fast rather than hold the runner.
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: native-linux
+          path: native/bin
+
+      - name: Download Godot 4.7
+        run: |
+          mkdir -p /tmp/godot
+          curl -fsSL -o /tmp/godot/godot.zip \
+            https://github.com/godotengine/godot/releases/download/4.7-stable/Godot_v4.7-stable_linux.x86_64.zip
+          unzip -o /tmp/godot/godot.zip -d /tmp/godot
+          chmod +x /tmp/godot/Godot_v4.7-stable_linux.x86_64
+
+      - name: Bake the planet and check the bake and its hash
+        env:
+          GODOT: /tmp/godot/Godot_v4.7-stable_linux.x86_64
+        run: tools/bake_planet.sh build/bake
+
   fabric:
     name: Fabric validation + drift check
     # A manual dispatch skips this job (the manual crowd stress run is in perf.yml).

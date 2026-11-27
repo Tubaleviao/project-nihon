@@ -535,11 +535,13 @@ func load_world_records() -> void:
 		var recorded_seed: Variant = root._loaded_world.get("seed", null)
 		# Phase 245 — a world recorded before the bake keeps its local rivers: its recorded chunks never change.
 		var keep_local_rivers := PersistenceSlice.worldgen_version_of(root._loaded_world) < TerrainSlice.BAKE_WORLDGEN_VERSION
+		# Phase 302 — and one recorded before the baked macro height keeps the noise shape under its baked rivers.
+		var bake_macro := PersistenceSlice.worldgen_version_of(root._loaded_world) >= TerrainSlice.MACRO_BAKE_WORLDGEN_VERSION
 		if recorded_seed != null:
-			root._terrain.set_world_seed(int(recorded_seed), not keep_local_rivers)
+			root._terrain.set_world_seed(int(recorded_seed), not keep_local_rivers, bake_macro)
 			print("[Server] world seed %d restored from the world record" % int(recorded_seed))
 		else:
-			root._terrain.set_world_seed(root._terrain.get_world_seed(), not keep_local_rivers)
+			root._terrain.set_world_seed(root._terrain.get_world_seed(), not keep_local_rivers, bake_macro)
 			print("[Server] world record carries no seed (format %d) — adopting the fresh seed %d" % [
 				int(root._loaded_world.get("version", PersistenceSlice.LEGACY_WORLD_FORMAT_VERSION)),
 				root._terrain.get_world_seed()])

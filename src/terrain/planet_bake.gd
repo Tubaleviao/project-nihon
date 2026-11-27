@@ -6,7 +6,9 @@ extends RefCounted
 ## lowest index), flow accumulates from the top down, and cells whose flow reaches a threshold are river
 ## cells. Heights are integer millimetres, so every machine bakes the same bytes.
 ##
-## Still to come (Phase 302): hydraulic erosion and the biome field.
+## Phase 302 added hydraulic erosion, the biome byte (`biome_field`), bake profiles by world version (`profile`) and the
+## macro height read (`sample_height`); the host's boot bakes off the main thread (`BakeJob`, `BakeBoot`, `BakeScreen`) and
+## a client can fetch the host's copy (`BakeTransfer`, `BakeNet`).
 
 const NativeLoaderScript := preload("res://src/core/native_loader.gd")
 const WorldShape := preload("res://src/terrain/world_shape.gd")
@@ -21,41 +23,91 @@ const RIVER_FLOW := 40
 const MAX_CELLS := 1000000
 ## Thermal erosion: passes, the steepest slope (mm of height per cell) a slope keeps, and the share
 ## (1/ERODE_SHARE) of the excess that slides down per pass.
+## Phase 302: the talus is 500 m per 2 km cell, a 25% (14°) mean slope. Loose rock stands at 30–35° on a hillside,
+## but averaged over 2 km even the steepest ranges on Earth (the Himalaya, the Andes) rarely exceed 25–30%, so
+## only slopes steeper than real mountains relax. The old 2.4 m per cell (0.12%) flattened everything above a plain
+## and took up to 1.3 km off the 8 km summits.
 const ERODE_PASSES := 6
-const ERODE_TALUS_MM := 2400
+const ERODE_TALUS_MM := 500000
+## The Phase 245 talus (2.4 m per cell, 0.12%), kept for the worlds recorded at worldgen 14 (see `profile`).
+const ERODE_TALUS_245_MM := 2400
 const ERODE_SHARE := 8
+## Hydraulic erosion (Phase 302): passes, and the most a river cell is cut per pass (mm). A cell cuts
+## `min(HYDRO_CUT_MM * flow / river_flow, ...)` down to one mm above its downstream neighbour.
+const HYDRO_PASSES := 4
+const HYDRO_CUT_MM := 600
+const HYDRO_MAX_CUT_MM := 6000
+
+## The stages a world bake reports (Phase 302), in order, each with its share of the whole. A progress
+## callback is `func(stage: StringName, fraction: float)` with `fraction` in 0..1 within the stage; it
+## is called from the thread that bakes, and never changes a byte of the result. The native bake is one
+## call, so it reports its "terrain" stage (erosion, fill, flow, rivers) at its start and its end; the
+## GDScript bake reports between the steps.
+const STAGES: Array[StringName] = [&"load", &"grid", &"terrain", &"biome", &"save"]
+const STAGE_WEIGHTS: Array[float] = [0.02, 0.06, 0.62, 0.25, 0.05]
+
+
+## The share of the whole bake (0..1) done at `fraction` of `stage`; an unknown stage counts as 0.
+static func overall(stage: StringName, fraction: float) -> float:
+	var i := STAGES.find(stage)
+	if i < 0:
+		return 0.0
+	var done := 0.0
+	for k in i:
+		done += STAGE_WEIGHTS[k]
+	return clampf(done + STAGE_WEIGHTS[i] * clampf(fraction, 0.0, 1.0), 0.0, 1.0)
+
+
+static func _report(progress: Callable, stage: StringName, fraction: float) -> void:
+	if progress.is_valid():
+		progress.call(stage, fraction)
+
+
+## The bake versions: a bake is made by the algorithm of the worldgen version its world was recorded at, so a
+## world's baked rivers never change under it (the stable-world rule). 14 = Phase 245: thermal erosion at a
+## 2.4 m talus, no hydraulic pass, no biome byte. 15 = Phase 302: a 500 m talus, the hydraulic pass, the biome byte.
+const BAKE_VERSION_245 := 14
+const BAKE_VERSION := 15   ## the newest; `TerrainSlice.WORLDGEN_VERSION` (the suite holds them equal)
+
+## The algorithm a bake of `version` runs: { talus (mm), hydraulic (bool), biome (bool) }. Any version up to
+## BAKE_VERSION_245 is the Phase 245 profile, any later one the newest.
+static func profile(version: int) -> Dictionary:
+	if version <= BAKE_VERSION_245:
+		return { "talus": ERODE_TALUS_245_MM, "hydraulic": false, "biome": false }
+	return { "talus": ERODE_TALUS_MM, "hydraulic": true, "biome": true }
+
 
 ## `base`: row-major heights in mm, `w` x `h` cells. Cells at or below `sea_mm` are sea.
 ## Returns { w, h, sea_mm, height (filled, mm), dir, flow, river (id per cell, 0 = none) }.
-static func bake(base: PackedInt32Array, w: int, h: int, sea_mm: int, river_flow: int) -> Dictionary:
+## `version` picks the algorithm (`profile`).
+static func bake(base: PackedInt32Array, w: int, h: int, sea_mm: int, river_flow: int, progress: Callable = Callable(), version: int = BAKE_VERSION) -> Dictionary:
+	var pf := profile(version)
 	if NativeLoaderScript.use_native("NativeBake", "bake"):   # same bytes, computed in C++
-		return NativeLoaderScript.instance("NativeBake").call("bake", base, w, h, sea_mm, river_flow)
-	return bake_gd(base, w, h, sea_mm, river_flow)
+		_report(progress, &"terrain", 0.0)
+		var nb: Dictionary = NativeLoaderScript.instance("NativeBake").call("bake", base, w, h, sea_mm, river_flow, int(pf.talus), bool(pf.hydraulic))
+		_report(progress, &"terrain", 1.0)
+		return nb
+	return bake_gd(base, w, h, sea_mm, river_flow, progress, version)
 
 
 ## The GDScript reference the native bake is held equal to.
-static func bake_gd(base: PackedInt32Array, w: int, h: int, sea_mm: int, river_flow: int) -> Dictionary:
+static func bake_gd(base: PackedInt32Array, w: int, h: int, sea_mm: int, river_flow: int, progress: Callable = Callable(), version: int = BAKE_VERSION) -> Dictionary:
 	var n := w * h
-	var filled := _fill(erode(base, w, h, sea_mm), w, h, sea_mm)
+	var pf := profile(version)
+	_report(progress, &"terrain", 0.0)
+	var eroded := erode(base, w, h, sea_mm, int(pf.talus))
+	_report(progress, &"terrain", 0.1)
+	var carved := hydraulic(eroded, w, h, sea_mm, river_flow) if bool(pf.hydraulic) else eroded
+	_report(progress, &"terrain", 0.6)
+	var filled := _fill(carved, w, h, sea_mm)
+	_report(progress, &"terrain", 0.7)
 	var dir := PackedInt32Array()
 	dir.resize(n)
 	for i in n:
 		dir[i] = _steepest(filled, w, h, i, sea_mm)
 	# Accumulate flow from the highest cell down: order by (filled height, index), descending.
-	var order: Array = []
-	order.resize(n)
-	for i in n:
-		order[i] = (filled[i] << 24) | i
-	order.sort()
-	var flow := PackedInt32Array()
-	flow.resize(n)
-	for i in n:
-		flow[i] = 1
-	for k in range(n - 1, -1, -1):
-		var c: int = order[k] & 0xFFFFFF
-		var d := dir[c]
-		if d != NO_DIR:
-			flow[d] += flow[c]
+	var flow := _accumulate(filled, dir)
+	_report(progress, &"terrain", 0.85)
 	# River ids: a river cell carries the id (cell index + 1) of the outlet it finally reaches.
 	var river := PackedInt32Array()
 	river.resize(n)
@@ -66,6 +118,7 @@ static func bake_gd(base: PackedInt32Array, w: int, h: int, sea_mm: int, river_f
 		while dir[c] != NO_DIR and filled[c] > sea_mm:
 			c = dir[c]
 		river[i] = c + 1
+	_report(progress, &"terrain", 1.0)
 	return { "w": w, "h": h, "sea_mm": sea_mm, "height": filled, "dir": dir, "flow": flow, "river": river }
 
 
@@ -73,7 +126,7 @@ static func bake_gd(base: PackedInt32Array, w: int, h: int, sea_mm: int, river_f
 ## each of its four lower land neighbours whose drop exceeds the talus. All moves of a pass are computed
 ## from the heights at its start and summed, so the result does not depend on visiting order. Sea cells
 ## and cells at or below the sea never change; mass is conserved among land cells.
-static func erode(base: PackedInt32Array, w: int, h: int, sea_mm: int) -> PackedInt32Array:
+static func erode(base: PackedInt32Array, w: int, h: int, sea_mm: int, talus_mm: int = ERODE_TALUS_MM) -> PackedInt32Array:
 	var cur := base.duplicate()
 	var delta := PackedInt32Array()
 	delta.resize(w * h)
@@ -93,12 +146,63 @@ static func erode(base: PackedInt32Array, w: int, h: int, sea_mm: int) -> Packed
 					if cur[j] <= sea_mm:
 						continue
 					var drop := cur[i] - cur[j]
-					if drop > ERODE_TALUS_MM:
-						var amount := (drop - ERODE_TALUS_MM) / ERODE_SHARE
+					if drop > talus_mm:
+						var amount := (drop - talus_mm) / ERODE_SHARE
 						delta[i] -= amount
 						delta[j] += amount
 		for i in w * h:
 			cur[i] += delta[i]
+	return cur
+
+
+## Flow accumulation: every cell counts itself, then passes its count down its drain, highest cell first
+## (order by height, then index).
+static func _accumulate(f: PackedInt32Array, dir: PackedInt32Array) -> PackedInt32Array:
+	var n := f.size()
+	var order: Array = []
+	order.resize(n)
+	for i in n:
+		order[i] = (f[i] << 24) | i
+	order.sort()
+	var flow := PackedInt32Array()
+	flow.resize(n)
+	flow.fill(1)
+	for k in range(n - 1, -1, -1):
+		var c: int = order[k] & 0xFFFFFF
+		var d := dir[c]
+		if d != NO_DIR:
+			flow[d] += flow[c]
+	return flow
+
+
+## Hydraulic erosion in integer maths (Phase 302): each pass fills the depressions of the current heights,
+## finds every cell's drain and flow, and cuts each river cell (flow of `river_flow` or more) by
+## `HYDRO_CUT_MM * flow / river_flow` (at most HYDRO_MAX_CUT_MM), never below one mm above its drain's
+## height at the start of the pass, nor to or below the sea. All cuts are computed from the heights at the
+## start of the pass, so the result does not depend on visiting order; a cell stays above its drain after
+## the pass (the drain only goes down too), so rivers keep reaching the sea or a lake.
+static func hydraulic(base: PackedInt32Array, w: int, h: int, sea_mm: int, river_flow: int) -> PackedInt32Array:
+	var n := w * h
+	var cur := base.duplicate()
+	for _pass in HYDRO_PASSES:
+		var f := _fill(cur, w, h, sea_mm)
+		var dir := PackedInt32Array()
+		dir.resize(n)
+		for i in n:
+			dir[i] = _steepest(f, w, h, i, sea_mm)
+		var flow := _accumulate(f, dir)
+		var next := cur.duplicate()
+		for i in n:
+			var d := dir[i]
+			if d == NO_DIR or flow[i] < river_flow or cur[i] <= sea_mm:
+				continue
+			# Only a cell that was not raised by the fill (its own ground is above its drain) is cut.
+			var floor_mm := maxi(cur[d] + 1, sea_mm + 1)
+			var cut := mini(HYDRO_CUT_MM * flow[i] / river_flow, HYDRO_MAX_CUT_MM)
+			cut = mini(cut, cur[i] - floor_mm)
+			if cut > 0:
+				next[i] = cur[i] - cut
+		cur = next
 	return cur
 
 
@@ -201,7 +305,8 @@ static func river_width_mm(flow: int) -> int:
 static func to_bytes(b: Dictionary) -> PackedByteArray:
 	var out := PackedByteArray()
 	var n: int = b.w * b.h
-	out.resize(12 + n * 12)
+	var biome: PackedByteArray = b.get("biome", PackedByteArray())
+	out.resize(12 + n * 12 + (n if biome.size() == n else 0))
 	out.encode_s32(0, b.w)
 	out.encode_s32(4, b.h)
 	out.encode_s32(8, b.sea_mm)
@@ -209,6 +314,9 @@ static func to_bytes(b: Dictionary) -> PackedByteArray:
 		out.encode_s32(12 + i * 12, b.height[i])
 		out.encode_s32(16 + i * 12, b.flow[i])
 		out.encode_s32(20 + i * 12, b.river[i])
+	if biome.size() == n:   # Phase 302: one biome byte per cell, after the cells
+		for i in n:
+			out[12 + n * 12 + i] = biome[i]
 	return out
 
 
@@ -226,7 +334,7 @@ static func from_bytes(bytes: PackedByteArray, expected_hash: String) -> Diction
 		return {}
 	var w := bytes.decode_s32(0)
 	var h := bytes.decode_s32(4)
-	if w <= 0 or h <= 0 or bytes.size() != 12 + w * h * 12:
+	if w <= 0 or h <= 0 or (bytes.size() != 12 + w * h * 12 and bytes.size() != 12 + w * h * 13):
 		return {}
 	var out := { "w": w, "h": h, "sea_mm": bytes.decode_s32(8) }
 	var height := PackedInt32Array()
@@ -239,6 +347,8 @@ static func from_bytes(bytes: PackedByteArray, expected_hash: String) -> Diction
 		height[i] = bytes.decode_s32(12 + i * 12)
 		flow[i] = bytes.decode_s32(16 + i * 12)
 		river[i] = bytes.decode_s32(20 + i * 12)
+	if bytes.size() == 12 + w * h * 13:
+		out.biome = bytes.slice(12 + w * h * 12)
 	out.height = height
 	out.flow = flow
 	out.river = river
@@ -260,23 +370,82 @@ static func carved_height(ground_mm: int, p: Vector2i, a: Vector2i, b: Vector2i,
 	return Csg.smooth_union(ground_mm, cut, k_mm)
 
 
+## Phase 302 — the bake's macro height (m) at world (x, z): its cell heights (the filled, eroded ground, held at
+## the cell centres as `base_grid` sampled them) interpolated bilinearly, so the field is continuous (C0) across
+## every 2 km cell border and equals the baked height at each centre. `cell` is the cell width in metres; X wraps
+## round the `w` cells, Z holds the first and last rows' heights past their centres (the poles). Pure.
+static func sample_height(b: Dictionary, cell: float, x: float, z: float) -> float:
+	var w: int = b["w"]
+	var h: int = b["h"]
+	var height: PackedInt32Array = b["height"]
+	var gx := x / cell - 0.5
+	var gz := (z + cell * float(h) * 0.5) / cell - 0.5
+	var ix := floori(gx)
+	var iz := floori(gz)
+	var fx := gx - float(ix)
+	var fz := gz - float(iz)
+	var x0 := posmod(ix, w)
+	var x1 := posmod(ix + 1, w)
+	var z0 := clampi(iz, 0, h - 1) * w
+	var z1 := clampi(iz + 1, 0, h - 1) * w
+	var top := lerpf(float(height[z0 + x0]), float(height[z0 + x1]), fx)
+	var bottom := lerpf(float(height[z1 + x0]), float(height[z1 + x1]), fx)
+	return lerpf(top, bottom, fz) * 0.001
+
+
 ## The base height grid, in mm, sampled from `WorldShape.height` at the centre of each `cell_m` cell:
 ## `w` cells round the circumference `circumference_m` and `h` cells from pole to pole.
-static func base_grid(seed_v: int, w: int, h: int, circumference_m: float) -> PackedInt32Array:
+static func base_grid(seed_v: int, w: int, h: int, circumference_m: float, progress: Callable = Callable()) -> PackedInt32Array:
 	var out := PackedInt32Array()
 	out.resize(w * h)
 	var cell := circumference_m / float(w)
 	var half := cell * float(h) * 0.5
 	for z in h:
+		if z % 16 == 0:
+			_report(progress, &"grid", float(z) / float(h))
 		for x in w:
 			var m: float = WorldShape.height(seed_v, (float(x) + 0.5) * cell, (float(z) + 0.5) * cell - half, circumference_m)
 			out[z * w + x] = roundi(m * 1000.0)
+	_report(progress, &"grid", 1.0)
 	return out
 
 
 ## Bake the planet for `seed_v` on a `w` x `h` grid; `river_flow` is the flow that makes a river.
-static func bake_planet(seed_v: int, w: int, h: int, circumference_m: float, river_flow: int) -> Dictionary:
-	return bake(base_grid(seed_v, w, h, circumference_m), w, h, roundi(WorldShape.sea_level() * 1000.0), river_flow)
+## The result carries the biome field (Phase 302), read from the eroded heights.
+## `version` picks the algorithm (`profile`): a Phase 245 bake carries no biome byte.
+static func bake_planet(seed_v: int, w: int, h: int, circumference_m: float, river_flow: int, progress: Callable = Callable(), version: int = BAKE_VERSION) -> Dictionary:
+	var b := bake(base_grid(seed_v, w, h, circumference_m, progress), w, h, roundi(WorldShape.sea_level() * 1000.0), river_flow, progress, version)
+	if not bool(profile(version).biome):
+		return b
+	b["biome"] = biome_field(b, seed_v, circumference_m, load("res://src/terrain/terrain_slice.gd").BIOME_KEYS, progress)
+	return b
+
+
+## The biome of every cell (Phase 302): the climate rules (`ClimateField.biome_for_chunk`) read at the cell
+## centre with the eroded height as the altitude above the sea, stored as the index into `keys`. Cells
+## are `circumference_m / w` wide; the chunk read is the one holding the cell centre.
+static func biome_field(b: Dictionary, seed_v: int, circumference_m: float, keys: Array, progress: Callable = Callable()) -> PackedByteArray:
+	var ts: GDScript = load("res://src/terrain/terrain_slice.gd")   # loaded late: TerrainSlice preloads this file
+	var cf: GDScript = load("res://src/terrain/climate_field.gd")
+	var w: int = b.w
+	var h: int = b.h
+	var cell := circumference_m / float(w)
+	var half := cell * float(h) * 0.5
+	var circ_chunks := maxi(1, roundi(circumference_m / ts.CHUNK_METERS))
+	var out := PackedByteArray()
+	out.resize(w * h)
+	for z in h:
+		if z % 8 == 0:
+			_report(progress, &"biome", float(z) / float(h))
+		var cz := (float(z) + 0.5) * cell - half
+		var chunk_z := floori(cz / ts.CHUNK_METERS)
+		var lat: float = ts.latitude_of(chunk_z)
+		for x in w:
+			var chunk := Vector2i(floori((float(x) + 0.5) * cell / ts.CHUNK_METERS), chunk_z)
+			var alt := float(int(b.height[z * w + x]) - int(b.sea_mm)) * 0.001
+			out[z * w + x] = maxi(0, keys.find(cf.biome_for_chunk(seed_v, chunk, keys, lat, alt, circ_chunks)))
+	_report(progress, &"biome", 1.0)
+	return out
 
 
 ## Write the bake and its hash (`<path>` and `<path>.sha256`); false on an I/O error.
@@ -309,14 +478,20 @@ static func file_path(dir: String, seed_v: int, worldgen_version: int, w: int, h
 
 ## The bake at `path`, or a fresh one when the file is missing, damaged or (when `expected_hash` is given, as a
 ## client does with the host's hash) not the one the host announced; a fresh bake is saved to `path`.
-## Returns { bake, hash, loaded } (`loaded`: read from the file, not baked now).
-static func ensure(path: String, seed_v: int, w: int, h: int, circumference_m: float, river_flow: int, expected_hash: String = "") -> Dictionary:
+## Returns { bake, hash, loaded } (`loaded`: read from the file, not baked now). `version` is the bake version
+## (`profile`) a fresh bake runs; `path` should name the same version (`file_path`).
+static func ensure(path: String, seed_v: int, w: int, h: int, circumference_m: float, river_flow: int, expected_hash: String = "", progress: Callable = Callable(), version: int = BAKE_VERSION) -> Dictionary:
+	_report(progress, &"load", 0.0)
 	var b := load_file(path)
 	if not b.is_empty():
 		var hash_now := FileAccess.get_file_as_string(path + ".sha256").strip_edges()   # from_bytes already checked it
 		if expected_hash == "" or hash_now == expected_hash:
+			_report(progress, &"save", 1.0)
 			return { "bake": b, "hash": hash_now, "loaded": true }
-	b = bake_planet(seed_v, w, h, circumference_m, river_flow)
+	_report(progress, &"load", 1.0)
+	b = bake_planet(seed_v, w, h, circumference_m, river_flow, progress, version)
+	_report(progress, &"save", 0.0)
 	DirAccess.make_dir_recursive_absolute(path.get_base_dir())
 	save(b, path)
+	_report(progress, &"save", 1.0)
 	return { "bake": b, "hash": hash_hex(to_bytes(b)), "loaded": false }

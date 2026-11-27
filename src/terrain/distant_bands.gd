@@ -111,7 +111,7 @@ static func band_vertex_count(spec: Dictionary) -> int:
 
 ## The shape's ground height the bands read (the ring's `ground_at` minus the detail noise and records).
 static func shape_ground(seed_v: int, w: float, x: float, z: float) -> float:
-	var h := clampf(WorldShape.height(seed_v, x, z, w), WorldShape.min_height(), WorldShape.max_height())
+	var h := clampf(TerrainSliceScript.macro_height(seed_v, x, z, w), WorldShape.min_height(), WorldShape.max_height())   # Phase 302: the bake's when loaded
 	return TerrainSliceScript.polar_ground(seed_v, h, x, z, w)
 
 ## The height of the band-`cell` lattice vertex (ix, iz): the highest of `SUB` × `SUB` samples over the
