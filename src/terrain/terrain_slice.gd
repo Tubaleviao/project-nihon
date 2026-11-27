@@ -423,6 +423,22 @@ static func macro_corners(seed_v: int, ix: int, iz: int, w: float) -> PackedFloa
 	return PackedFloat64Array([macro_height(seed_v, x0, z0, w), macro_height(seed_v, x0 + CHUNK_METERS, z0, w),
 		macro_height(seed_v, x0, z0 + CHUNK_METERS, w), macro_height(seed_v, x0 + CHUNK_METERS, z0 + CHUNK_METERS, w)])
 
+## `WorldShape.highest_near` on the macro height (the planet bake's when one is loaded): the highest of the
+## (2·radius/step + 1)² grid points around `centre`, as [height, xz]. The playtest bot finds its peaks with this,
+## so it looks for the crests the ground is built from.
+static func highest_macro_near(seed_v: int, centre: Vector2, w: float, radius: float, step: float) -> Array:
+	var best := -INF
+	var at := centre
+	var n := int(radius / step)
+	for b in range(-n, n + 1):
+		for a in range(-n, n + 1):
+			var p := centre + Vector2(a, b) * step
+			var h := macro_height(seed_v, p.x, p.y, w)
+			if h > best:
+				best = h
+				at = p
+	return [best, at]
+
 ## Phase 108 — `WorldShape.height` for a read that is not a chunk heightmap (the distant ring): inside a
 ## recorded chunk's cell the recorded corners are interpolated, as `_shape_at` does; elsewhere the
 ## generator answers. Pure; reads the record table only.

@@ -194,7 +194,36 @@ func _test_bake_planet_file() -> void:
 	DirAccess.remove_absolute(path + ".sha256")
 
 
+## A steep fixture for thermal erosion (Phase 302): a spike far steeper than the talus beside a massif whose
+## flanks are gentler than it, sea on the east side.
+func _steep_grid() -> PackedInt32Array:
+	var g := PackedInt32Array()
+	g.resize(W * H)
+	for z in H:
+		for x in W:
+			var spike := maxi(0, 9000000 - (absi(x - 12) + absi(z - 16)) * 1800000)   # 1.8 km per cell
+			var massif := maxi(0, 8500000 - (absi(x - 30) + absi(z - 16)) * 400000)   # 400 m per cell, under the talus
+			g[z * W + x] = maxi(spike, massif) + 2000 if x < W - 6 else -5000
+	return g
+
 func _test_bake_erosion() -> void:
+	# Phase 302: slopes over the talus relax, slopes under it (real mountains) keep their summit.
+	var sg := _steep_grid()
+	var se: PackedInt32Array = Bake.erode(sg, W, H, SEA)
+	assert_true(se[16 * W + 12] < sg[16 * W + 12], "a spike steeper than the talus is worn down (%d -> %d mm)" % [sg[16 * W + 12], se[16 * W + 12]])
+	assert_eq(se[16 * W + 30], sg[16 * W + 30], "a summit whose flanks are under the talus keeps its height")
+	var gentle_kept := true
+	for z in range(12, 21):
+		for x in range(27, 34):
+			gentle_kept = gentle_kept and se[z * W + x] == sg[z * W + x]
+	assert_true(gentle_kept, "the massif's 20% flanks are untouched")
+	var steep_max_before := 0
+	var steep_max_after := 0
+	for z in H:
+		for x in range(W - 7):
+			steep_max_before = maxi(steep_max_before, absi(sg[z * W + x] - sg[z * W + x + 1]))
+			steep_max_after = maxi(steep_max_after, absi(se[z * W + x] - se[z * W + x + 1]))
+	assert_true(steep_max_after < steep_max_before, "the steepest land step shrinks (%d -> %d mm)" % [steep_max_before, steep_max_after])
 	var g := _grid()
 	var e: PackedInt32Array = Bake.erode(g, W, H, SEA)
 	assert_eq(e, Bake.erode(g, W, H, SEA), "erosion is deterministic")
@@ -224,10 +253,11 @@ func _test_bake_erosion() -> void:
 			var r := PackedInt32Array()
 			r.resize(W * H)
 			for i in W * H:
-				r[i] = rng.randi_range(-8000, 90000)
+				r[i] = rng.randi_range(-8000, 3000000)   # up to 3 km between neighbours: well over the talus
 			if NativeLoaderScript.instance("NativeBake").call("erode", r, W, H, SEA) != Bake.erode(r, W, H, SEA):
 				bad += 1
 		assert_eq(bad, 0, "native erosion equals the reference")
+		assert_eq(NativeLoaderScript.instance("NativeBake").call("erode", sg, W, H, SEA), se, "native erosion of the steep fixture equals the reference")
 
 
 func _test_bake_hydraulic() -> void:
@@ -258,7 +288,9 @@ func _test_bake_hydraulic() -> void:
 			assert_true(int(bk["height"][int(bk["dir"][c])]) <= int(bk["height"][c]), "a river never flows uphill")
 			c = int(bk["dir"][c])
 			guard += 1
-		assert_true(int(bk["height"][c]) <= SEA, "a river reaches the sea")
+		# The grid edge is an outlet too, as in `_test_bake_rivers_reach_sea` (the fixture's ends are no planet's poles).
+		var edge: bool = c % W == 0 or c / W == 0 or c % W == W - 1 or c / W == H - 1
+		assert_true(int(bk["height"][c]) <= SEA or edge, "a river reaches the sea")
 	assert_true(rivers > 0, "the grid has rivers")
 	if NativeLoaderScript.use_native("NativeBake", "hydraulic"):
 		var rng := RandomNumberGenerator.new()

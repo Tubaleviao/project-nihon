@@ -21,8 +21,12 @@ const RIVER_FLOW := 40
 const MAX_CELLS := 1000000
 ## Thermal erosion: passes, the steepest slope (mm of height per cell) a slope keeps, and the share
 ## (1/ERODE_SHARE) of the excess that slides down per pass.
+## Phase 302: the talus is 500 m per 2 km cell, a 25% (14°) mean slope. Loose rock stands at 30–35° on a hillside,
+## but averaged over 2 km even the steepest ranges on Earth (the Himalaya, the Andes) rarely exceed 25–30%, so
+## only slopes steeper than real mountains relax. The old 2.4 m per cell (0.12%) flattened everything above a plain
+## and took up to 1.3 km off the 8 km summits.
 const ERODE_PASSES := 6
-const ERODE_TALUS_MM := 2400
+const ERODE_TALUS_MM := 500000
 const ERODE_SHARE := 8
 ## Hydraulic erosion (Phase 302): passes, and the most a river cell is cut per pass (mm). A cell cuts
 ## `min(HYDRO_CUT_MM * flow / river_flow, ...)` down to one mm above its downstream neighbour.

@@ -99,7 +99,7 @@ int64_t seg_dist2(int64_t px, int64_t py, int64_t ax, int64_t ay, int64_t bx, in
 }
 
 constexpr int ERODE_PASSES = 6;
-constexpr int64_t ERODE_TALUS_MM = 2400;
+constexpr int64_t ERODE_TALUS_MM = 500000;   // `PlanetBake.ERODE_TALUS_MM`: 25% per 2 km cell (Phase 302)
 constexpr int64_t ERODE_SHARE = 8;
 
 // `PlanetBake.erode`.
@@ -310,7 +310,7 @@ void NativeBake::_bind_methods() {
 }
 
 int NativeBake::version() const {
-	return 4;   // 1 = Phase 245: bake and the CSG operations; 2 = thermal erosion; 3 = every CSG shape; 4 = hydraulic erosion (Phase 302)
+	return 5;   // 1 = Phase 245: bake and the CSG operations; 2 = thermal erosion; 3 = every CSG shape; 4 = hydraulic erosion (Phase 302); 5 = thermal talus 500 m per cell (Phase 302)
 }
 
 PackedStringArray NativeBake::functions() const {
