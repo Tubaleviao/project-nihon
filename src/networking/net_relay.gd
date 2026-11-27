@@ -313,6 +313,7 @@ func forget_player_id(peer_id: int) -> void:
 	# Phase 36 — the rate-limit state is transport state too: a reconnecting peer
 	# starts with a full bucket rather than inheriting its predecessor's debt.
 	sl._rate_buckets.erase(peer_id)
+	sl._m3.bake.forget(peer_id)   # Phase 302
 	sl._rate_warn_ms.erase(peer_id)
 	_look_buckets.erase(peer_id)
 	sl._m2.speed_ledger.erase(peer_id)

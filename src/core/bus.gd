@@ -119,6 +119,10 @@ signal world_snapshot_received(data: Dictionary)
 ## host_days : float — the host's time_days when it sent the tick.
 signal world_clock_received(host_days: float)
 
+## Phase 302 — a client's fetch of the host's planet bake ended: `ok` with the verified bytes (hash = what it expected),
+## or not ok (refused offer, bad piece, hash mismatch, silent host) and the caller bakes from the seed instead.
+signal planet_bake_fetched(ok: bool, bytes: PackedByteArray, expected_hash: String)
+
 ## Client → host: a player wants to mine/place a block. The host re-runs the
 ## edit authoritatively and broadcasts the result via block_changed.
 ## action : String — "mine" or "place"

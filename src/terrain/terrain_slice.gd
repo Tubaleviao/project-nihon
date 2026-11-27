@@ -276,6 +276,7 @@ func set_world_seed(seed_v: int, with_bake: bool = true, bake_macro: bool = true
 func _adopt_planet_bake(seed_v: int, with_bake: bool = true, bake_macro: bool = true) -> void:
 	Hydrology.clear_all_bakes()   # no bake of another seed or circumference outlives this call
 	_bake_hash = ""
+	_bake_dict = {}
 	if not with_bake:   # the caller keeps the local river trace (an old world, a host without a bake): no bake to pay for
 		return
 	if "--run-tests" in OS.get_cmdline_user_args():
@@ -288,10 +289,37 @@ func _adopt_planet_bake(seed_v: int, with_bake: bool = true, bake_macro: bool = 
 	var r := PlanetBake.ensure(str(plan.path), seed_v, int(plan.w), int(plan.h), circ, PlanetBake.RIVER_FLOW)
 	Hydrology.use_bake(seed_v, r.bake, circ, bake_macro)
 	_bake_hash = str(r.hash)
+	_bake_dict = r.bake
 	print("[World] planet bake %s (%s)" % [str(r.hash).substr(0, 12), "read" if r.loaded else "baked"])
 
 ## Hex hash of the bake in use ("" without one); the host sends it so a client can tell its own bake differs.
 var _bake_hash := ""
+var _bake_dict := {}
+
+## Phase 302 — the cells of the planet bake this world's circumference calls for (Vector2i.ZERO when none).
+func planet_bake_dims() -> Vector2i:
+	var w := roundi(float(circumference_chunks()) * CHUNK_METERS / PlanetBake.CELL_M)
+	return Vector2i(w, w / 2) if w >= 8 and w * (w / 2) <= PlanetBake.MAX_CELLS else Vector2i.ZERO
+
+## Phase 302 — the bytes of the bake in use, for a host to serve (empty without one).
+func planet_bake_bytes() -> PackedByteArray:
+	return PlanetBake.to_bytes(_bake_dict) if has_planet_bake() and not _bake_dict.is_empty() else PackedByteArray()
+
+## Phase 302 — use the host's bake, fetched over the wire: only bytes whose hash is `expected_hash` and whose
+## layout parses are taken (`PlanetBake.from_bytes`); they replace this machine's own bake and are saved beside it.
+func adopt_bake_bytes(bytes: PackedByteArray, expected_hash: String) -> bool:
+	var dims := planet_bake_dims()
+	var b := PlanetBake.from_bytes(bytes, expected_hash)
+	if b.is_empty() or dims == Vector2i.ZERO or int(b.w) != dims.x or int(b.h) != dims.y:
+		return false
+	var circ := float(circumference_chunks()) * CHUNK_METERS
+	var path := PlanetBake.file_path("user://bake", _world_seed, WORLDGEN_VERSION, dims.x, dims.y)
+	DirAccess.make_dir_recursive_absolute(path.get_base_dir())
+	PlanetBake.save(b, path)
+	Hydrology.use_bake(_world_seed, b, circ)
+	_bake_hash = expected_hash
+	_bake_dict = b
+	return true
 
 func planet_bake_hash() -> String:
 	return _bake_hash if has_planet_bake() else ""
@@ -309,6 +337,7 @@ func has_bake_macro() -> bool:
 func release_planet_bake() -> void:
 	Hydrology.clear_bake(_world_seed)
 	_bake_hash = ""
+	_bake_dict = {}
 
 ## The seed this world is generating from (see set_world_seed).
 func get_world_seed() -> int:

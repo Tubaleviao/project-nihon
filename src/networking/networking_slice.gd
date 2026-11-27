@@ -399,7 +399,7 @@ static func profile_rtt_ms(name: String) -> float:
 ## Phase 19 — drain the emulator queue and (on clients) the jitter buffer.
 ## Eviction of stale last-known-states runs unconditionally (no ENet overhead).
 func _process(_delta: float) -> void:
-	_evict_stale_states()
+	_evict_stale_states(); _m3.bake.poll()   # Phase 302: a silent host ends a bake fetch
 	flush_relays(true)
 	if not emulate_network:
 		return

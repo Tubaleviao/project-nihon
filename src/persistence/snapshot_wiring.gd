@@ -18,6 +18,10 @@ const TreeSlice        := preload("res://src/world/tree_slice.gd")
 
 func _connect_all() -> void:
 	connect_bus(GameBus.world_snapshot_received, on_world_snapshot_received)
+	connect_bus(GameBus.planet_bake_fetched, _on_planet_bake_fetched)
+	# Phase 302 — a host serves the bake it holds (read when the first client asks).
+	if root._networking != null and root._terrain != null:
+		root._networking._m3.bake.bytes_provider = Callable(root._terrain, "planet_bake_bytes")
 
 ## Host-side: serialize authoritative world state for a connecting client,
 ## AOI-scoped (Phase 29) — only entities within the peer's area of interest are
@@ -264,6 +268,15 @@ func place_from_snapshot(own: Variant) -> void:
 		if hp >= 0.0:
 			root._player.set_hp(hp)
 
+## Phase 302 — the host's bake arrived and its hash is the announced one: it replaces this client's own.
+func _on_planet_bake_fetched(ok: bool, bytes: PackedByteArray, expected_hash: String) -> void:
+	if not root._is_client:
+		return
+	if ok and root._terrain.adopt_bake_bytes(bytes, expected_hash):
+		print("[World] planet bake %s (host's copy)" % expected_hash.substr(0, 12))
+	else:
+		Diag.warn("Snapshot: the host's planet bake could not be fetched or did not verify; keeping this client's own")
+
 ## Client-side: apply the host's world snapshot and begin rendering.
 func on_world_snapshot_received(data: Dictionary) -> void:
 	if not root._is_client:
@@ -280,6 +293,12 @@ func on_world_snapshot_received(data: Dictionary) -> void:
 		if host_hash != "" and root._terrain.planet_bake_hash() != host_hash:
 			Diag.warn("Snapshot: this client's planet bake (%s) differs from the host's (%s): rivers may differ" % [
 				root._terrain.planet_bake_hash().substr(0, 12), host_hash.substr(0, 12)])
+			# Phase 302 — ask the host for its copy (checked against the hash it announced). The bake this client
+			# made from the seed stays in use when the fetch fails or does not verify.
+			var dims: Vector2i = root._terrain.planet_bake_dims()
+			if bool(data.get("planetBake", false)) and dims != Vector2i.ZERO and root._networking != null:
+				root._networking._m3.bake.start_fetch(host_hash, dims.x, dims.y)
+
 	if data.has("clock"):
 		root._clock.from_data(data["clock"])
 	if data.has("weather"):
