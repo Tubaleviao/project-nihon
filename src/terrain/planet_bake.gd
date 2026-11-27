@@ -6,7 +6,7 @@ extends RefCounted
 ## lowest index), flow accumulates from the top down, and cells whose flow reaches a threshold are river
 ## cells. Heights are integer millimetres, so every machine bakes the same bytes.
 ##
-## Phase 302 added hydraulic erosion; the biome field is stored in the bake (`biome_field`); still to come: macro height from the bake, the progress screen and the host's copy.
+## Phase 302 added hydraulic erosion; the biome field is stored in the bake (`biome_field`); the host's boot bakes off the main thread behind a progress screen (`BakeProgress`, `BakeScreen`); still to come: macro height from the bake and the host's copy.
 
 const NativeLoaderScript := preload("res://src/core/native_loader.gd")
 const WorldShape := preload("res://src/terrain/world_shape.gd")
@@ -34,24 +34,59 @@ const HYDRO_PASSES := 4
 const HYDRO_CUT_MM := 600
 const HYDRO_MAX_CUT_MM := 6000
 
+## The stages a world bake reports (Phase 302), in order, each with its share of the whole. A progress
+## callback is `func(stage: StringName, fraction: float)` with `fraction` in 0..1 within the stage; it
+## is called from the thread that bakes, and never changes a byte of the result. The native bake is one
+## call, so it reports its "terrain" stage (erosion, fill, flow, rivers) at its start and its end; the
+## GDScript bake reports between the steps.
+const STAGES: Array[StringName] = [&"load", &"grid", &"terrain", &"biome", &"save"]
+const STAGE_WEIGHTS: Array[float] = [0.02, 0.06, 0.62, 0.25, 0.05]
+
+
+## The share of the whole bake (0..1) done at `fraction` of `stage`; an unknown stage counts as 0.
+static func overall(stage: StringName, fraction: float) -> float:
+	var i := STAGES.find(stage)
+	if i < 0:
+		return 0.0
+	var done := 0.0
+	for k in i:
+		done += STAGE_WEIGHTS[k]
+	return clampf(done + STAGE_WEIGHTS[i] * clampf(fraction, 0.0, 1.0), 0.0, 1.0)
+
+
+static func _report(progress: Callable, stage: StringName, fraction: float) -> void:
+	if progress.is_valid():
+		progress.call(stage, fraction)
+
+
 ## `base`: row-major heights in mm, `w` x `h` cells. Cells at or below `sea_mm` are sea.
 ## Returns { w, h, sea_mm, height (filled, mm), dir, flow, river (id per cell, 0 = none) }.
-static func bake(base: PackedInt32Array, w: int, h: int, sea_mm: int, river_flow: int) -> Dictionary:
+static func bake(base: PackedInt32Array, w: int, h: int, sea_mm: int, river_flow: int, progress: Callable = Callable()) -> Dictionary:
 	if NativeLoaderScript.use_native("NativeBake", "bake"):   # same bytes, computed in C++
-		return NativeLoaderScript.instance("NativeBake").call("bake", base, w, h, sea_mm, river_flow)
-	return bake_gd(base, w, h, sea_mm, river_flow)
+		_report(progress, &"terrain", 0.0)
+		var nb: Dictionary = NativeLoaderScript.instance("NativeBake").call("bake", base, w, h, sea_mm, river_flow)
+		_report(progress, &"terrain", 1.0)
+		return nb
+	return bake_gd(base, w, h, sea_mm, river_flow, progress)
 
 
 ## The GDScript reference the native bake is held equal to.
-static func bake_gd(base: PackedInt32Array, w: int, h: int, sea_mm: int, river_flow: int) -> Dictionary:
+static func bake_gd(base: PackedInt32Array, w: int, h: int, sea_mm: int, river_flow: int, progress: Callable = Callable()) -> Dictionary:
 	var n := w * h
-	var filled := _fill(hydraulic(erode(base, w, h, sea_mm), w, h, sea_mm, river_flow), w, h, sea_mm)
+	_report(progress, &"terrain", 0.0)
+	var eroded := erode(base, w, h, sea_mm)
+	_report(progress, &"terrain", 0.1)
+	var carved := hydraulic(eroded, w, h, sea_mm, river_flow)
+	_report(progress, &"terrain", 0.6)
+	var filled := _fill(carved, w, h, sea_mm)
+	_report(progress, &"terrain", 0.7)
 	var dir := PackedInt32Array()
 	dir.resize(n)
 	for i in n:
 		dir[i] = _steepest(filled, w, h, i, sea_mm)
 	# Accumulate flow from the highest cell down: order by (filled height, index), descending.
 	var flow := _accumulate(filled, dir)
+	_report(progress, &"terrain", 0.85)
 	# River ids: a river cell carries the id (cell index + 1) of the outlet it finally reaches.
 	var river := PackedInt32Array()
 	river.resize(n)
@@ -62,6 +97,7 @@ static func bake_gd(base: PackedInt32Array, w: int, h: int, sea_mm: int, river_f
 		while dir[c] != NO_DIR and filled[c] > sea_mm:
 			c = dir[c]
 		river[i] = c + 1
+	_report(progress, &"terrain", 1.0)
 	return { "w": w, "h": h, "sea_mm": sea_mm, "height": filled, "dir": dir, "flow": flow, "river": river }
 
 
@@ -338,30 +374,33 @@ static func sample_height(b: Dictionary, cell: float, x: float, z: float) -> flo
 
 ## The base height grid, in mm, sampled from `WorldShape.height` at the centre of each `cell_m` cell:
 ## `w` cells round the circumference `circumference_m` and `h` cells from pole to pole.
-static func base_grid(seed_v: int, w: int, h: int, circumference_m: float) -> PackedInt32Array:
+static func base_grid(seed_v: int, w: int, h: int, circumference_m: float, progress: Callable = Callable()) -> PackedInt32Array:
 	var out := PackedInt32Array()
 	out.resize(w * h)
 	var cell := circumference_m / float(w)
 	var half := cell * float(h) * 0.5
 	for z in h:
+		if z % 16 == 0:
+			_report(progress, &"grid", float(z) / float(h))
 		for x in w:
 			var m: float = WorldShape.height(seed_v, (float(x) + 0.5) * cell, (float(z) + 0.5) * cell - half, circumference_m)
 			out[z * w + x] = roundi(m * 1000.0)
+	_report(progress, &"grid", 1.0)
 	return out
 
 
 ## Bake the planet for `seed_v` on a `w` x `h` grid; `river_flow` is the flow that makes a river.
 ## The result carries the biome field (Phase 302), read from the eroded heights.
-static func bake_planet(seed_v: int, w: int, h: int, circumference_m: float, river_flow: int) -> Dictionary:
-	var b := bake(base_grid(seed_v, w, h, circumference_m), w, h, roundi(WorldShape.sea_level() * 1000.0), river_flow)
-	b["biome"] = biome_field(b, seed_v, circumference_m, load("res://src/terrain/terrain_slice.gd").BIOME_KEYS)
+static func bake_planet(seed_v: int, w: int, h: int, circumference_m: float, river_flow: int, progress: Callable = Callable()) -> Dictionary:
+	var b := bake(base_grid(seed_v, w, h, circumference_m, progress), w, h, roundi(WorldShape.sea_level() * 1000.0), river_flow, progress)
+	b["biome"] = biome_field(b, seed_v, circumference_m, load("res://src/terrain/terrain_slice.gd").BIOME_KEYS, progress)
 	return b
 
 
 ## The biome of every cell (Phase 302): the climate rules (`ClimateField.biome_for_chunk`) read at the cell
 ## centre with the eroded height as the altitude above the sea, stored as the index into `keys`. Cells
 ## are `circumference_m / w` wide; the chunk read is the one holding the cell centre.
-static func biome_field(b: Dictionary, seed_v: int, circumference_m: float, keys: Array) -> PackedByteArray:
+static func biome_field(b: Dictionary, seed_v: int, circumference_m: float, keys: Array, progress: Callable = Callable()) -> PackedByteArray:
 	var ts: GDScript = load("res://src/terrain/terrain_slice.gd")   # loaded late: TerrainSlice preloads this file
 	var cf: GDScript = load("res://src/terrain/climate_field.gd")
 	var w: int = b.w
@@ -372,6 +411,8 @@ static func biome_field(b: Dictionary, seed_v: int, circumference_m: float, keys
 	var out := PackedByteArray()
 	out.resize(w * h)
 	for z in h:
+		if z % 8 == 0:
+			_report(progress, &"biome", float(z) / float(h))
 		var cz := (float(z) + 0.5) * cell - half
 		var chunk_z := floori(cz / ts.CHUNK_METERS)
 		var lat: float = ts.latitude_of(chunk_z)
@@ -379,6 +420,7 @@ static func biome_field(b: Dictionary, seed_v: int, circumference_m: float, keys
 			var chunk := Vector2i(floori((float(x) + 0.5) * cell / ts.CHUNK_METERS), chunk_z)
 			var alt := float(int(b.height[z * w + x]) - int(b.sea_mm)) * 0.001
 			out[z * w + x] = maxi(0, keys.find(cf.biome_for_chunk(seed_v, chunk, keys, lat, alt, circ_chunks)))
+	_report(progress, &"biome", 1.0)
 	return out
 
 
@@ -413,13 +455,18 @@ static func file_path(dir: String, seed_v: int, worldgen_version: int, w: int, h
 ## The bake at `path`, or a fresh one when the file is missing, damaged or (when `expected_hash` is given, as a
 ## client does with the host's hash) not the one the host announced; a fresh bake is saved to `path`.
 ## Returns { bake, hash, loaded } (`loaded`: read from the file, not baked now).
-static func ensure(path: String, seed_v: int, w: int, h: int, circumference_m: float, river_flow: int, expected_hash: String = "") -> Dictionary:
+static func ensure(path: String, seed_v: int, w: int, h: int, circumference_m: float, river_flow: int, expected_hash: String = "", progress: Callable = Callable()) -> Dictionary:
+	_report(progress, &"load", 0.0)
 	var b := load_file(path)
 	if not b.is_empty():
 		var hash_now := FileAccess.get_file_as_string(path + ".sha256").strip_edges()   # from_bytes already checked it
 		if expected_hash == "" or hash_now == expected_hash:
+			_report(progress, &"save", 1.0)
 			return { "bake": b, "hash": hash_now, "loaded": true }
-	b = bake_planet(seed_v, w, h, circumference_m, river_flow)
+	_report(progress, &"load", 1.0)
+	b = bake_planet(seed_v, w, h, circumference_m, river_flow, progress)
+	_report(progress, &"save", 0.0)
 	DirAccess.make_dir_recursive_absolute(path.get_base_dir())
 	save(b, path)
+	_report(progress, &"save", 1.0)
 	return { "bake": b, "hash": hash_hex(to_bytes(b)), "loaded": false }

@@ -223,7 +223,7 @@ func apply_world() -> void:
 		return
 	var dir := str(world["dir"])
 	root._persistence.server_save_dir = dir
-	root._terrain.set_world_seed(int(world["seed"]))
+	root._terrain.set_world_seed(int(world["seed"]), false)   # Phase 302: the bake is the boot's (`BakeBoot`, then `load_world_records`)
 	if root._minimap != null:
 		root._minimap.revealed_dir = revealed_dir_for(dir)
 	LocalWorlds.touch(dir)

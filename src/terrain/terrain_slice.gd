@@ -100,6 +100,7 @@ const SeamWrap := preload("res://src/terrain/seam_wrap.gd")
 const NativeBuilder := preload("res://src/terrain/native_builder.gd")
 const Hydrology := preload("res://src/terrain/hydrology.gd")
 const PlanetBake := preload("res://src/terrain/planet_bake.gd")
+const BakeJob := preload("res://src/terrain/bake_job.gd")
 
 ## The starting area is flattened into a plain field so the player can walk
 ## freely from spawn without jumping. Spawn centre + radius + flat height below.
@@ -216,11 +217,15 @@ static func detail_of(n: FastNoiseLite, x: float, z: float) -> float:
 ## the fabric's; a record without a circumference (pre-238) is 40,000 km with no mask. Main thread, before
 ## any chunk worker builds (the value is a process static).
 static func set_world_circumference(km: float, masked: bool) -> void:
-	_circumference_cache = maxi(4, roundi(km * 1000.0 / CHUNK_METERS / 4.0) * 4)
+	_circumference_cache = circumference_chunks_for_km(km)
 	_polar_cache = -1
 	WorldShape.set_mask_enabled(masked)
 	WorldShape.reset_plain_cache()
 	Hydrology.reset_cache()   # its cell size follows the planet's size
+
+## Chunks round the equator for a circumference of `km`: a multiple of 4 (an even half, a whole pole quarter).
+static func circumference_chunks_for_km(km: float) -> int:
+	return maxi(4, roundi(km * 1000.0 / CHUNK_METERS / 4.0) * 4)
 
 ## The circumference in km this process generates (what `world_record_fields` writes).
 static func circumference_km() -> float:
@@ -276,12 +281,11 @@ func _adopt_planet_bake(seed_v: int, with_bake: bool = true, bake_macro: bool = 
 	if "--run-tests" in OS.get_cmdline_user_args():
 		return
 	var circ := float(circumference_chunks()) * CHUNK_METERS
-	var w := roundi(circ / PlanetBake.CELL_M)
-	var h := w / 2
-	if w < 8 or w * h > PlanetBake.MAX_CELLS:   # an older, larger planet keeps the local river trace
+	var plan := BakeJob.plan_for(seed_v, circ, WORLDGEN_VERSION)
+	if plan.is_empty():   # an older, larger planet keeps the local river trace
 		return
-	var path := PlanetBake.file_path("user://bake", seed_v, WORLDGEN_VERSION, w, h)
-	var r := PlanetBake.ensure(path, seed_v, w, h, circ, PlanetBake.RIVER_FLOW)
+	# Phase 302 — the host's boot has usually baked this file off the main thread already (`BakeBoot`): a read.
+	var r := PlanetBake.ensure(str(plan.path), seed_v, int(plan.w), int(plan.h), circ, PlanetBake.RIVER_FLOW)
 	Hydrology.use_bake(seed_v, r.bake, circ, bake_macro)
 	_bake_hash = str(r.hash)
 	print("[World] planet bake %s (%s)" % [str(r.hash).substr(0, 12), "read" if r.loaded else "baked"])
