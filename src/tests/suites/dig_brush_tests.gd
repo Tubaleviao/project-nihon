@@ -27,7 +27,7 @@ func register() -> void:
 	_run_test("dig brush: a host dig digs the ground, banks the yield by volume and broadcasts one op", _test_host_dig)
 	_run_test("dig brush: a client applies the wire op to the same logs as the host", _test_wire_logs_match)
 	_run_test("dig brush: a client predicts the whole brush, and the host's op confirms it without applying twice", _test_prediction)
-	_run_test("dig brush: a brush dig takes the time of its volume", _test_work_time)
+	_run_test("dig brush: one flat dig time for hands and shovel, faster with Mining", _test_work_time)
 	_run_test("dig brush: a claim is bound to the brush that was timed (another normal or tool is refused)", _test_work_claim_bound)
 	_run_test("dig brush: the native rasteriser logs the same cells as the GDScript on 200 random brushes", _test_native_parity)
 
@@ -347,17 +347,37 @@ func _test_host_dig() -> void:
 	inv.free()
 	v.free()
 
+class _TierRegistry extends Node:
+	var tier := "novice"
+	var local_player_id := "p"
+	func get_skill_tier(_pid: String, _skill: String) -> String:
+		return tier
+
+## 2026-11-28 (owner): every brush dig takes `digSeconds` at novice Mining, bare hands or a shovel; the shovel
+## makes the bigger hole, and a higher Mining tier digs faster.
 func _test_work_time() -> void:
+	var flat := float(GameData.WORLD_SYSTEMS["DigBrushes"].get("digSeconds"))
+	assert_true(absf(flat - 1.0) < 1e-6, "the fabric's dig time is one second")
 	var v := _brush_voxel()
 	_inventory(v, { "StoneShovel": 1 })
 	var t: Dictionary = v._edit._dig.work_target(AIM, Vector3.UP, "")
-	assert_true(not t.is_empty() and float(t["seconds"]) > 0.0, "a brush dig has a work time")
-	var slab: float = WorkTimeRef.duration(str(t["material"]), "dig", "StoneShovel", "novice", "dig")
-	assert_true(float(t["seconds"]) > slab, "more volume takes longer than one slab (%.2f s vs %.2f s)" % [float(t["seconds"]), slab])
+	assert_true(not t.is_empty(), "a shovel dig is a brush dig")
+	assert_true(absf(float(t["seconds"]) - flat) < 1e-6, "a novice shovel dig takes digSeconds (%.2f s)" % float(t["seconds"]))
 	var hands := _brush_voxel()
 	_inventory(hands)
 	var th: Dictionary = hands._edit._dig.work_target(AIM, Vector3.UP, "")
-	assert_true(not th.is_empty(), "bare hands too")
+	assert_true(not th.is_empty(), "bare hands dig with a brush too")
+	assert_true(absf(float(th["seconds"]) - flat) < 1e-6, "a novice bare-hands dig takes digSeconds too (%.2f s)" % float(th["seconds"]))
+	var ps: Dictionary = v._edit._dig.plan(AIM, Vector3.UP, "")
+	var ph: Dictionary = hands._edit._dig.plan(AIM, Vector3.UP, "")
+	assert_true(int(ps["op"]["radius"]) > int(ph["op"]["radius"]), "the shovel's hole is bigger than the hands' (%d vs %d mm)" % [int(ps["op"]["radius"]), int(ph["op"]["radius"])])
+	var reg := _TierRegistry.new()
+	reg.tier = "expert"
+	hands.player_registry = reg
+	var te: Dictionary = hands._edit._dig.work_target(AIM, Vector3.UP, "")
+	assert_true(not te.is_empty() and float(te["seconds"]) < flat, "an expert digs faster than a novice (%.2f s)" % float(te.get("seconds", 0.0)))
+	hands.player_registry = null
+	reg.free()
 	v.inventory_slice.free()
 	v.free()
 	hands.inventory_slice.free()

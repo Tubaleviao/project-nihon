@@ -8,6 +8,6 @@ extends Resource
 @export var skillRadiusPerTier: float
 @export var blend: float
 @export var minRadius: float
-@export var workFactor: float
+@export var digSeconds: float
 @export var brushes: Dictionary
 @export var unitVolume: Dictionary

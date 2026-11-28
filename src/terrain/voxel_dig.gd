@@ -303,9 +303,9 @@ func _store_remainders(player_id: String, rem: Dictionary) -> void:
 # --- work time (Phase 259) -----------------------------------------------------------
 
 ## The brush dig the aim would make, without touching anything: `{ material, key, seconds }` or `{}` when the aim
-## is not a brush dig (the single slab's own `work_target`). `seconds` is the sum over the cells it would remove
-## of the material's one-slab work time at the worker's tool and tier, times the fabric's `workFactor`, and never
-## less than one slab's.
+## is not a brush dig (the single slab's own `work_target`). `seconds` is the fabric's flat `digSeconds` over the
+## worker's Mining skill speed (`WorkTime.skill_speed`): every brush dig takes the same time at a tier, bare hands
+## or a shovel alike; the tool decides only how big the hole is (2026-11-28, owner's call).
 func work_target(world_pos: Vector3, normal: Vector3, player_id: String, exact: Dictionary = {}) -> Dictionary:
 	var p := plan(world_pos, normal, player_id, exact)
 	if p.is_empty():
@@ -313,22 +313,18 @@ func work_target(world_pos: Vector3, normal: Vector3, player_id: String, exact: 
 	var result := preview(p["op"], str(p["tool"]))
 	if (result["tiles"] as Array).is_empty():
 		return {}
-	var inventory: Node = e.inventory_for(player_id)
-	var seconds := 0.0
 	var first := ""
 	var counts: Dictionary = (result["volume"] as Dictionary).duplicate()
 	for id in result["veins"]:
 		var v: Dictionary = result["veins"][id]["vein"]
 		counts[str(v["material"])] = int(counts.get(str(v["material"]), 0)) + int(result["veins"][id]["cells"])
 	for m in counts:
-		var action := WorkTime.action_for_material(str(m))
-		if action == "":
-			action = "mine"
-		var tool_name := WorkTime.held_tool(inventory, action)
-		var per := WorkTime.duration(str(m), action, tool_name, _tier_name(player_id, action), action)
-		seconds += per * float(counts[m]) * float(_fab("workFactor", 0.1))
 		if first == "" or int(counts[m]) > int(counts.get(first, 0)):
 			first = str(m)
+	var action := WorkTime.action_for_material(first)
+	if action == "":
+		action = "mine"
+	var seconds := float(_fab("digSeconds", 1.0)) / maxf(WorkTime.skill_speed(action, _tier_name(player_id, action)), 0.01)
 	var c: Array = p["op"]["centre"]
 	return { "material": first, "key": "dig:%d,%d,%d,%d" % [c[0], c[1], c[2], int(p["op"]["radius"])],
 		"seconds": seconds }

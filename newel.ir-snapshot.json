@@ -1,5 +1,5 @@
 {
-  "schemaHash": "sha256:95036940cbd2dd32c1342441652ee1328267e0d61676bae73c075ade98f790c8",
+  "schemaHash": "sha256:256c5ff2e11c98666e7ff8ebe6f64fffe723e98cd5f548d661ece0c23b9745f8",
   "schema": {
     "version": "3.0.0",
     "meta": {
@@ -44670,14 +44670,14 @@
             "pii": false,
             "defaultValue": 0.25
           },
-          "workFactor": {
-            "name": "workFactor",
+          "digSeconds": {
+            "name": "digSeconds",
             "type": "decimal",
-            "description": "Work time of a brush dig: this fraction of a slab's time per slab-equivalent removed (Phase 259)",
+            "description": "Work time of one brush dig in seconds at novice Mining, any tool (the tool sets the size); Mining tiers divide it (Phase 274)",
             "nullable": false,
             "primaryKey": false,
             "pii": false,
-            "defaultValue": 0.1
+            "defaultValue": 1
           },
           "brushes": {
             "name": "brushes",
