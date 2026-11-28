@@ -6,6 +6,8 @@ const WorldPos := preload("res://src/terrain/world_pos.gd")
 const TitleRules := preload("res://src/character/title_rules.gd")
 const PlayerSlice := preload("res://src/player/player_slice.gd")
 const RemoteMotionRules := preload("res://src/networking/remote_motion_rules.gd")
+const VoxelDig := preload("res://src/terrain/voxel_dig.gd")
+const DigBrush := preload("res://src/terrain/dig_brush.gd")
 
 ## Phase 208 — the host stands a chest of its own clan (the client is not in it) at the client's feet, holding five
 ## Thornwood. The client uses it and asks to take one: both are refused, the chest still holds five, the
@@ -1276,3 +1278,57 @@ func _served_at_least(bake: RefCounted, n: int) -> bool:
 		if int(bake.serve._peers[peer]["served"]) >= n:
 			return true
 	return false
+
+## Phase 300 — a client digs with a stone shovel: the host plans the brush from the shovel it gave the client's
+## player, broadcasts the one `dig` op, and the host and the client hold the same runs on every tile the brush
+## bounds touch (the bounds come from the op each side saw, so the two also agree on what was dug).
+func dig_brush_synced(h: Node) -> void:
+	var voxel: Node = h._root._voxel
+	var ops: Array = []
+	var on_changed := func(action: String, _p: Vector3, _n: Vector3, material: String) -> void:
+		if action == "dig":
+			ops.append(material)
+	GameBus.block_changed.connect(on_changed)
+	var detail := ""
+	var ok := false
+	if h._role == "host":
+		var bound: String = h._live_bound_id()
+		var pack: Node = h._root._registry.get_inventory(bound)
+		var added: bool = pack.add_item("StoneShovel", 1)   # the client digs once it sees it in its pack
+		GameBus.inventory_synced.emit(bound, pack.get_contents(), pack.get_durability_data())
+		var dug: bool = await h._await_until(func() -> bool: return not ops.is_empty(), h._step_timeout() * 4.0)
+		await h._await_settle(1.5 * h._time_scale)
+		detail = _dig_runs(voxel, ops) if dug else "no_dig_came-added%d-bound%s" % [int(added), bound]
+		ok = dug
+	else:
+		var shovel: bool = await h._await_until(func() -> bool: return h._root._inventory.get_item_count("StoneShovel") >= 1, h._step_timeout() * 2.0)
+		if not shovel:
+			h._report("dig_brush_synced", "fail", "shovel_never_synced-%s" % str(h._root._inventory.get_contents().keys()))
+			GameBus.block_changed.disconnect(on_changed)
+			return
+		var body: Vector3 = h._root._player.get_position()
+		var xz := Vector2(body.x + PREDICT_OFFSET_M, body.z)
+		var top: float = voxel.get_voxel_height_at(xz)
+		voxel._edit.prebuild_edit("mine", Vector3(xz.x, top - 0.05, xz.y), Vector3.UP, "")
+		GameBus.block_mine_requested.emit(Vector3(xz.x, top - 0.05, xz.y), Vector3.UP, "", {})
+		var got: bool = await h._await_until(func() -> bool: return not ops.is_empty() and voxel.get_voxel_height_at(xz) < top, h._step_timeout() * 3.0)
+		await h._await_settle(1.5 * h._time_scale)
+		detail = _dig_runs(voxel, ops) if got else "never_dug"
+		ok = got
+	GameBus.block_changed.disconnect(on_changed)
+	h._report("dig_brush_synced", h.verdict(ok, true), detail)
+
+## The canonical runs of every tile the last `dig` op's bounds touch: one string both peers must hold.
+func _dig_runs(voxel: Node, ops: Array) -> String:
+	var d: Dictionary = VoxelDig.decode(str(ops[-1]))
+	if d.is_empty():
+		return "bad_op"
+	var b: Array = DigBrush.bounds(d["op"])
+	var parts: Array = []
+	for tx in range(b[0], b[1] + 1):
+		for tz in range(b[2], b[3] + 1):
+			var runs: Array = []
+			for run in voxel.get_runs_at_tile(Vector2i(tx, tz)):
+				runs.append("%.3f-%.3f:%s" % [float(run["bottom"]), float(run["top"]), str(run["material"])])
+			parts.append("%d,%d=%s" % [tx, tz, ",".join(runs)])
+	return "%s;%s" % [str(ops[-1]).split("|")[0], ";".join(parts)]

@@ -82,7 +82,6 @@ const RATE_CHUNKS := 24      ## chunks the stream step times the pure worker bui
 const NativeBuilder := preload("res://src/terrain/native_builder.gd")
 const EDIT_VISIBLE_KEY := "edit_visible"   ## Phase 263: `{ target_fps, frames: { step: frames } }` in the budget file
 const EDIT_TARGET_FPS := 60   ## Phase 263: the frame rate the edit-to-visible budget is counted at, when the file names none
-const MINE_EXTRA_DIGS := 5   ## Phase 263: the mine step digs this many more blocks beside the timed one, for a p95
 const BUDGET_PATH := "res://docs/perf/playtest-budget.json"   ## Phase 174: per-step p95 process budget (ms), source of the table in playtest-baseline.md
 const BUDGET_HEADROOM := 1.25   ## a step fails the gate above budget * this, so a noisy shared runner does not fail unrelated PRs
 const NO_BUDGET_ARG := "--playtest-no-budget"   ## report only: CI runs the bot 3 times with this and gates the median (tools/check_playtest_budget.py)
@@ -1298,30 +1297,26 @@ var _work_clip := ""; var _work_secs := 0.0; var _work_last: Array = []; var _wo
 
 func _step_mine() -> Array:
 	var p := _player_pos()
-	var y: float = _root._terrain.get_height_at(Vector2(p.x, p.z))
+	if _root._inventory.get_item_count("StoneShovel") < 1: _root._inventory.add_item("StoneShovel", 1)   # Phase 300: the pit is dug with a stone shovel
+	var c := Vector2(floorf((p.x + 2.0) / 0.5) * 0.5 + 0.25, floorf(p.z / 0.5) * 0.5 + 0.25)   # a tile centre two metres ahead, so the body never stands over the pit
+	var y0: float = _root._voxel.get_voxel_height_at(c)
 	var before := _mined.size()
-	var spot := Vector3(p.x, y - 0.1, p.z)
+	var spot := Vector3(c.x, y0 - 0.1, c.y)
 	var remesh: RefCounted = _root._chunk_manager._m1.remesh
 	var n0: int = remesh.samples.size()
 	var held: float = await _hold_work("block", "", spot, true)
 	GameBus.block_mine_requested.emit(spot, Vector3.UP, "", {})
 	var ok: bool = await _until(func(): return _mined.size() > before, STEP_TIMEOUT_SECS)
 	var wk: String = str(_work_last[0]) if not _work_last.is_empty() else ""; if not ok or _work_bar_note != "" or not wk in ["dig", "mine"] or _work_clip != WorkAnim.clip_of(wk): return [false, (_work_bar_note if _work_bar_note != "" else "the '%s' hold played '%s', not '%s'" % [wk, _work_clip, WorkAnim.clip_of(wk)]) if ok else "no block_mined (work held %.1f s)" % held]   # 281: the clip
-	# Phase 263 — more digs beside it, so the step has an edit-to-visible p95: each is timed from its completion to
-	# its chunk's mesh attached. PR #648 review: each one held for its work time first, as a player digs (the dug
-	# chunk is built while the work runs, `EditPrebuild`).
-	for i in MINE_EXTRA_DIGS:
-		var q := Vector3(p.x + 0.5 * float(i + 2), 0.0, p.z + 0.5)
-		q.y = float(_root._voxel.get_voxel_height_at(Vector2(q.x, q.z))) - 0.1
-		await _hold_work("block", "", q)
-		GameBus.block_mine_requested.emit(q, Vector3.UP, "", {})
-		await get_tree().process_frame
+	# Phase 300 — the pit: up to 5 more holds (each held for its work time first, as a player digs: the dug chunk is
+	# built while the work runs, `EditPrebuild`) until it is 1 m deep and 1.5 m across. Phase 263: each edit is timed from its completion to its chunk's mesh attached.
+	var pit: Dictionary = await preload("res://src/tests/playtest_dig_pit.gd").run(self, c, y0, 1)
 	var own := func() -> int: return remesh.samples.slice(n0).filter(func(s: Dictionary) -> bool: return bool(s["primary"])).size()
-	await _until(func(): return own.call() >= 1 + MINE_EXTRA_DIGS, STEP_TIMEOUT_SECS)
+	await _until(func(): return own.call() >= int(pit["holds"]), STEP_TIMEOUT_SECS)
 	_edit_visible = edit_visible_record(remesh.samples.slice(n0))
 	var e := _edit_visible
-	return [int(e["edits"]) > 0, "mined %s after holding work %.1f s; %d edits visible in %.0f frames / %.1f ms p95 (queue %.1f, build %.1f of which the job %.1f, %d on the main thread, %d prebuilt, misses %s)" % [
-		str(_mined.back()), held, int(e["edits"]), float(e["frames_p95"]), float(e["ms_p95"]), float(e["queue_ms_p95"]),
+	return [int(e["edits"]) > 0 and bool(pit["ok"]), "pit %.2f m deep, %.1f m across in %d holds (first held %.1f s, mined %s); %d edits visible in %.0f frames / %.1f ms p95 (queue %.1f, build %.1f of which the job %.1f, %d on the main thread, %d prebuilt, misses %s)" % [
+		float(pit["depth"]), float(pit["width"]), int(pit["holds"]), held, str(_mined.back()), int(e["edits"]), float(e["frames_p95"]), float(e["ms_p95"]), float(e["queue_ms_p95"]),
 		float(e["build_ms_p95"]), float(e["job_ms_p95"]), int(e["on_main_thread"]), int(e["prebuilt"]), JSON.stringify(e["misses"])]]
 
 ## Phase 259 — hold work on a target the way the player does: ask the host to start it, wait for its duration, and

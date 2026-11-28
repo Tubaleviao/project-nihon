@@ -2090,6 +2090,7 @@ func _test_net_harness_step_table() -> void:
 	assert_eq(str(steps.pop_back().get("name", "")), "market_names_seller", "after each side's market naming the other seller (Phase 292)")
 	assert_eq(str(steps.pop_back().get("name", "")), "client_loot_synced", "after ground loot taken and dropped by a client")
 	assert_eq(str(steps.pop_back().get("name", "")), "client_attack_lands", "after a client's own swing reaching the host and coming back as the synced hit")
+	assert_eq(str(steps.pop_back().get("name", "")), "dig_brush_synced", "after a client's shovel dig applied as one brush op, host and client holding the same runs (Phase 300)")
 	assert_eq(str(steps.pop_back().get("name", "")), "predicted_edit", "after a client's predicted dig kept and a refused one rolled back (Phase 263)")
 	assert_eq(str(steps.pop_back().get("name", "")), "station_craft", "after a client crafting at a station and refused away from it (Phase 269)")
 	assert_eq(str(steps.pop_back().get("name", "")), "station_from_hotbar", "after a station crafted, placed from the hotbar and refused without its item (Phase 268)")
