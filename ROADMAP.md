@@ -819,9 +819,17 @@ brush op; this phase does the same on top of the run columns.
   meets its budget.
 
 **Progress:** the fabric half landed (tools-decide-the-brush): `fabric/gameplay/dig_brushes.js`
-(`DigBrushes` world system: radius cap, skill radius per tier, blend, min radius, per-tool brushes with
-resolved `cuts`, unit volume), its validator and `tools/check_dig_brush.js` (CI). Runtime (rasteriser, wire op,
-native port, yield, tests) pending.
+(`DigBrushes` world system: radius cap, skill radius per tier, blend, min radius, work factor, per-tool brushes with
+resolved `cuts`, unit volume), its validator and `tools/check_dig_brush.js` (CI). The GDScript runtime landed:
+`src/terrain/dig_brush.gd` (`DigBrush`, the pure integer-mm rasteriser: `make_op`, `bounds`, `cut_cells`, `spans_of`,
+`rasterise`), `src/terrain/voxel_dig.gd` (`VoxelDig`: the host's plan from its own tool, Mining tier and runs; the dig,
+yield by volume with a per-player remainder saved in the player record as `dig_remainder`, vein depletion exactly what
+was yielded, work time by volume, the shared apply, the `dig` wire op), `VoxelEdit.mine_block` (a brush of at least
+`minRadius` is one op, smaller or a placed block keeps the single slab), `WorkHost.resolve` (duration by volume),
+`EditPrediction` (the whole brush predicted at once) and `src/tests/suites/dig_brush_tests.gd`. The op rides the JSON
+`block_changed` as action `dig` (`shape|radius_mm|k_mm|tool|cx,cy,cz|deplete`); Phase 256's binary tags are not extended.
+**Remaining:** the native port of `DigBrush.cut_cells` with the 200-random-brush parity test, the `tools/net_harness.sh`
+dig step, and the playtest `mine` step (pit in at most 6 holds, budget).
 
 ## Phase 301 — Shaping the ground: fill, flatten and smooth, and a dug surface that shows what it is
 
