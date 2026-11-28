@@ -310,6 +310,7 @@ void NativeBake::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("bake", "base", "w", "h", "sea_mm", "river_flow", "talus_mm", "hydraulic", "wrap"), &NativeBake::bake, DEFVAL(false));
 	ClassDB::bind_method(D_METHOD("erode", "base", "w", "h", "sea_mm", "talus_mm", "wrap"), &NativeBake::erode, DEFVAL(false));
 	ClassDB::bind_method(D_METHOD("hydraulic", "base", "w", "h", "sea_mm", "river_flow", "wrap"), &NativeBake::hydraulic, DEFVAL(false));
+	ClassDB::bind_method(D_METHOD("cut_cells", "op", "columns"), &NativeBake::cut_cells);
 	ClassDB::bind_method(D_METHOD("isqrt", "n"), &NativeBake::isqrt);
 	ClassDB::bind_method(D_METHOD("smooth_union", "a", "b", "k"), &NativeBake::smooth_union);
 	ClassDB::bind_method(D_METHOD("smooth_intersection", "a", "b", "k"), &NativeBake::smooth_intersection);
@@ -318,7 +319,7 @@ void NativeBake::_bind_methods() {
 }
 
 int NativeBake::version() const {
-	return 7;   // 1 = Phase 245: bake and the CSG operations; 2 = thermal erosion; 3 = every CSG shape; 4 = hydraulic erosion (Phase 302); 5 = thermal talus 500 m per cell; 6 = the bake profile (talus, hydraulic on/off) as parameters, so a worldgen-14 world bakes its Phase 245 bytes; 7 = the east-west wrap (Phase 232) as a parameter
+	return 8;   // 8 = Phase 300 `cut_cells` (the dig brush rasteriser);  1 = Phase 245: bake and the CSG operations; 2 = thermal erosion; 3 = every CSG shape; 4 = hydraulic erosion (Phase 302); 5 = thermal talus 500 m per cell; 6 = the bake profile (talus, hydraulic on/off) as parameters, so a worldgen-14 world bakes its Phase 245 bytes; 7 = the east-west wrap (Phase 232) as a parameter
 }
 
 PackedStringArray NativeBake::functions() const {
@@ -331,6 +332,7 @@ PackedStringArray NativeBake::functions() const {
 	out.push_back("smooth_intersection");
 	out.push_back("smooth_subtract");
 	out.push_back("capsule2");
+	out.push_back("cut_cells");
 	for (const char *f : { "disc", "box2", "polyline", "sphere", "cylinder", "box3", "capsule3" }) {
 		out.push_back(f);
 	}
@@ -473,4 +475,80 @@ int64_t NativeBake::capsule3(const Vector3i &p_p, const Vector3i &p_a, const Vec
 
 PackedInt32Array NativeBake::hydraulic(const PackedInt32Array &p_base, int64_t p_w, int64_t p_h, int64_t p_sea_mm, int64_t p_river_flow, bool p_wrap) const {
 	return ::hydraulic(p_base, p_w, p_h, p_sea_mm, p_river_flow, p_wrap);
+}
+
+// `DigBrush.cut_cells`: tiles tx ascending then tz ascending, a run's cells bottom to top.
+Array NativeBake::cut_cells(const Dictionary &p_op, const Dictionary &p_columns) const {
+	constexpr int64_t TILE_MM = 500, STEP_MM = 125, SAMPLE_Y = 62, BEDROCK_MM = -96000;
+	Array out;
+	const Array c = p_op["centre"];
+	const int64_t r = p_op["radius"];
+	const int64_t k = p_op["k"];
+	const int32_t cx = int32_t(int64_t(c[0])), cy32 = int32_t(int64_t(c[1])), cz = int32_t(int64_t(c[2]));
+	const int64_t cy = int64_t(c[1]);
+	const String shape = String(p_op["shape"]);
+	const int kind = shape == "cylinder" ? 1 : (shape == "box" ? 2 : 0);
+	const Vector3i cv(cx, cy32, cz);
+	const int64_t tx0 = fdiv(int64_t(cx) - r, TILE_MM), tx1 = fdiv(int64_t(cx) + r, TILE_MM);
+	const int64_t tz0 = fdiv(int64_t(cz) - r, TILE_MM), tz1 = fdiv(int64_t(cz) + r, TILE_MM);
+	const int64_t y_lo = cy - r - STEP_MM;
+	const int64_t y_hi = cy + r;
+	// The keys come back out of the Dictionary (a Vector2i built here does not hash like GDScript's): the ones
+	// inside the brush bounds, tx then tz ascending.
+	struct Tile {
+		int64_t tx, tz;
+		Variant key;
+	};
+	std::vector<Tile> tiles;
+	const Array all = p_columns.keys();
+	for (int64_t i = 0; i < all.size(); i++) {
+		const Vector2i kv = all[i];
+		if (kv.x >= tx0 && kv.x <= tx1 && kv.y >= tz0 && kv.y <= tz1) {
+			tiles.push_back({ kv.x, kv.y, all[i] });
+		}
+	}
+	std::sort(tiles.begin(), tiles.end(), [](const Tile &a, const Tile &b) { return a.tx != b.tx ? a.tx < b.tx : a.tz < b.tz; });
+	for (const Tile &t : tiles) {
+		const int64_t tx = t.tx, tz = t.tz;
+		{
+			const int32_t px = int32_t(tx * TILE_MM + TILE_MM / 2);
+			const int32_t pz = int32_t(tz * TILE_MM + TILE_MM / 2);
+			const PackedInt32Array runs = p_columns[t.key];
+			PackedInt32Array cells;
+			for (int64_t i = 0; i + 1 < runs.size(); i += 2) {
+				const int64_t rb = runs[i], rt = runs[i + 1];
+				const int64_t from = std::max(std::max(rb, BEDROCK_MM), y_lo);
+				const int64_t to = std::min(rt, y_hi);
+				int64_t cb = from - (((from % STEP_MM) + STEP_MM) % STEP_MM);
+				if (cb < from) {
+					cb += STEP_MM;
+				}
+				while (cb + STEP_MM <= rt && cb < to) {
+					const int64_t py = cb + SAMPLE_Y;
+					const int64_t solid = -std::min(py - rb, rt - py);
+					const Vector3i pv(px, int32_t(py), pz);
+					int64_t sd;
+					if (kind == 1) {
+						sd = cylinder(pv, cv, r, r);
+					} else if (kind == 2) {
+						sd = box3(pv, cv, Vector3i(int32_t(r), int32_t(r), int32_t(r)));
+					} else {
+						sd = sphere(pv, cv, r);
+					}
+					if (smooth_intersection_i(sd, solid, k) < 0) {
+						cells.push_back(int32_t(cb));
+					}
+					cb += STEP_MM;
+				}
+			}
+			if (!cells.is_empty()) {
+				Array e;
+				e.push_back(int64_t(tx));
+				e.push_back(int64_t(tz));
+				e.push_back(cells);
+				out.push_back(e);
+			}
+		}
+	}
+	return out;
 }

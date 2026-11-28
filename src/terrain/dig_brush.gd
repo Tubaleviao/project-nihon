@@ -20,6 +20,7 @@ extends RefCounted
 ## brush meets a ground face. A cell below `BEDROCK_MM` is never cut.
 
 const TerrainCsg := preload("res://src/terrain/terrain_csg.gd")
+const NativeLoaderScript := preload("res://src/core/native_loader.gd")
 
 const TILE_MM := 500
 const STEP_MM := 125
@@ -88,6 +89,13 @@ static func shape_sd(op: Dictionary, px: int, py: int, pz: int) -> int:
 ## ascending; a tile's runs in the order given, a run's cells bottom to top. Returns
 ## `[[tx, tz, PackedInt32Array(cell bottoms ascending)], ...]` for the tiles with at least one cell.
 static func cut_cells(op: Dictionary, columns: Dictionary) -> Array:
+	if NativeLoaderScript.use_native("NativeBake", "cut_cells"):   # same cells, computed in C++
+		return NativeLoaderScript.instance("NativeBake").call("cut_cells", op, columns)
+	return cut_cells_ref(op, columns)
+
+
+## The GDScript reference the native `cut_cells` is held equal to.
+static func cut_cells_ref(op: Dictionary, columns: Dictionary) -> Array:
 	var out: Array = []
 	var b := bounds(op)
 	var cy: int = op["centre"][1]

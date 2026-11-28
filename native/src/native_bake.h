@@ -45,6 +45,9 @@ public:
 	int64_t box3(const Vector3i &p_p, const Vector3i &p_c, const Vector3i &p_h) const;
 	int64_t capsule3(const Vector3i &p_p, const Vector3i &p_a, const Vector3i &p_b, int64_t p_r) const;
 	int64_t capsule2(const Vector2i &p_p, const Vector2i &p_a, const Vector2i &p_b, int64_t p_r) const;
+
+	// `DigBrush.cut_cells` (Phase 300): the cells of the natural run columns a dig brush cuts.
+	Array cut_cells(const Dictionary &p_op, const Dictionary &p_columns) const;
 };
 
 } // namespace godot

@@ -8,6 +8,8 @@ const WorkSkillsRef := preload("res://src/character/work_skills.gd")
 const WorkTimeRef := preload("res://src/core/work_time.gd")
 const RecordSanitize := preload("res://src/persistence/record_sanitize.gd")
 
+const Bot := preload("res://src/tests/playtest_bot.gd")
+
 const HOME := Vector2i(0, 0)
 const AIM := Vector3(16.25, 2.0, 16.25)   # the middle of tile (32, 32) on the flat 2 m chunk
 
@@ -26,6 +28,7 @@ func register() -> void:
 	_run_test("dig brush: a client applies the wire op to the same logs as the host", _test_wire_logs_match)
 	_run_test("dig brush: a client predicts the whole brush, and the host's op confirms it without applying twice", _test_prediction)
 	_run_test("dig brush: a brush dig takes the time of its volume", _test_work_time)
+	_run_test("dig brush: the native rasteriser logs the same cells as the GDScript on 200 random brushes", _test_native_parity)
 
 # --- fixtures -------------------------------------------------------------------
 
@@ -417,3 +420,41 @@ func _test_prediction() -> void:
 	c._predict.on_acked(seq2, false)
 	assert_eq(_logs(c), before, "a refusal takes the whole brush back")
 	_free_pair(p)
+
+## Phase 300 — `NativeBake.cut_cells` equals `DigBrush.cut_cells_ref` on 200 random brushes (every shape, centres on
+## both sides of the origin, radii to the fabric cap, k 0..MAX_K, multi-run columns, some touching bedrock).
+func _test_native_parity() -> void:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = Bot.WORLD_SEED
+	var cap := VoxelDig.radius_cap_mm()
+	var cases: Array = []
+	var cut := 0
+	for i in range(200):
+		var shape: String = DigBrush.SHAPES[i % 3]
+		var r := rng.randi_range(1, cap) if i % 5 != 0 else rng.randi_range(cap - 40, cap)
+		var low := i % 4 == 0   # a quarter of the brushes sit at bedrock
+		var cy := rng.randi_range(-96500, -95000) if low else rng.randi_range(-4000, 4000)
+		var cx := rng.randi_range(-30000, 30000)
+		var cz := rng.randi_range(-30000, 30000)
+		var op := { "shape": shape, "centre": [cx, cy, cz], "radius": r, "k": rng.randi_range(0, DigBrush.MAX_K_MM) if i % 7 != 0 else 0 }
+		var b := DigBrush.bounds(op)
+		var cols := {}
+		for tx in range(b[0] - 1, b[1] + 2):
+			for tz in range(b[2] - 1, b[3] + 2):
+				if rng.randf() < 0.15:
+					continue   # a missing column
+				var runs := PackedInt32Array()
+				var y := (-97000 if low else -3000) + rng.randi_range(-1000, 1000)
+				for _n in range(rng.randi_range(1, 3)):
+					var rb := y
+					var rt := rb + rng.randi_range(1, 4000)
+					runs.append(rb)
+					runs.append(rt)
+					y = rt + rng.randi_range(1, 1500)
+				cols[Vector2i(tx, tz)] = runs
+		cases.append([op, cols])
+		cut += DigBrush.cut_cells_ref(op, cols).size()
+	assert_true(cut > 200, "the random brushes cut real ground (%d tiles)" % cut)
+	var n := assert_native_parity("NativeBake", "cut_cells", cases, DigBrush.cut_cells_ref, DigBrush.cut_cells, "DigBrush.cut_cells")
+	if n >= 0:
+		assert_eq(n, 200, "all 200 brushes compared")
