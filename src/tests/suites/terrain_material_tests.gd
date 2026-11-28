@@ -27,6 +27,7 @@ func register() -> void:
 	_run_test("terrain materials: every layer has height and luminance floors in 0..1 and the material binds them (Phase 285)", _test_height_floors_table)
 	_run_test("terrain materials: a map whose darkest 1% is black is rejected for the placeholder, the public maps pass (Phase 285)", _test_dark_map_rejected)
 	_run_test("terrain materials: the low quality setting drops to biplanar with no detail, and auto is low on the Compatibility renderer", _test_low_quality)
+	_run_test("terrain materials: ground dug below the natural surface draws the dug-ground soil, not turf (Phase 300)", _test_dug_ground_soil)
 
 func _near(a: float, b: float, tol: float, msg: String) -> void:
 	assert_true(absf(a - b) <= tol, "%s (%f vs %f)" % [msg, a, b])
@@ -415,3 +416,41 @@ func _test_dark_map_rejected() -> void:
 	dim.fill(Color(0.02, 0.02, 0.02))
 	assert_true(TerrainMaterial.map_rejection(dim, float(grass["min_mean"]), 0.0).contains("mean luminance"), "a dark map is rejected on its mean")
 	assert_true(TerrainMaterial.checked_albedo(placeholder, rel, float(grass["min_mean"]), float(grass["min_dark"])) == placeholder, "a good map is kept")
+
+## Phase 300 (owner, 2026-11-28): a finished dig shows soil, not the grass that was on top. A vertex in a tile
+## with a `remove` edit, a step or more below its natural top, is all dug-ground soil; the top of that tile and
+## an undug tile keep their turf.
+func _test_dug_ground_soil() -> void:
+	var t := TerrainWeights.table()
+	var dug := int(t["dug"])
+	assert_true(dug >= 0, "one terrain material covers dug ground")
+	assert_eq(str(t["layers"][dug]["name"]), "TerrainDirt", "dug ground is the dirt layer")
+	var n := VoxelConsts.CHUNK_SIZE
+	var heightmap: Array = []
+	heightmap.resize(n * n)
+	heightmap.fill(2.0)
+	var grass := TerrainWeights.biome_layer(t, "TemperateForest")
+	var verts := PackedVector3Array([Vector3(2.6, 1.5, 2.6), Vector3(2.6, 2.0, 2.6), Vector3(10.1, 1.5, 10.1)])
+	var w0 := PackedByteArray()
+	var w1 := PackedByteArray()
+	w0.resize(verts.size() * 4)
+	w1.resize(verts.size() * 4)
+	for i in verts.size():
+		TerrainWeights.pack({ grass: 1.0 }, w0, w1, i)
+	var built := { "vertices": verts, "custom0": w0.duplicate(), "custom1": w1.duplicate(), "smooth_vertex_count": verts.size() }
+	var gathered := { "edits": { "5,5": [{ "op": "remove", "bottom": 1.5, "top": 2.0 }] } }
+	TerrainWeights.apply_dug(built, Vector2i.ZERO, heightmap, gathered)
+	var pit := TerrainWeights.unpack(built["custom0"], built["custom1"], 0)
+	assert_true(float(pit.get(dug, 0.0)) > 0.99, "the pit floor is soil (%s)" % str(pit))
+	assert_true(float(pit.get(grass, 0.0)) < 0.01, "and no longer grass")
+	var top := TerrainWeights.unpack(built["custom0"], built["custom1"], 1)
+	assert_true(float(top.get(grass, 0.0)) > 0.99, "the dug tile's untouched top stays grass")
+	var other := TerrainWeights.unpack(built["custom0"], built["custom1"], 2)
+	assert_true(float(other.get(grass, 0.0)) > 0.99, "an undug tile stays grass")
+	var local := { "vertices": PackedVector3Array([Vector3(2.6, 1.5, 2.6)]), "custom0": PackedByteArray([255, 0, 0, 0]),
+		"custom1": PackedByteArray([0, 0, 0, 0]), "smooth_vertex_count": 1, "local": true }
+	TerrainWeights.apply_dug(local, Vector2i(1, 0), heightmap, { "edits": { "%d,5" % (n + 5): [{ "op": "remove", "bottom": 1.5, "top": 2.0 }] } })
+	assert_true(float(TerrainWeights.unpack(local["custom0"], local["custom1"], 0).get(dug, 0.0)) > 0.99, "a chunk-local build finds its dug tile too")
+	var placed := { "vertices": verts, "custom0": w0.duplicate(), "custom1": w1.duplicate(), "smooth_vertex_count": verts.size() }
+	TerrainWeights.apply_dug(placed, Vector2i.ZERO, heightmap, { "edits": { "5,5": [{ "op": "add", "bottom": 2.0, "top": 2.5, "material": "Concrete" }] } })
+	assert_true(float(TerrainWeights.unpack(placed["custom0"], placed["custom1"], 0).get(grass, 0.0)) > 0.99, "a placed block alone digs nothing")

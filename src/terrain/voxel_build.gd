@@ -83,6 +83,8 @@ func build_chunk(chunk_pos: Vector2i, heightmap: Array, arrays: Dictionary = {},
 		built = VoxelMesh.build_terrain_arrays(chunk_pos, heightmap, s.collect_build_runs(chunk_pos, heightmap), true)
 		if s.attach_geometry:
 			TerrainWeights.apply(built, chunk_pos, s.gather_biomes_for(chunk_pos), s._world_seed())   # Phase 242
+			TerrainWeights.apply_dug(built, chunk_pos, heightmap, { "edits": _gather_edits(chunk_pos),
+				"neighbour_heightmaps": _gather_neighbour_heightmaps(chunk_pos) })   # Phase 300
 	# A chunk-local build puts the node at the chunk's corner: the corner is summed with the scene
 	# offset in double precision, so far from the origin the node's position is small and exact and
 	# the vertices stay small too (float32 vertices at 2e7 m would snap to 2 m and shatter the ground).

@@ -1,5 +1,5 @@
 {
-  "schemaHash": "sha256:256c5ff2e11c98666e7ff8ebe6f64fffe723e98cd5f548d661ece0c23b9745f8",
+  "schemaHash": "sha256:db1623b5e404d79b1644a36077386b7ee313da46379a5aa32ce52c8bdacccf71",
   "schema": {
     "version": "3.0.0",
     "meta": {
@@ -7919,6 +7919,15 @@
             "pii": false,
             "defaultValue": -1
           },
+          "dugGround": {
+            "name": "dugGround",
+            "type": "boolean",
+            "description": "Whether this material covers ground dug below the natural surface, whatever else holds there (Phase 300)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": false
+          },
           "heightFloor": {
             "name": "heightFloor",
             "type": "decimal",
@@ -8031,6 +8040,15 @@
             "primaryKey": false,
             "pii": false,
             "defaultValue": -1
+          },
+          "dugGround": {
+            "name": "dugGround",
+            "type": "boolean",
+            "description": "Whether this material covers ground dug below the natural surface, whatever else holds there (Phase 300)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": true
           },
           "heightFloor": {
             "name": "heightFloor",
@@ -8145,6 +8163,15 @@
             "pii": false,
             "defaultValue": -1
           },
+          "dugGround": {
+            "name": "dugGround",
+            "type": "boolean",
+            "description": "Whether this material covers ground dug below the natural surface, whatever else holds there (Phase 300)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": false
+          },
           "heightFloor": {
             "name": "heightFloor",
             "type": "decimal",
@@ -8257,6 +8284,15 @@
             "primaryKey": false,
             "pii": false,
             "defaultValue": -1
+          },
+          "dugGround": {
+            "name": "dugGround",
+            "type": "boolean",
+            "description": "Whether this material covers ground dug below the natural surface, whatever else holds there (Phase 300)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": false
           },
           "heightFloor": {
             "name": "heightFloor",
@@ -8373,6 +8409,15 @@
             "pii": false,
             "defaultValue": -1
           },
+          "dugGround": {
+            "name": "dugGround",
+            "type": "boolean",
+            "description": "Whether this material covers ground dug below the natural surface, whatever else holds there (Phase 300)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": false
+          },
           "heightFloor": {
             "name": "heightFloor",
             "type": "decimal",
@@ -8487,6 +8532,15 @@
             "pii": false,
             "defaultValue": -1
           },
+          "dugGround": {
+            "name": "dugGround",
+            "type": "boolean",
+            "description": "Whether this material covers ground dug below the natural surface, whatever else holds there (Phase 300)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": false
+          },
           "heightFloor": {
             "name": "heightFloor",
             "type": "decimal",
@@ -8597,6 +8651,15 @@
             "primaryKey": false,
             "pii": false,
             "defaultValue": 3
+          },
+          "dugGround": {
+            "name": "dugGround",
+            "type": "boolean",
+            "description": "Whether this material covers ground dug below the natural surface, whatever else holds there (Phase 300)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": false
           },
           "heightFloor": {
             "name": "heightFloor",

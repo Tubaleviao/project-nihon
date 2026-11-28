@@ -45,7 +45,7 @@ static func warm() -> Dictionary:
 	return table()
 
 ## `{ layers: [{name, layer, key, scale}] by layer, biome_layer: {biome: layer}, snow_line: {biome: m},
-## rock: layer, rock_slope: deg, snow: layer, wet: layer, wet_dist: m }`; -1 where no material has a rule.
+## rock: layer, rock_slope: deg, snow: layer, wet: layer, wet_dist: m, dug: layer }`; -1 where no material has a rule.
 static func table() -> Dictionary:
 	_mutex.lock()
 	if _table.is_empty():
@@ -58,7 +58,7 @@ static func table() -> Dictionary:
 static func build_table(materials: Dictionary, biomes: Dictionary) -> Dictionary:
 	var layers: Array = []
 	var biome_layer := {}
-	var t := { "rock": -1, "rock_slope": 90.0, "snow": -1, "wet": -1, "wet_dist": 0.0 }
+	var t := { "rock": -1, "rock_slope": 90.0, "snow": -1, "wet": -1, "wet_dist": 0.0, "dug": -1 }
 	for name in materials:
 		var m: Variant = materials[name]
 		var layer := int(_field(m, "layer", -1))
@@ -76,6 +76,8 @@ static func build_table(materials: Dictionary, biomes: Dictionary) -> Dictionary
 			t["rock_slope"] = slope
 		if bool(_field(m, "aboveSnowLine", false)) and int(t["snow"]) < 0:
 			t["snow"] = layer
+		if bool(_field(m, "dugGround", false)) and int(t["dug"]) < 0:
+			t["dug"] = layer
 		var wet := float(_field(m, "nearWater", -1.0))
 		if wet > 0.0 and int(t["wet"]) < 0:
 			t["wet"] = layer
@@ -299,6 +301,73 @@ static func apply_gd(built: Dictionary, chunk_pos: Vector2i, biomes: Dictionary,
 			pack(weights(t, ground, slope, v.y - sea, wd), w0, w1, i)
 	built["custom0"] = w0
 	built["custom1"] = w1
+
+## Phase 300 — dug ground shows soil. Ground a player dug below the natural surface is no longer turf, snow or
+## cliff rock: a natural vertex in a tile with a `remove` edit, below that tile's natural top, takes the fabric's
+## `dugGround` layer, all of it from `DUG_FULL` metres down and fading in from `DUG_START` (the rim of a pit
+## blends into the grass round it). Runs after `apply` (native or GDScript) on the few edited tiles, so the
+## native weights stay as they are. `gathered` is the build input (`edits`, `neighbour_heightmaps`); a chunk
+## with no `remove` edit is left untouched.
+const DUG_START := 0.06   # under half a step: the smooth mesh's own wobble round an untouched top
+const DUG_FULL := 0.125   # one step: the least a dig takes
+
+static func apply_dug(built: Dictionary, chunk_pos: Vector2i, heightmap: Array, gathered: Dictionary) -> void:
+	var t := table()
+	var layer := int(t.get("dug", -1))
+	var edits: Dictionary = gathered.get("edits", {})
+	if layer < 0 or edits.is_empty() or not built.has("custom0") or not built.has("custom1"):
+		return
+	var tops := dug_tops(chunk_pos, heightmap, edits, gathered.get("neighbour_heightmaps", {}))
+	if tops.is_empty():
+		return
+	var verts: PackedVector3Array = built.get("vertices", PackedVector3Array())
+	var natural := mini(int(built.get("smooth_vertex_count", verts.size())), verts.size())
+	var w0: PackedByteArray = built["custom0"]
+	var w1: PackedByteArray = built["custom1"]
+	if w0.size() < natural * 4 or w1.size() < natural * 4:
+		return
+	var extent := float(VoxelConsts.CHUNK_SIZE) * VoxelConsts.TILE_SIZE
+	var corner := Vector2(chunk_pos) * extent if bool(built.get("local", false)) else Vector2.ZERO
+	for i in natural:
+		var v := verts[i]
+		var k := VoxelConsts.tile_key(Vector2i(floori((v.x + corner.x) / VoxelConsts.TILE_SIZE), floori((v.z + corner.y) / VoxelConsts.TILE_SIZE)))
+		if not tops.has(k):
+			continue
+		var f := smoothstep(DUG_START, DUG_FULL, float(tops[k]) - v.y)
+		if f <= 0.0:
+			continue
+		var w := unpack(w0, w1, i)
+		_take(w, layer, f)
+		for l in LAYERS:
+			_write(w0, w1, i * 4, l, 0)
+		pack(_top(w), w0, w1, i)
+	built["custom0"] = w0
+	built["custom1"] = w1
+
+## `{ tile key: natural top }` of the tiles in and round `chunk_pos` that carry a `remove` edit (a dig); a ring
+## tile whose neighbour heightmap was not gathered is left out.
+static func dug_tops(chunk_pos: Vector2i, heightmap: Array, edits: Dictionary, neighbours: Dictionary) -> Dictionary:
+	var out := {}
+	var n := VoxelConsts.CHUNK_SIZE
+	for key in edits:
+		var dug := false
+		for op in edits[key]:
+			if op is Dictionary and str((op as Dictionary).get("op", "")) == "remove":
+				dug = true
+				break
+		if not dug:
+			continue
+		var parts := str(key).split(",")
+		if parts.size() != 2:
+			continue
+		var g := Vector2i(int(parts[0]), int(parts[1]))
+		var c := Vector2i(floori(float(g.x) / n), floori(float(g.y) / n))
+		var hm: Variant = heightmap if _key(c) == _key(chunk_pos) else neighbours.get(_key(c), null)
+		if not (hm is Array) or (hm as Array).size() < n * n:
+			continue
+		var raw := float((hm as Array)[(g.y - c.y * n) * n + (g.x - c.x * n)])
+		out[str(key)] = floorf(raw / VoxelConsts.STEP_HEIGHT) * VoxelConsts.STEP_HEIGHT
+	return out
 
 ## Phase 243 — the weights of an LOD-ring chunk's vertices (chunk-local to `corner`, world metres):
 ## every vertex reads the biome blend at its own place (an LOD chunk spans many level-0 chunks), and no

@@ -44,6 +44,12 @@ expect('a biome with no snowLine fails', problems(noLine), /biome Taiga declares
 const noSnow = fresh(); set(noSnow.materials.TerrainSnow, 'aboveSnowLine', false);
 expect('a table with no snow material fails', problems(noSnow), /no terrain material covers ground above the snow line/);
 
+const noDug = fresh(); set(noDug.materials.TerrainDirt, 'dugGround', false);
+expect('a table with no dug-ground material fails', problems(noDug), /exactly one terrain material must cover dug ground/);
+
+const twoDug = fresh(); set(twoDug.materials.TerrainMud, 'dugGround', true);
+expect('two dug-ground materials fail', problems(twoDug), /exactly one terrain material must cover dug ground \(dugGround\), found 2/);
+
 const odd = fresh(); set(odd.materials.TerrainRock, 'scale', 6);
 expect('a scale that does not tile a chunk fails', problems(odd), /scale 6 must fit a 32 m chunk/);
 

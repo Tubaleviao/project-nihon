@@ -794,8 +794,11 @@ brush op; this phase does the same on top of the run columns.
   materials it cuts. Bare hands: a small sphere in soil and sand only. A shovel: a larger sphere,
   soil, sand and gravel, the fastest per m³. A pick: a smaller sphere that also cuts rock and ore. A
   material the held tool cannot cut stays, so a shovel dig into a rock face stops at the rock.
-  Work time (Phase 259) scales with the volume removed and the Mining skill; skill levels may grow the
-  radius up to a fabric cap.
+  Work time (Phase 259) is one flat `digSeconds` (1 s, owner 2026-11-28) for every brush dig, bare hands
+  and shovel alike, divided by the Mining skill speed; the tool decides only the hole's size (hands
+  0.35 m, shovel 0.75 m). Skill levels may grow the radius up to a fabric cap.
+- **Dug ground shows soil** (owner 2026-11-28): a dug pit draws the fabric's `dugGround` terrain material
+  (TerrainDirt), not the turf, snow or cliff rock that was on top (`TerrainWeights.apply_dug`).
 - **Trust boundary:** the host recomputes the brush from its own copy of the tool, skill and runs and
   ignores any shape or radius the client sends; one brush per completed work hold, rate-limited like
   mines today; the radius is capped in the fabric and by a validator.
@@ -817,11 +820,14 @@ brush op; this phase does the same on top of the run columns.
   the pinned seed.
 - A `tools/net_harness.sh` step: a client digs with a shovel; the host and the second client hold
   identical runs for every touched tile.
+- Suite tests: a novice dig takes `digSeconds` with bare hands and with a shovel, an expert digs faster,
+  and the shovel's brush is bigger than the hands'; a vertex a step below the natural top of a dug tile
+  weighs fully on the `dugGround` layer while the top and undug tiles keep their turf.
 - The playtest `mine` step digs a 1 m deep pit 1.5 m wide with a stone shovel in at most 6 holds and
   meets its budget.
 
 **Progress:** the fabric half landed (tools-decide-the-brush): `fabric/gameplay/dig_brushes.js`
-(`DigBrushes` world system: radius cap, skill radius per tier, blend, min radius, work factor, per-tool brushes with
+(`DigBrushes` world system: radius cap, skill radius per tier, blend, min radius, dig seconds, per-tool brushes with
 resolved `cuts`, unit volume), its validator and `tools/check_dig_brush.js` (CI). The GDScript runtime landed:
 `src/terrain/dig_brush.gd` (`DigBrush`, the pure integer-mm rasteriser: `make_op`, `bounds`, `cut_cells`, `spans_of`,
 `rasterise`), `src/terrain/voxel_dig.gd` (`VoxelDig`: the host's plan from its own tool, Mining tier and runs; the dig,

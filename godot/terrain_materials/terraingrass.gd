@@ -11,6 +11,7 @@ extends Resource
 @export var slopeMin: float
 @export var aboveSnowLine: bool
 @export var nearWater: float
+@export var dugGround: bool
 @export var heightFloor: float
 @export var minMeanLuminance: float
 @export var minDarkLuminance: float

@@ -22,6 +22,7 @@ Wet dark mud along lake shores and river banks.
 | slopeMin | decimal | Degrees from flat above which ground is this material whatever the biome; -1 = never (Phase 242) |
 | aboveSnowLine | boolean | Whether this material covers ground above the biome's snowLine (Phase 242) |
 | nearWater | decimal | Metres from open water within which this material covers wet ground; -1 = never (Phase 242) |
+| dugGround | boolean | Whether this material covers ground dug below the natural surface, whatever else holds there (Phase 300) |
 | heightFloor | decimal | Least blend height (0..1) of this layer: its albedo luminance is clamped up to it in the height blend (Phase 285) |
 | minMeanLuminance | decimal | Floor (0..1) for the mean luminance of this material's albedo map; a darker map is refused and the placeholder used (Phase 285) |
 | minDarkLuminance | decimal | Floor (0..1) for the luminance of the darkest 1% of this material's albedo texels (Phase 285) |
