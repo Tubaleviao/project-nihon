@@ -870,7 +870,7 @@ func _on_mine_requested(position: Vector3, normal: Vector3, player_id: String, e
 	if s.is_authoritative:
 		s.mine_block(position, normal, player_id, exact)
 	else:
-		GameBus.block_edit_intent.emit("mine", position, normal, "", exact, s._predict.predict("mine", position, normal, ""))
+		GameBus.block_edit_intent.emit("mine", position, normal, "", exact, s._predict.predict("mine", position, normal, "", exact))
 
 ## The inventory an edit by `player_id` resolves against: that player's own pack from
 ## the registry when one is wired, else this slice's (`""` = this machine's own

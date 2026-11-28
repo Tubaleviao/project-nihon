@@ -77,7 +77,8 @@ func pending_places(material: String) -> int:
 ## Apply `action` ("mine" or "place") at the aimed point to this client's voxel data and return its number, or 0
 ## when there is nothing to predict (no span to mine, a placed block, a full cell, no material): the intent still
 ## goes to the host.
-func predict(action: String, position: Vector3, normal: Vector3, material: String) -> int:
+## `exact` is the intent's own exact aim (Phase 300: the brush is planned from it, as the host does).
+func predict(action: String, position: Vector3, normal: Vector3, material: String, exact: Dictionary = {}) -> int:
 	if s.is_authoritative or _pending.size() >= MAX_PENDING:
 		return 0
 	if action == "place" and (material == "" or not GameData.MATERIALS.has(material)):
@@ -91,7 +92,7 @@ func predict(action: String, position: Vector3, normal: Vector3, material: Strin
 	if action == "mine" and s._edit.brush_enabled:
 		# Phase 300 — this client's own plan of the brush (its own tool and skill); the host's answer decides, and a
 		# different brush there is a mismatch like any other.
-		var brush: Dictionary = s._edit._dig.plan(position, normal, "")
+		var brush: Dictionary = s._edit._dig.plan(position, normal, "", exact)
 		if not brush.is_empty():
 			e["dig"] = brush
 	if not _apply(e, EditRemesh.PRIMARY):

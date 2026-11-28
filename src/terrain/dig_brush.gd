@@ -25,7 +25,7 @@ const NativeLoaderScript := preload("res://src/core/native_loader.gd")
 const TILE_MM := 500
 const STEP_MM := 125
 const SAMPLE_Y := 62            # offset of the sample point above the cell's bottom (floor of half a step)
-const BEDROCK_MM := -96000
+const BEDROCK_MM := -96000         # VoxelConsts.BEDROCK_DEPTH in mm; the suite asserts they agree
 const SHAPES := ["sphere", "cylinder", "box"]
 const MAX_K_MM := 1000
 

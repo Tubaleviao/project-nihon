@@ -28,6 +28,7 @@ func register() -> void:
 	_run_test("dig brush: a client applies the wire op to the same logs as the host", _test_wire_logs_match)
 	_run_test("dig brush: a client predicts the whole brush, and the host's op confirms it without applying twice", _test_prediction)
 	_run_test("dig brush: a brush dig takes the time of its volume", _test_work_time)
+	_run_test("dig brush: a claim is bound to the brush that was timed (another normal or tool is refused)", _test_work_claim_bound)
 	_run_test("dig brush: the native rasteriser logs the same cells as the GDScript on 200 random brushes", _test_native_parity)
 
 # --- fixtures -------------------------------------------------------------------
@@ -83,6 +84,14 @@ func _test_sphere_volume() -> void:
 	var half := 2.0 / 3.0 * PI   # r = 1 m
 	assert_true(absf(vol - half) / half < 0.05, "volume %.3f m3 is within 5%% of the half sphere %.3f m3" % [vol, half])
 	assert_eq(int((res["volume"] as Dictionary)["Soil"]), _cells(res), "the per-material volume counts the same cells")
+	# Review of Phase 300 — a real dig's centre comes from `make_op`, which puts x and z on a tile's middle. There
+	# the 0.5 m column grid samples 9 columns instead of 16 and the cut is about a tenth under the half sphere, so
+	# that case is held to 12% (ROADMAP Phase 300 states both bounds).
+	var real := DigBrush.make_op("sphere", Vector3(0.1, 2.0, 0.1), Vector3.ZERO, 1000, 0)
+	real["centre"][1] = 2000   # on the surface, as above: make_op's push into the ground is not the sampling error
+	assert_eq(int(real["centre"][0]), 250, "make_op centres x on the tile's middle")
+	var mid := float(_cells(DigBrush.rasterise(real, cols, _classify_as("Soil"), { "Soil": true }))) * 0.03125
+	assert_true(absf(mid - half) / half < 0.12, "tile-middle volume %.3f m3 is within 12%% of the half sphere %.3f m3" % [mid, half])
 	# The native twin's entry point: plain arrays in, plain arrays out.
 	var cells := DigBrush.cut_cells(_op("sphere", 0, 2000, 0, 1000), cols)
 	assert_true(cells[0] is Array and cells[0][2] is PackedInt32Array, "tiles come back as [tx, tz, PackedInt32Array]")
@@ -134,6 +143,7 @@ func _test_placed_block_untouched() -> void:
 	v.free()
 
 func _test_bedrock() -> void:
+	assert_eq(DigBrush.BEDROCK_MM, int(round(preload("res://src/terrain/voxel_consts.gd").BEDROCK_DEPTH * 1000.0)), "the rasteriser's bedrock is VoxelConsts.BEDROCK_DEPTH")
 	var cols := _columns(-4, 4, -4, 4, -100000, -90000)
 	var res := DigBrush.rasterise(_op("sphere", 250, -96000, 250, 1500), cols, _classify_as("Ferrite"), { "Ferrite": true })
 	assert_true(_cells(res) > 0, "ground above bedrock is cut")
@@ -352,6 +362,30 @@ func _test_work_time() -> void:
 	v.free()
 	hands.inventory_slice.free()
 	hands.free()
+
+## Review of Phase 300 — the hold is timed for one plan; a completion aimed with another normal (a brush pushed
+## out of the air into the ground) or holding another tool plans a bigger op and must not complete on that timer.
+func _test_work_claim_bound() -> void:
+	var Host := preload("res://src/core/work_host.gd")
+	var v := _brush_voxel()
+	var inv := _inventory(v, { "StoneShovel": 1 })
+	var h = Host.new()
+	h.voxel_slice = v
+	var down: Dictionary = h.start("", "block", "", AIM, Vector3.DOWN, {}, 0.0)
+	var up: Dictionary = h.resolve("", "block", "", AIM, Vector3.UP, {})
+	assert_true(bool(down["ok"]), "a hold aimed with the down normal starts")
+	assert_eq(str(up["key"]), str(down["key"]), "both aims name the same slab key")
+	assert_true(str(up["plan"]) != str(down["plan"]), "but not the same brush plan")
+	assert_false(h.claim("", str(up["key"]), 999.0, true, str(up["plan"])), "a claim with the other normal's plan is refused")
+	assert_true(h.claim("", str(down["key"]), 999.0, true, str(down["plan"])), "the timed plan completes")
+	h.start("", "block", "", AIM, Vector3.UP, {}, 0.0)
+	inv.consume_items({ "StoneShovel": 1 })
+	var bare: Dictionary = h.resolve("", "block", "", AIM, Vector3.UP, {})
+	assert_false(h.claim("", str(bare["key"]), 999.0, true, str(bare["plan"])), "a tool swapped mid-hold is refused")
+	if h is Node:
+		h.free()
+	inv.free()
+	v.free()
 
 # --- the wire and the prediction ----------------------------------------------------
 

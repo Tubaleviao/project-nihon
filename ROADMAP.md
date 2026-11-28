@@ -805,7 +805,9 @@ brush op; this phase does the same on top of the run columns.
 **Acceptance criteria**
 - `npm run validate` and `check-drift` pass. A `tools/check_dig_brush.js` rejects a tool brush over
   the radius cap and a brush that names a material that is not a terrain material.
-- Suite tests: a sphere dig of radius 1 m on flat ground removes a volume within 5% of a half sphere;
+- Suite tests: a sphere dig of radius 1 m on flat ground removes a volume within 5% of a half sphere
+  when centred on a tile corner, and within 12% when centred on a tile's middle as `make_op` places a
+  real dig (the 0.5 m column grid samples 9 columns there instead of 16);
   no column outside the brush bounds changes; a placed block inside the bounds is untouched; the cut
   stops at `BEDROCK_DEPTH`; a shovel dig into rock removes no rock; a side dig into a cliff leaves a
   roof run above the hole.
@@ -828,8 +830,9 @@ was yielded, work time by volume, the shared apply, the `dig` wire op), `VoxelEd
 `minRadius` is one op, smaller or a placed block keeps the single slab), `WorkHost.resolve` (duration by volume),
 `EditPrediction` (the whole brush predicted at once) and `src/tests/suites/dig_brush_tests.gd`. The op rides the JSON
 `block_changed` as action `dig` (`shape|radius_mm|k_mm|tool|cx,cy,cz|deplete`); Phase 256's binary tags are not extended.
-**Remaining:** the native port of `DigBrush.cut_cells` with the 200-random-brush parity test, the `tools/net_harness.sh`
-dig step, and the playtest `mine` step (pit in at most 6 holds, budget).
+Since then: the native port `NativeBake.cut_cells` with the 200-random-brush parity test, the `dig_brush_synced`
+`tools/net_harness.sh` step and the playtest `mine` pit (`src/tests/playtest_dig_pit.gd`). A hold's timer is bound to
+the brush plan it was timed for (`WorkSession` `plan`): a completion with another normal or tool is refused.
 
 ## Phase 301 — Shaping the ground: fill, flatten and smooth, and a dug surface that shows what it is
 

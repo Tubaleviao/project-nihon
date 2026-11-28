@@ -969,7 +969,7 @@ func _work_claimed(sender: int, kind: String, tree_id: String, pos: Vector3, nor
 		return true
 	var actor: String = sl._actor_id(sender)
 	var t: Dictionary = host.resolve(actor, kind, tree_id, pos, normal, exact)
-	if t.is_empty() or not host.claim(actor, str(t["key"]), Time.get_ticks_msec() * 0.001):
+	if t.is_empty() or not host.claim(actor, str(t["key"]), Time.get_ticks_msec() * 0.001, true, str(t.get("plan", ""))):
 		sl.Diag.warn("NetworkingSlice: %s completion from peer %d before the host's timer — dropped" % [kind, sender])
 		return false
 	GameBus.work_anim_changed.emit(sender, "")

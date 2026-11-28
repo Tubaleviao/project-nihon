@@ -585,7 +585,7 @@ func predicted_edit(h: Node) -> void:
 	if h._role == "host":
 		var mines := [0]
 		var on_changed := func(action: String, _p: Vector3, _n: Vector3, _m: String) -> void:
-			if action == "mine":
+			if action == "mine" or action == "dig":   # Phase 300: a bare-hands dig at minRadius or more is a brush op
 				mines[0] += 1
 		GameBus.block_changed.connect(on_changed)
 		var refused0: int = int(net._m2.edit_refusals_sent)
@@ -1295,7 +1295,7 @@ func dig_brush_synced(h: Node) -> void:
 		var bound: String = h._live_bound_id()
 		var pack: Node = h._root._registry.get_inventory(bound)
 		var added: bool = pack.add_item("StoneShovel", 1)   # the client digs once it sees it in its pack
-		GameBus.inventory_synced.emit(bound, pack.get_contents(), pack.get_durability_data())
+		h._root._chest_wiring._push_inventory(bound)   # the client reads its own copy of the bag
 		var dug: bool = await h._await_until(func() -> bool: return not ops.is_empty(), h._step_timeout() * 4.0)
 		await h._await_settle(1.5 * h._time_scale)
 		detail = _dig_runs(voxel, ops) if dug else "no_dig_came-added%d-bound%s" % [int(added), bound]
