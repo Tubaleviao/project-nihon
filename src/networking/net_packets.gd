@@ -969,7 +969,7 @@ func _work_claimed(sender: int, kind: String, tree_id: String, pos: Vector3, nor
 		return true
 	var actor: String = sl._actor_id(sender)
 	var t: Dictionary = host.resolve(actor, kind, tree_id, pos, normal, exact)
-	if t.is_empty() or not host.claim(actor, str(t["key"]), Time.get_ticks_msec() * 0.001):
+	if t.is_empty() or not host.claim(actor, str(t["key"]), Time.get_ticks_msec() * 0.001, true, str(t.get("plan", ""))):
 		sl.Diag.warn("NetworkingSlice: %s completion from peer %d before the host's timer — dropped" % [kind, sender])
 		return false
 	GameBus.work_anim_changed.emit(sender, "")
@@ -1058,7 +1058,8 @@ func on_block_changed(action: String, position: Vector3, normal: Vector3, materi
 		"normal":   [normal.x, normal.y, normal.z],
 		"material": material,
 	}
-	if not _edit_ack.is_empty() and str(_edit_ack["action"]) == action:
+	# Phase 300 — a mine intent the host answered with a brush op ("dig") is still that intent's confirmation.
+	if not _edit_ack.is_empty() and (str(_edit_ack["action"]) == action or (action == "dig" and str(_edit_ack["action"]) == "mine")):
 		if int(_edit_ack["seq"]) > 0:
 			packet["edit_seq"] = int(_edit_ack["seq"])
 			packet["by"] = int(_edit_ack["peer"])

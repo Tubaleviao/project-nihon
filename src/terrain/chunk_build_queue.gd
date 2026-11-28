@@ -363,6 +363,7 @@ func _dispatch_build(chunk_pos: Vector2i) -> void:
 			VoxelBuilder.build_runs(chunk_pos, heightmap, gathered), keep_render)
 		if keep_render:
 			TerrainWeights.apply(result[0], chunk_pos, gathered.get("biomes", {}), seed_v)
+			TerrainWeights.apply_dug(result[0], chunk_pos, heightmap, gathered)   # Phase 300: a pit shows soil
 		_add_fresh_water(result[0], chunk_pos, seed_v, keep_render)
 	var task_id = WorkerThreadPool.add_task(job, sl.build_high_priority(chunk_pos), "chunk build %s" % key)
 	sl._builds[task_id] = {
@@ -661,6 +662,7 @@ func noise_build_job(chunk_pos: Vector2i, known: Array = []) -> Dictionary:   # 
 			coarse["shape"] = VoxelMesh.collision_shape(coarse["collision"])
 			if keep_render:
 				TerrainWeights.apply(coarse, chunk_pos, gathered.get("biomes", {}), seed_v)
+				TerrainWeights.apply_dug(coarse, chunk_pos, hm, gathered)
 			result[0] = coarse
 			_add_fresh_water(result[0], chunk_pos, seed_v, keep_render)
 		else:
@@ -668,6 +670,7 @@ func noise_build_job(chunk_pos: Vector2i, known: Array = []) -> Dictionary:   # 
 			result[0] = VoxelMesh.build_worker_arrays(chunk_pos, hm, VoxelBuilder.build_runs(chunk_pos, hm, gathered), keep_render)
 			if keep_render:
 				TerrainWeights.apply(result[0], chunk_pos, gathered.get("biomes", {}), seed_v)
+				TerrainWeights.apply_dug(result[0], chunk_pos, hm, gathered)
 			_add_fresh_water(result[0], chunk_pos, seed_v, keep_render)
 		result[2] = Time.get_ticks_usec() - t0
 	return { "job": job, "result": result, "revision": revision, "input": gathered, "known": cached, "lod": lod }

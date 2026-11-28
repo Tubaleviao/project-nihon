@@ -12,6 +12,7 @@ biomes = ["TemperateForest","TemperateGrassland","Taiga","Savanna"]
 slopeMin = -1.0
 aboveSnowLine = false
 nearWater = -1.0
+dugGround = false
 heightFloor = 0.2
 minMeanLuminance = 0.08
 minDarkLuminance = 0.015

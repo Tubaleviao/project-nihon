@@ -9,6 +9,7 @@ radiusCap = 1.5
 skillRadiusPerTier = 0.05
 blend = 0.25
 minRadius = 0.25
+digSeconds = 1.0
 brushes = {"hands":{"shape":"sphere","radius":0.35,"cuts":["Grass","Soil","Sand","Snow"]},"FerritePick":{"shape":"sphere","radius":0.5,"cuts":["Ferrite","Veilsteel","Aethermite","Voidite","Ashite","Lumenfite","Grass","Soil","Sand","Snow"]},"VeilsteelPick":{"shape":"sphere","radius":0.5,"cuts":["Ferrite","Veilsteel","Aethermite","Voidite","Ashite","Lumenfite","Grass","Soil","Sand","Snow"]},"StonePick":{"shape":"sphere","radius":0.5,"cuts":["Ferrite","Veilsteel","Aethermite","Voidite","Ashite","Lumenfite","Grass","Soil","Sand","Snow"]},"StoneShovel":{"shape":"sphere","radius":0.75,"cuts":["Grass","Soil","Sand","Snow"]}}
 unitVolume = {"default":0.03125,"overrides":{}}
 description = "Which brush a dig makes: bare hands and each shovel or pick have a shape, a radius and the materials they cut; Mining skill grows the radius up to a cap; the rim is blended; yield is removed volume over a unit volume per material."

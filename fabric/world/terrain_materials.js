@@ -11,6 +11,8 @@ const { defineEntity } = require('@newel/core')
 // - `slopeMin`: degrees from flat above which ground turns to it (rock on cliffs), whatever the biome.
 // - `aboveSnowLine`: it covers ground above the biome's `snowLine` (metres above sea level).
 // - `nearWater`: metres from a lake, river or sea edge within which it covers wet ground.
+// - `dugGround`: it covers ground dug below the natural surface (Phase 300: a pit shows soil, not the turf
+//   that was on top), whatever the biome, slope or snow. Exactly one material says so.
 //
 // The per-vertex weights are a pure function of these (src/terrain/terrain_weights.gd). Textures are
 // CC0 (credited in assets/README.md), so they are public and are also the placeholder for later
@@ -37,7 +39,7 @@ const MIN_MEAN_LUMINANCE = 0.08
 const MIN_DARK_LUMINANCE = 0.015
 
 function terrainMaterial({ description, goal, layer, textureKey, scale, biomes = [], slopeMin = -1,
-  aboveSnowLine = false, nearWater = -1, heightFloor = HEIGHT_FLOOR, minMeanLuminance = MIN_MEAN_LUMINANCE,
+  aboveSnowLine = false, nearWater = -1, dugGround = false, heightFloor = HEIGHT_FLOOR, minMeanLuminance = MIN_MEAN_LUMINANCE,
   minDarkLuminance = MIN_DARK_LUMINANCE }) {
   return defineEntity({
     tags: ['terrain_material'],
@@ -52,6 +54,7 @@ function terrainMaterial({ description, goal, layer, textureKey, scale, biomes =
       slopeMin:      { type: 'decimal', description: 'Degrees from flat above which ground is this material whatever the biome; -1 = never (Phase 242)', defaultValue: slopeMin },
       aboveSnowLine: { type: 'boolean', description: 'Whether this material covers ground above the biome\'s snowLine (Phase 242)', defaultValue: aboveSnowLine },
       nearWater:     { type: 'decimal', description: 'Metres from open water within which this material covers wet ground; -1 = never (Phase 242)', defaultValue: nearWater },
+      dugGround:     { type: 'boolean', description: 'Whether this material covers ground dug below the natural surface, whatever else holds there (Phase 300)', defaultValue: dugGround },
       heightFloor:   { type: 'decimal', description: 'Least blend height (0..1) of this layer: its albedo luminance is clamped up to it in the height blend (Phase 285)', defaultValue: heightFloor },
       minMeanLuminance: { type: 'decimal', description: 'Floor (0..1) for the mean luminance of this material\'s albedo map; a darker map is refused and the placeholder used (Phase 285)', defaultValue: minMeanLuminance },
       minDarkLuminance: { type: 'decimal', description: 'Floor (0..1) for the luminance of the darkest 1% of this material\'s albedo texels (Phase 285)', defaultValue: minDarkLuminance },
@@ -70,7 +73,7 @@ const TERRAIN_MATERIALS = {
     description: 'Dry brown soil and ash: the volcanic badlands.',
     goal: 'Bare earth where nothing grows',
     layer: 1, textureKey: 'textures/terrain/dirt', scale: 4,
-    biomes: ['VolcanicBadlands'],
+    biomes: ['VolcanicBadlands'], dugGround: true,
   }),
   TerrainMoss: terrainMaterial({
     description: 'Mossy forest floor under the twilight canopy.',
@@ -149,6 +152,8 @@ function terrainMaterialProblems(materials, biomes, assetsDir = ASSETS) {
     if (typeof line !== 'number') problems.push(`biome ${b} declares no numeric snowLine`)
   }
   if (!Object.values(materials).some((m) => value(m, 'aboveSnowLine') === true)) problems.push('no terrain material covers ground above the snow line')
+  const dug = Object.keys(materials).filter((n) => value(materials[n], 'dugGround') === true)
+  if (dug.length !== 1) problems.push(`exactly one terrain material must cover dug ground (dugGround), found ${dug.length}`)
   return problems
 }
 

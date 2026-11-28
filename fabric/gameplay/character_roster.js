@@ -50,6 +50,7 @@ const OWNERSHIP = {
   skills:          'character',
   skillXp:         'character',
   skillFocus:      'character',
+  digRemainder:    'character',   // Phase 300: the part of a yield unit a dig has not yet paid
   professions:     'character',
   titles:          'character',
   cooldowns:       'character',
@@ -98,6 +99,7 @@ const RECORD_KEYS = {
   skills:            'skills',
   skill_xp:          'skillXp',
   skill_focus:       'skillFocus',
+  dig_remainder:     'digRemainder',
   attributes:        'attributes',
   attribute_growth:  'attributeGrowth',
   cooldowns:         'cooldowns',

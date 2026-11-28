@@ -23,7 +23,7 @@ static func tree_key(tree_id: String) -> String:
 func start(player_id: String, kind: String, tree_id: String, pos: Vector3, normal: Vector3, exact: Dictionary, now: float) -> Dictionary:
 	var t := resolve(player_id, kind, tree_id, pos, normal, exact)
 	var before := str(sessions.session(player_id).get("target", ""))
-	if t.is_empty() or not sessions.start(player_id, str(t["key"]), str(t["action"]), float(t["duration"]), now):
+	if t.is_empty() or not sessions.start(player_id, str(t["key"]), str(t["action"]), float(t["duration"]), now, str(t.get("plan", ""))):
 		return { "ok": false }
 	if before != str(t["key"]):
 		if before != "":
@@ -36,6 +36,7 @@ func start(player_id: String, kind: String, tree_id: String, pos: Vector3, norma
 func resolve(player_id: String, kind: String, tree_id: String, pos: Vector3, normal: Vector3, exact: Dictionary) -> Dictionary:
 	var material := ""
 	var key := ""
+	var plan := ""
 	var action := ""
 	var skill_action := ""
 	var inventory: Node = null
@@ -78,15 +79,25 @@ func resolve(player_id: String, kind: String, tree_id: String, pos: Vector3, nor
 	# skill that speeds a job is the one that grows from it: a wood block mined with a pick takes the pick's speed
 	# and the Woodcutting tier.
 	var tier := WorkTime.worker_tier(registry, player_id, skill_action)
-	return { "key": key, "action": action, "material": material,
-		"duration": WorkTime.duration(material, action, tool, tier, skill_action) }
+	var duration := WorkTime.duration(material, action, tool, tier, skill_action)
+	if kind == "block":
+		# Phase 300 — a brush dig takes the time of the volume it removes (never less than one slab), the host's
+		# own plan from its own tool and tier; the key stays the aimed slab's, so marks are unchanged. The plan's own
+		# key (centre and radius) binds the claim to the brush that was timed: a completion aimed with another normal
+		# or holding another tool plans another op and is refused.
+		var brush: Dictionary = voxel_slice._edit._dig.work_target(pos, normal, player_id, exact) if voxel_slice._edit.brush_enabled else {}
+		if not brush.is_empty():
+			duration = maxf(duration, float(brush["seconds"]))
+			plan = str(brush["key"]) + "|" + str(voxel_slice._edit._dig.plan(pos, normal, player_id, exact).get("tool", ""))
+	return { "key": key, "action": action, "material": material, "duration": duration, "plan": plan }
 
 ## A completion claim for `key`: true once the host's own timer has run out with the work still held and in reach.
 ## `in_reach` is the caller's own check; a claim is "held" while its session exists (a release cancels it).
 ## #629 — a claim that ends the session (completed, or out of reach) announces the mark's stop.
-func claim(player_id: String, key: String, now: float, in_reach: bool = true) -> bool:
+## Phase 300 — `plan` is the claim's own resolved plan (`resolve(...)["plan"]`); it must equal the session's.
+func claim(player_id: String, key: String, now: float, in_reach: bool = true, plan: String = "") -> bool:
 	var target := str(sessions.session(player_id).get("target", ""))
-	var done := sessions.try_complete(player_id, key, now, true, in_reach)
+	var done := sessions.try_complete(player_id, key, now, true, in_reach, plan)
 	if target != "" and not sessions.has_session(player_id):
 		GameBus.work_mark_changed.emit(player_id, target, 0.0)
 	return done

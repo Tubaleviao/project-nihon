@@ -11,13 +11,15 @@ var _sessions: Dictionary = {}
 ## Begins work for `player_id` on `target`. A session on another target is dropped (retarget cancels). A
 ## repeated start on the same target keeps the original start time, so re-sending a start never shortens it.
 ## `duration` <= 0 is refused (an unknown material has no time).
-func start(player_id: String, target: String, action: String, duration: float, now: float) -> bool:
+## Phase 300 — `plan` names the brush op the duration was timed for (`""` for a slab or a tree): a start on the
+## same target with another plan (another normal or tool) restarts the timer, and a claim must name the same plan.
+func start(player_id: String, target: String, action: String, duration: float, now: float, plan: String = "") -> bool:
 	if target == "" or duration <= 0.0:
 		return false
 	var cur: Dictionary = _sessions.get(player_id, {})
-	if not cur.is_empty() and cur["target"] == target and cur["action"] == action:
+	if not cur.is_empty() and cur["target"] == target and cur["action"] == action and str(cur.get("plan", "")) == plan:
 		return true
-	_sessions[player_id] = { "target": target, "action": action, "started": now, "duration": duration }
+	_sessions[player_id] = { "target": target, "action": action, "started": now, "duration": duration, "plan": plan }
 	return true
 
 func has_session(player_id: String) -> bool:
@@ -39,10 +41,11 @@ func cancel(player_id: String) -> bool:
 
 ## Asks to complete. True (and the session ends) only when the target matches, the duration has passed, the
 ## input is still held and the target is in reach; an early claim leaves the session running, a claim made
-## while released or out of reach cancels it.
-func try_complete(player_id: String, target: String, now: float, held: bool, in_reach: bool) -> bool:
+## while released or out of reach cancels it. A claim whose `plan` differs from the session's (a brush bigger than
+## the one timed) is refused and leaves the session running.
+func try_complete(player_id: String, target: String, now: float, held: bool, in_reach: bool, plan: String = "") -> bool:
 	var s: Dictionary = _sessions.get(player_id, {})
-	if s.is_empty() or s["target"] != target:
+	if s.is_empty() or s["target"] != target or str(s.get("plan", "")) != plan:
 		return false
 	if not held or not in_reach:
 		_sessions.erase(player_id)

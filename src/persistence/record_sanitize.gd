@@ -24,3 +24,12 @@ static func sanitize_skill_xp(raw: Variant) -> Dictionary:
 			if k is String and k != "" and k.length() <= 32 and (raw[k] is int or raw[k] is float) and is_finite(float(raw[k])):
 				out[k] = clampi(int(raw[k]), 0, 100000000)
 	return out
+
+## Phase 300 — a saved dig remainder as { material: fraction of a yield unit in [0, 1) } with bounded names.
+static func sanitize_remainders(raw: Variant) -> Dictionary:
+	var out := {}
+	if raw is Dictionary:
+		for k in raw:
+			if k is String and k != "" and k.length() <= 64 and (raw[k] is int or raw[k] is float) and is_finite(float(raw[k])):
+				out[k] = clampf(float(raw[k]), 0.0, 0.999999)
+	return out

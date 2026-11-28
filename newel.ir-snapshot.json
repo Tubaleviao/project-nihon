@@ -1,5 +1,5 @@
 {
-  "schemaHash": "sha256:5fbbf58522c55f1849356a83e7bff867b8b1b2ca171a5385d42ecc82b8c70d19",
+  "schemaHash": "sha256:ff9d207e772affaf8e5d09d1e0fb600c7a3fb180c118aaef194bd8982c24ee20",
   "schema": {
     "version": "3.0.0",
     "meta": {
@@ -7919,6 +7919,15 @@
             "pii": false,
             "defaultValue": -1
           },
+          "dugGround": {
+            "name": "dugGround",
+            "type": "boolean",
+            "description": "Whether this material covers ground dug below the natural surface, whatever else holds there (Phase 300)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": false
+          },
           "heightFloor": {
             "name": "heightFloor",
             "type": "decimal",
@@ -8031,6 +8040,15 @@
             "primaryKey": false,
             "pii": false,
             "defaultValue": -1
+          },
+          "dugGround": {
+            "name": "dugGround",
+            "type": "boolean",
+            "description": "Whether this material covers ground dug below the natural surface, whatever else holds there (Phase 300)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": true
           },
           "heightFloor": {
             "name": "heightFloor",
@@ -8145,6 +8163,15 @@
             "pii": false,
             "defaultValue": -1
           },
+          "dugGround": {
+            "name": "dugGround",
+            "type": "boolean",
+            "description": "Whether this material covers ground dug below the natural surface, whatever else holds there (Phase 300)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": false
+          },
           "heightFloor": {
             "name": "heightFloor",
             "type": "decimal",
@@ -8257,6 +8284,15 @@
             "primaryKey": false,
             "pii": false,
             "defaultValue": -1
+          },
+          "dugGround": {
+            "name": "dugGround",
+            "type": "boolean",
+            "description": "Whether this material covers ground dug below the natural surface, whatever else holds there (Phase 300)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": false
           },
           "heightFloor": {
             "name": "heightFloor",
@@ -8373,6 +8409,15 @@
             "pii": false,
             "defaultValue": -1
           },
+          "dugGround": {
+            "name": "dugGround",
+            "type": "boolean",
+            "description": "Whether this material covers ground dug below the natural surface, whatever else holds there (Phase 300)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": false
+          },
           "heightFloor": {
             "name": "heightFloor",
             "type": "decimal",
@@ -8487,6 +8532,15 @@
             "pii": false,
             "defaultValue": -1
           },
+          "dugGround": {
+            "name": "dugGround",
+            "type": "boolean",
+            "description": "Whether this material covers ground dug below the natural surface, whatever else holds there (Phase 300)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": false
+          },
           "heightFloor": {
             "name": "heightFloor",
             "type": "decimal",
@@ -8597,6 +8651,15 @@
             "primaryKey": false,
             "pii": false,
             "defaultValue": 3
+          },
+          "dugGround": {
+            "name": "dugGround",
+            "type": "boolean",
+            "description": "Whether this material covers ground dug below the natural surface, whatever else holds there (Phase 300)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": false
           },
           "heightFloor": {
             "name": "heightFloor",
@@ -44670,6 +44733,15 @@
             "pii": false,
             "defaultValue": 0.25
           },
+          "digSeconds": {
+            "name": "digSeconds",
+            "type": "decimal",
+            "description": "Work time of one brush dig in seconds at novice Mining, any tool (the tool sets the size); Mining tiers divide it (Phase 274)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 1
+          },
           "brushes": {
             "name": "brushes",
             "type": "json",
@@ -55031,7 +55103,7 @@
         "tags": [
           "world-system"
         ],
-        "description": "Several characters per player (Phase 226). The player is the account that connects; a character is who walks the world. A player keeps up to 4 characters on a server, picked from a list after choosing a world or joining a server. A new character starts from scratch: no items, base attributes, no skills, research, books or clan, and nothing from the player's other characters. Names are unique on the server across every character. Deleting a character asks for its name typed out; its structures go to its clan, or become ownerless when it had none. The character owns: characterId, body, name, hp, position, spawnPoint, statusEffects, attributes, attributeGrowth, inventory, equipment, skills, skillXp, skillFocus, professions, titles, cooldowns, craftCounter, research, booksLearned, tamingFlags, companions, waystones, clanMembership, ownedStructures, spawnBed. The player owns: friendCode, settings, admin, lastCharacter.",
+        "description": "Several characters per player (Phase 226). The player is the account that connects; a character is who walks the world. A player keeps up to 4 characters on a server, picked from a list after choosing a world or joining a server. A new character starts from scratch: no items, base attributes, no skills, research, books or clan, and nothing from the player's other characters. Names are unique on the server across every character. Deleting a character asks for its name typed out; its structures go to its clan, or become ownerless when it had none. The character owns: characterId, body, name, hp, position, spawnPoint, statusEffects, attributes, attributeGrowth, inventory, equipment, skills, skillXp, skillFocus, digRemainder, professions, titles, cooldowns, craftCounter, research, booksLearned, tamingFlags, companions, waystones, clanMembership, ownedStructures, spawnBed. The player owns: friendCode, settings, admin, lastCharacter.",
         "goal": "A player can start over as someone new without losing the character they already have",
         "fields": {
           "id": {
@@ -55063,6 +55135,7 @@
               "skills": "character",
               "skillXp": "character",
               "skillFocus": "character",
+              "digRemainder": "character",
               "professions": "character",
               "titles": "character",
               "cooldowns": "character",
@@ -55143,6 +55216,7 @@
               "skills": "skills",
               "skill_xp": "skillXp",
               "skill_focus": "skillFocus",
+              "dig_remainder": "digRemainder",
               "attributes": "attributes",
               "attribute_growth": "attributeGrowth",
               "cooldowns": "cooldowns",

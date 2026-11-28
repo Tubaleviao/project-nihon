@@ -212,7 +212,7 @@ static func steps() -> Array:
 		{ "name": "book_teaches_client", "compare": true },
 		{ "name": "mount_dismount", "compare": true },
 		{ "name": "self_respawn", "compare": true },
-		{ "name": "loose_pick_synced", "compare": true }, { "name": "station_from_hotbar", "compare": true }, { "name": "station_craft", "compare": true }, { "name": "predicted_edit", "compare": true }, { "name": "client_attack_lands", "compare": true }, { "name": "client_loot_synced", "compare": true }, { "name": "market_names_seller", "compare": true }, { "name": "character_roster", "compare": true }, { "name": "planet_bake_fetch", "compare": true }, { "name": "menu_join", "compare": true }, { "name": "version_refused", "compare": true },
+		{ "name": "loose_pick_synced", "compare": true }, { "name": "station_from_hotbar", "compare": true }, { "name": "station_craft", "compare": true }, { "name": "predicted_edit", "compare": true }, { "name": "dig_brush_synced", "compare": true }, { "name": "client_attack_lands", "compare": true }, { "name": "client_loot_synced", "compare": true }, { "name": "market_names_seller", "compare": true }, { "name": "character_roster", "compare": true }, { "name": "planet_bake_fetch", "compare": true }, { "name": "menu_join", "compare": true }, { "name": "version_refused", "compare": true },
 	]
 
 ## The step names, comma-joined — the payload of the `plan` line the runner prints
@@ -475,7 +475,7 @@ func run(root: Node, role: String) -> void:
 	await LateSteps.new().book_teaches_client(self)
 	await LateSteps.new().mount_dismount(self)
 	await _step_self_respawn()
-	await LateSteps.new().loose_pick_synced(self); await LateSteps.new().station_from_hotbar(self); await LateSteps.new().station_craft(self); await LateSteps.new().predicted_edit(self); await LateSteps.new().client_attack_lands(self); await LateSteps.new().client_loot_synced(self); await LateSteps.new().market_names_seller(self); await LateSteps.new().character_roster(self); await LateSteps.new().planet_bake_fetch(self); await LateSteps.new().menu_join(self); await LateSteps.new().version_refused(self)
+	await LateSteps.new().loose_pick_synced(self); await LateSteps.new().station_from_hotbar(self); await LateSteps.new().station_craft(self); await LateSteps.new().predicted_edit(self); await LateSteps.new().dig_brush_synced(self); await LateSteps.new().client_attack_lands(self); await LateSteps.new().client_loot_synced(self); await LateSteps.new().market_names_seller(self); await LateSteps.new().character_roster(self); await LateSteps.new().planet_bake_fetch(self); await LateSteps.new().menu_join(self); await LateSteps.new().version_refused(self)
 	_finish()
 
 ## End this process, with the run's own verdict carried in the exit code.
@@ -1816,7 +1816,7 @@ func _step_sand_settles() -> void:
 		_root._inventory.add_item("Sand", 1)
 		_root._inventory.add_item("StoneHammer", 1)   # Phase 260: building needs a hammer in hand
 		var placed: bool = voxel.place_block(Vector3(centre.x, base, centre.y), Vector3.UP, "Sand")
-		var mined: Dictionary = voxel.mine_block(Vector3((SAND_TILE.x + 1) * VoxelSlice.TILE_SIZE, base - VoxelSlice.STEP_HEIGHT * 0.5, centre.y), Vector3(1, 0, 0))
+		var mined: Dictionary = LateSteps.slab_mine(voxel, Vector3((SAND_TILE.x + 1) * VoxelSlice.TILE_SIZE, base - VoxelSlice.STEP_HEIGHT * 0.5, centre.y), Vector3(1, 0, 0))
 		if not placed or not bool(mined.get("success", false)):
 			_report("sand_settles", "fail", "edit_refused-place%d-mine%d" % [int(placed), int(bool(mined.get("success", false)))])
 			return

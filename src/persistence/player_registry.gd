@@ -465,7 +465,7 @@ func ensure_player(player_id: String) -> Dictionary:
 			"craft_counter": 0,
 			"skills":     {},
 			# Phase 161 — skill experience points, { skill: xp }; the level follows from the fabric's table.
-			"skill_xp":   {},
+			"skill_xp":   {}, "dig_remainder": {},   # Phase 300: the part of a yield unit a dig has not yet paid, { material: fraction }
 			# Phase 178 — the six attributes ({ attribute: int }, base 10 each) and the growth banked toward the next
 			# point ({ points, xp }). Host-owned: no client message writes either.
 			"attributes": AttributeRules.defaults(),
@@ -1259,7 +1259,7 @@ func get_player_data(player_id: String) -> Dictionary:
 		"titles": TitleRules.of_record(rec),
 		"craft_counter": int(rec.get("craft_counter", 0)),
 		"skills":     rec.get("skills", {}),
-		"skill_xp":   rec.get("skill_xp", {}),
+		"skill_xp":   rec.get("skill_xp", {}), "dig_remainder": RecordSanitize.sanitize_remainders(rec.get("dig_remainder", {})),
 		"skill_focus": SkillFocus.sanitize(rec.get("skill_focus", {})),
 		"attributes": get_attributes(player_id),
 		"attribute_growth": AttributeRules.sanitize_growth(rec.get("attribute_growth", {})),
@@ -1333,7 +1333,7 @@ func apply_player_data(player_id: String, data: Dictionary) -> void:
 	# Phase 36: skill tiers ride the record too; a payload without `skills` restores empty (every skill novice).
 	rec["skills"]     = data.get("skills", {})
 	# Phase 161: skill XP rides the record; a payload from before it restores to none.
-	rec["skill_xp"]   = RecordSanitize.sanitize_skill_xp(data.get("skill_xp", {})); rec["skill_focus"] = SkillFocus.sanitize(data.get("skill_focus", {}))
+	rec["skill_xp"]   = RecordSanitize.sanitize_skill_xp(data.get("skill_xp", {})); rec["dig_remainder"] = RecordSanitize.sanitize_remainders(data.get("dig_remainder", {})); rec["skill_focus"] = SkillFocus.sanitize(data.get("skill_focus", {}))
 	# Phase 178: attributes ride the record; a pre-178 payload carries none and restores to base 10 in everything,
 	# which derives today's carry capacity and max HP exactly.
 	rec["attributes"] = AttributeRules.sanitize(data.get("attributes", {}))
