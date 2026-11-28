@@ -19,6 +19,7 @@ Which brush a dig makes: bare hands and each shovel or pick have a shape, a radi
 | skillRadiusPerTier | decimal | Metres of brush radius added per Mining skill tier |
 | blend | decimal | Default smooth-blend k in metres for the rim of a dig |
 | minRadius | decimal | Under this radius a dig is the single slab (one tile) |
+| workFactor | decimal | Work time of a brush dig: this fraction of a slab's time per slab-equivalent removed (Phase 259) |
 | brushes | json | { hands \| <tool item>: { shape: sphere\|cylinder\|box, radius, cuts: [material] } } |
 | unitVolume | json | { default: m3 per yielded unit, overrides: { <material>: m3 } } |
 

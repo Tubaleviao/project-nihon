@@ -13,6 +13,7 @@ const BLEND = 0.25              // default smooth-blend k in metres
 const MIN_RADIUS = 0.25         // below this a dig is the single slab (one tile)
 // Mirrors VoxelConsts TILE_SIZE x TILE_SIZE x STEP_HEIGHT (src/terrain/voxel_consts.gd); fabric holds no such constants.
 const UNIT_VOLUME = 0.5 * 0.5 * 0.125 // 0.03125 m3
+const WORK_FACTOR = 0.1         // a brush costs this fraction of one slab's work time per slab-equivalent it removes
 const SHAPES = ['sphere', 'cylinder', 'box']
 
 /** Built (placed) materials: never part of a natural dig, so no brush cuts them. */
@@ -50,7 +51,7 @@ function brushesTable() {
 
 function digBrushesData() {
   return JSON.parse(JSON.stringify({
-    radiusCap: RADIUS_CAP, skillRadiusPerTier: SKILL_RADIUS_PER_TIER, blend: BLEND, minRadius: MIN_RADIUS,
+    radiusCap: RADIUS_CAP, skillRadiusPerTier: SKILL_RADIUS_PER_TIER, blend: BLEND, minRadius: MIN_RADIUS, workFactor: WORK_FACTOR,
     brushes: brushesTable(), unitVolume: { default: UNIT_VOLUME, overrides: {} },
   }))
 }
@@ -86,6 +87,7 @@ function digBrushesProblems(d, refs) {
   if (!(typeof d.blend === 'number' && Number.isFinite(d.blend) && d.blend >= 0)) p.push('blend must be a finite number >= 0')
   if (!pos(d.minRadius)) p.push('minRadius must be a number > 0')
   else if (pos(d.radiusCap) && d.minRadius >= d.radiusCap) p.push('minRadius must be under radiusCap')
+  if (!pos(d.workFactor)) p.push('workFactor must be a number > 0')
   const brushes = isObj(d.brushes) ? d.brushes : {}
   if (!isObj(d.brushes)) p.push('brushes must be an object')
   if (!brushes.hands) p.push('brushes.hands is missing: bare hands dig too')
@@ -138,6 +140,7 @@ const DigBrushes = defineEntity({
     skillRadiusPerTier: { type: 'decimal', description: 'Metres of brush radius added per Mining skill tier', defaultValue: SKILL_RADIUS_PER_TIER },
     blend:              { type: 'decimal', description: 'Default smooth-blend k in metres for the rim of a dig', defaultValue: BLEND },
     minRadius:          { type: 'decimal', description: 'Under this radius a dig is the single slab (one tile)', defaultValue: MIN_RADIUS },
+    workFactor:         { type: 'decimal', description: 'Work time of a brush dig: this fraction of a slab\'s time per slab-equivalent removed (Phase 259)', defaultValue: WORK_FACTOR },
     brushes:            { type: 'json', description: '{ hands | <tool item>: { shape: sphere|cylinder|box, radius, cuts: [material] } }', defaultValue: brushesTable() },
     unitVolume:         { type: 'json', description: '{ default: m3 per yielded unit, overrides: { <material>: m3 } }', defaultValue: { default: UNIT_VOLUME, overrides: {} } },
   },
