@@ -1344,3 +1344,12 @@ func _dig_runs(voxel: Node, ops: Array) -> String:
 				runs.append("%.3f-%.3f:%s" % [float(run["bottom"]), float(run["top"]), str(run["material"])])
 			parts.append("%d,%d=%s" % [tx, tz, ",".join(runs)])
 	return "%s;%s" % [str(ops[-1]).split("|")[0], ";".join(parts)]
+
+## Phase 300 — one slab mined with the brush off: `sand_settles` checks the sand lands exactly one step down, and a
+## brush dig would cut several steps under it.
+static func slab_mine(voxel: Node, pos: Vector3, normal: Vector3) -> Dictionary:
+	var was: bool = voxel._edit.brush_enabled
+	voxel._edit.brush_enabled = false
+	var mined: Dictionary = voxel.mine_block(pos, normal)
+	voxel._edit.brush_enabled = was
+	return mined

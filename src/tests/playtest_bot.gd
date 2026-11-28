@@ -1297,6 +1297,7 @@ var _work_clip := ""; var _work_secs := 0.0; var _work_last: Array = []; var _wo
 
 func _step_mine() -> Array:
 	var p := _player_pos()
+	var pack0: Dictionary = _root._inventory.get_contents().duplicate()   # Phase 300: the pit's yield is handed back after it
 	if _root._inventory.get_item_count("StoneShovel") < 1: _root._inventory.add_item("StoneShovel", 1)   # Phase 300: the pit is dug with a stone shovel
 	var c := Vector2(floorf((p.x + 2.0) / 0.5) * 0.5 + 0.25, floorf(p.z / 0.5) * 0.5 + 0.25)   # a tile centre two metres ahead, so the body never stands over the pit
 	var y0: float = _root._voxel.get_voxel_height_at(c)
@@ -1311,6 +1312,7 @@ func _step_mine() -> Array:
 	# Phase 300 — the pit: up to 5 more holds (each held for its work time first, as a player digs: the dug chunk is
 	# built while the work runs, `EditPrebuild`) until it is 1 m deep and 1.5 m across. Phase 263: each edit is timed from its completion to its chunk's mesh attached.
 	var pit: Dictionary = await preload("res://src/tests/playtest_dig_pit.gd").run(self, c, y0, 1)
+	preload("res://src/tests/playtest_dig_pit.gd").hand_back(_root._inventory, pack0)
 	var own := func() -> int: return remesh.samples.slice(n0).filter(func(s: Dictionary) -> bool: return bool(s["primary"])).size()
 	await _until(func(): return own.call() >= int(pit["holds"]), STEP_TIMEOUT_SECS)
 	_edit_visible = edit_visible_record(remesh.samples.slice(n0))

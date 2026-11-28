@@ -48,3 +48,15 @@ static func run(bot: Node, c: Vector2, y0: float, holds: int) -> Dictionary:
 	var d := depth(voxel, c, y0)
 	var w := width(voxel, c, y0)
 	return { "holds": holds, "depth": d, "width": w, "ok": d >= MIN_DEPTH and w >= MIN_WIDTH and holds <= MAX_HOLDS }
+
+## The pit moves a few hundred units of ground and the shovel was lent: take back everything the pack gained since
+## `before`, so the later steps (gather, craft, place) start from the pack they always had, under its carry limit.
+static func hand_back(inventory: Node, before: Dictionary) -> void:
+	var extra: Dictionary = {}
+	var now: Dictionary = inventory.get_contents()
+	for item in now:
+		var n: int = int(now[item]) - int(before.get(item, 0))
+		if n > 0:
+			extra[item] = n
+	if not extra.is_empty():
+		inventory.consume_items(extra)
