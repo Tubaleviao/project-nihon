@@ -78,8 +78,14 @@ func resolve(player_id: String, kind: String, tree_id: String, pos: Vector3, nor
 	# skill that speeds a job is the one that grows from it: a wood block mined with a pick takes the pick's speed
 	# and the Woodcutting tier.
 	var tier := WorkTime.worker_tier(registry, player_id, skill_action)
-	return { "key": key, "action": action, "material": material,
-		"duration": WorkTime.duration(material, action, tool, tier, skill_action) }
+	var duration := WorkTime.duration(material, action, tool, tier, skill_action)
+	if kind == "block":
+		# Phase 300 — a brush dig takes the time of the volume it removes (never less than one slab), the host's
+		# own plan from its own tool and tier; the key stays the aimed slab's, so marks and claims are unchanged.
+		var brush: Dictionary = voxel_slice._edit._dig.work_target(pos, normal, player_id, exact) if voxel_slice._edit.brush_enabled else {}
+		if not brush.is_empty():
+			duration = maxf(duration, float(brush["seconds"]))
+	return { "key": key, "action": action, "material": material, "duration": duration }
 
 ## A completion claim for `key`: true once the host's own timer has run out with the work still held and in reach.
 ## `in_reach` is the caller's own check; a claim is "held" while its session exists (a release cancels it).

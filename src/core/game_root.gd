@@ -307,7 +307,7 @@ func _ready() -> void:
 func _build_and_boot() -> void:
 	_boot_wiring.install_quit_guard()   # Phase 33 — intercept the quit so records are written first.
 	_terrain     = TerrainSlice.new()
-	_voxel       = VoxelSlice.new()
+	_voxel       = VoxelSlice.new(); _voxel._edit.brush_enabled = true   # Phase 300: a dig is a brush op in the game (a bare slice digs one slab)
 	_chunk_manager = ChunkManager.new()
 	_minimap     = Minimap.new()
 	# Phase 42 — the first-ring loading screen. Presentation only, added to the tree

@@ -8,13 +8,25 @@ const TerrainSlice := preload("res://src/terrain/terrain_slice.gd")
 const WorkTime := preload("res://src/core/work_time.gd")
 const StoneTools := preload("res://src/world/stone_tools.gd")
 const EditRemesh := preload("res://src/terrain/edit_remesh.gd")
+const VoxelDig := preload("res://src/terrain/voxel_dig.gd")
 
 var s: Node
+## Phase 300 — the brush dig (`VoxelDig`). Off (the default of a bare slice, which the tests build), every dig is the
+## single slab; `GameRoot` turns it on for the real game, host and client alike.
+var _dig: RefCounted
+var brush_enabled := false
 
 func _init(slice: Node) -> void:
 	s = slice
+	_dig = VoxelDig.new(slice, self)
 
 func mine_block(world_pos: Vector3, normal: Vector3 = Vector3.UP, player_id: String = "", exact: Dictionary = {}) -> Dictionary:
+	# Phase 300 — a dig with a brush of at least the fabric's minimum radius is one brush op; the single slab below
+	# is its smallest case (and the only way to take a placed block).
+	if brush_enabled:
+		var brush: Dictionary = _dig.plan(world_pos, normal, player_id, exact)
+		if not brush.is_empty():
+			return _dig.dig(brush, world_pos, normal, player_id)
 	# Resolve the span BEFORE spending tool durability, so a blocked mine never
 	# consumes the held pick (the repo's standing atomic-refusal rule).
 	var probe = s._resolve_edit_tile("mine", world_pos, normal, exact)
@@ -436,7 +448,7 @@ func _resolve_edit_tile(action: String, position: Vector3, normal: Vector3, exac
 		var l: Vector3 = exact["local"]
 		x = float(c.x) * s.CHUNK_SIZE * s.TILE_SIZE + l.x
 		z = float(c.y) * s.CHUNK_SIZE * s.TILE_SIZE + l.z
-	if normal.y <= 0.5:
+	if normal.y <= 0.5 and action != "dig":   # a dig's position is the brush centre: no stepping into the face
 		var along := -1.0 if action == "mine" else 1.0
 		x += along * normal.x * s.TILE_SIZE * 0.5
 		z += along * normal.z * s.TILE_SIZE * 0.5
@@ -659,6 +671,8 @@ func _normalise_ops(ops: Array) -> Array:
 func _apply_edit(action: String, position: Vector3, normal: Vector3, material: String, level: int = EditRemesh.NEIGHBOUR) -> Dictionary:
 	if action == "settle":
 		return s._apply_settle(position, normal, material)
+	if action == "dig":
+		return _dig.apply_wire(position, normal, material, level)   # Phase 300: the host's brush op
 	var r = s._resolve_edit_tile(action, position, normal)
 	var tile: Vector2i = r["tile"]
 	var xz: Vector2 = r["xz"]
@@ -797,9 +811,15 @@ func _edit_level(player_id: String) -> int:
 
 ## PR #648 review — this machine's player started work on a block (`work_start_requested`, Phase 259): build the
 ## chunk as the dig will leave it, now, on a worker (`EditPrebuild`), so the completion only attaches it.
-func prebuild_on_work(kind: String, _tree_id: String, position: Vector3, normal: Vector3, _exact: Dictionary, player_id: String) -> void:
-	if kind == "block" and player_id == "":
+func prebuild_on_work(kind: String, _tree_id: String, position: Vector3, normal: Vector3, exact: Dictionary, player_id: String) -> void:
+	if kind != "block" or player_id != "" or not is_instance_valid(s):   # a freed slice's connection can outlive it
+		return
+	var brush: Dictionary = _dig.plan(position, normal, "", exact) if brush_enabled else {}
+	if brush.is_empty():
 		prebuild_edit("mine", position, normal, "")
+	else:
+		var c: Array = brush["op"]["centre"]
+		prebuild_edit("dig", Vector3(c[0], c[1], c[2]) * 0.001, normal, VoxelDig.encode(brush["op"], str(brush["tool"]), null))
 
 ## Apply `action` to the voxel data for a moment (no rebuild is dispatched: `VoxelBuild.sink`), start the edited
 ## chunk's build from it, and put every touched log, the depletion and the marks back. False when nothing would
@@ -809,7 +829,7 @@ func prebuild_edit(action: String, position: Vector3, normal: Vector3, material:
 	if cm == null or not ("_m1" in cm) or cm._m1 == null:
 		return false
 	var tile: Vector2i = s._resolve_edit_tile(action, position, normal)["tile"]
-	var keys := _edit_keys(action, tile, position, normal)
+	var keys: Array = _dig.wire_keys(material) if action == "dig" else _edit_keys(action, tile, position, normal)
 	if keys.is_empty():
 		return false
 	var snap: Dictionary = {}

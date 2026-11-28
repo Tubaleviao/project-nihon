@@ -1058,7 +1058,8 @@ func on_block_changed(action: String, position: Vector3, normal: Vector3, materi
 		"normal":   [normal.x, normal.y, normal.z],
 		"material": material,
 	}
-	if not _edit_ack.is_empty() and str(_edit_ack["action"]) == action:
+	# Phase 300 — a mine intent the host answered with a brush op ("dig") is still that intent's confirmation.
+	if not _edit_ack.is_empty() and (str(_edit_ack["action"]) == action or (action == "dig" and str(_edit_ack["action"]) == "mine")):
 		if int(_edit_ack["seq"]) > 0:
 			packet["edit_seq"] = int(_edit_ack["seq"])
 			packet["by"] = int(_edit_ack["peer"])

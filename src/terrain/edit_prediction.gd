@@ -88,6 +88,12 @@ func predict(action: String, position: Vector3, normal: Vector3, material: Strin
 		"action": action, "position": position, "normal": normal, "material": material,
 		"sent_usec": int(clock_usec.call()), "deadline": int(clock_msec.call()) + TIMEOUT_MSEC,
 	}
+	if action == "mine" and s._edit.brush_enabled:
+		# Phase 300 — this client's own plan of the brush (its own tool and skill); the host's answer decides, and a
+		# different brush there is a mismatch like any other.
+		var brush: Dictionary = s._edit._dig.plan(position, normal, "")
+		if not brush.is_empty():
+			e["dig"] = brush
 	if not _apply(e, EditRemesh.PRIMARY):
 		_untrack_unused()
 		return 0
@@ -121,6 +127,10 @@ func on_host_edit(action: String, position: Vector3, normal: Vector3, material: 
 	for k in [s._tile_key(tile)] + ([s._tile_key(host_span["tile"])] if not host_span.is_empty() else []):
 		if not watch.has(k):
 			watch.append(k)
+	if action == "dig":   # Phase 300: every tile the host's brush can write (and the anchors of the veins it reaches)
+		for k in s._edit._dig.wire_watch(material):
+			if not watch.has(k):
+				watch.append(k)
 	var before := _logs(watch)
 	var veins_before: Dictionary = s._vein_taken.duplicate()
 	s._build.sink = {}
@@ -128,8 +138,10 @@ func on_host_edit(action: String, position: Vector3, normal: Vector3, material: 
 	if not own.is_empty():
 		_pending.erase(int(conf["seq"]))
 	# The host's edit, on the host's state.
-	var derived := _span_at(action, tile, position, normal)
-	if not host_span.is_empty() and not _same_span(derived, host_span, tile):
+	var derived: Dictionary = s._edit._dig.wire_span(material) if action == "dig" else _span_at(action, tile, position, normal)
+	if action == "dig" and not derived.is_empty():
+		tile = derived["tile"]
+	if action != "dig" and not host_span.is_empty() and not _same_span(derived, host_span, tile):
 		resyncs += 1
 		_apply_host_span(action, host_span, derived, material)
 	else:
@@ -203,6 +215,8 @@ func clear() -> void:
 ## Make prediction `e` on the voxel data as it is now (rebuilds at `level`, or into the sink while one is set).
 ## Its tiles are tracked first, so their host logs are known. False when there was nothing to apply.
 func _apply(e: Dictionary, level: int) -> bool:
+	if e.has("dig"):
+		return _apply_dig(e, level)
 	var action := str(e["action"])
 	var tile: Vector2i = s._resolve_edit_tile(action, e["position"], e["normal"])["tile"]
 	var keys: Array = s._edit._edit_keys(action, tile, e["position"], e["normal"])
@@ -227,6 +241,33 @@ func _apply(e: Dictionary, level: int) -> bool:
 	e["partial"] = s._partial_chunks.keys().filter(func(c) -> bool: return not marks.has(c))
 	return true
 
+## Phase 300 — a brush prediction: the whole op at once, every tile it writes tracked first. The vein depletion is
+## the estimate a peer without the host's yield can make; the host's own `deplete` replaces it on confirmation.
+func _apply_dig(e: Dictionary, level: int) -> bool:
+	var dg: RefCounted = s._edit._dig
+	var op: Dictionary = e["dig"]["op"]
+	var result: Dictionary = dg.preview(op, str(e["dig"]["tool"]))
+	e["keys"] = []
+	e["span"] = {}
+	e["vein"] = ""
+	e["veins"] = []
+	e["partial"] = []
+	if (result["tiles"] as Array).is_empty():
+		return false
+	var keys: Array = dg.keys_of(op, result)
+	e["keys"] = keys
+	e["veins"] = (result["veins"] as Dictionary).keys()
+	for k in keys:
+		if not _auth.has(k):
+			_auth[k] = _log(k)
+	var span: Dictionary = dg.span_of(op, result)
+	e["tile"] = span["tile"]
+	var marks: Dictionary = s._partial_chunks.duplicate()
+	dg._apply(op, result, dg.estimate_deplete(result), level)
+	e["span"] = span
+	e["partial"] = s._partial_chunks.keys().filter(func(c) -> bool: return not marks.has(c))
+	return true
+
 ## Every tracked tile back to the host's log; the depletion of each vein a pending prediction mined read back off
 ## its anchor's log; the partial marks the predictions added dropped.
 func _rewind() -> void:
@@ -235,18 +276,19 @@ func _rewind() -> void:
 	for e in _pending.values():
 		for c in e.get("partial", []):
 			s._partial_chunks.erase(c)
-		if str(e.get("vein", "")) == "":
-			continue
-		var id := str(e["vein"])
-		var taken := 0
-		for k in e["keys"]:
-			for op in s._edits.get(k, []):
-				if str(op.get("op", "")) == "deplete" and str(op.get("vein", "")) == id:
-					taken = int(op.get("taken", 0))
-		if taken > 0:
-			s._vein_taken[id] = taken
-		else:
-			s._vein_taken.erase(id)
+		var ids: Array = (e.get("veins", []) as Array).duplicate()
+		if str(e.get("vein", "")) != "":
+			ids.append(str(e["vein"]))
+		for id in ids:
+			var taken := 0
+			for k in e["keys"]:
+				for op in s._edits.get(k, []):
+					if str(op.get("op", "")) == "deplete" and str(op.get("vein", "")) == str(id):
+						taken = int(op.get("taken", 0))
+			if taken > 0:
+				s._vein_taken[str(id)] = taken
+			else:
+				s._vein_taken.erase(str(id))
 
 ## The pending predictions again, oldest first, on the voxel data as it is now.
 func _replay() -> void:

@@ -249,7 +249,7 @@ func _start_music() -> void:
 
 ## The host applied a dig (any player's, or a worn structure block): heard at the block by whoever is near.
 func _on_block_changed(action: String, position: Vector3, _normal: Vector3, _material: String) -> void:
-	if action == "mine":
+	if action == "mine" or action == "dig":
 		play_at(DIG_EVENT, position + _offset())
 
 
