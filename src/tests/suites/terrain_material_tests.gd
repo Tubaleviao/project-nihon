@@ -454,3 +454,12 @@ func _test_dug_ground_soil() -> void:
 	var placed := { "vertices": verts, "custom0": w0.duplicate(), "custom1": w1.duplicate(), "smooth_vertex_count": verts.size() }
 	TerrainWeights.apply_dug(placed, Vector2i.ZERO, heightmap, { "edits": { "5,5": [{ "op": "add", "bottom": 2.0, "top": 2.5, "material": "Concrete" }] } })
 	assert_true(float(TerrainWeights.unpack(placed["custom0"], placed["custom1"], 0).get(grass, 0.0)) > 0.99, "a placed block alone digs nothing")
+	# A missing neighbour comes as a seam strip: full size, null past its edge rows. A dug tile deep in it has no
+	# height here and is skipped, not read as a number (CI: "Nonexistent 'float' constructor" in dug_tops).
+	var strip: Array = []
+	strip.resize(n * n)
+	for tx in n:
+		strip[tx] = 2.0
+	var tops := TerrainWeights.dug_tops(Vector2i.ZERO, heightmap,
+		{ "%d,0" % (n + 3): [{ "op": "remove" }], "%d,9" % (n + 3): [{ "op": "remove" }] }, { "1,0": strip })
+	assert_eq(tops.keys(), ["%d,0" % (n + 3)], "a strip's filled row counts, its null rows are left out")

@@ -365,8 +365,12 @@ static func dug_tops(chunk_pos: Vector2i, heightmap: Array, edits: Dictionary, n
 		var hm: Variant = heightmap if _key(c) == _key(chunk_pos) else neighbours.get(_key(c), null)
 		if not (hm is Array) or (hm as Array).size() < n * n:
 			continue
-		var raw := float((hm as Array)[(g.y - c.y * n) * n + (g.x - c.x * n)])
-		out[str(key)] = floorf(raw / VoxelConsts.STEP_HEIGHT) * VoxelConsts.STEP_HEIGHT
+		# A missing neighbour arrives as a seam strip (`VoxelSlice.fill_seam_strips`): full size, null past the
+		# rows it filled, so a dug tile deeper in that neighbour has no height here and is left out.
+		var raw: Variant = (hm as Array)[(g.y - c.y * n) * n + (g.x - c.x * n)]
+		if not (raw is float or raw is int):
+			continue
+		out[str(key)] = floorf(float(raw) / VoxelConsts.STEP_HEIGHT) * VoxelConsts.STEP_HEIGHT
 	return out
 
 ## Phase 243 — the weights of an LOD-ring chunk's vertices (chunk-local to `corner`, world metres):

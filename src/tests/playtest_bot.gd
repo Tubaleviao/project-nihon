@@ -24,7 +24,7 @@ extends Node
 ##   report_markdown(report) -> String        — static
 ##   step_names() -> Array                    — static, the fixed step order (filtered by `--playtest-only a,b`)
 const VoxelSlice := preload("res://src/terrain/voxel_slice.gd")
-const WorldPos := preload("res://src/terrain/world_pos.gd")
+const WorldPos := preload("res://src/terrain/world_pos.gd"); const _DigPit := preload("res://src/tests/playtest_dig_pit.gd")
 const StoneTools := preload("res://src/world/stone_tools.gd"); const WorkAnim := preload("res://src/character/work_anim.gd")
 const TerrainSlice := preload("res://src/terrain/terrain_slice.gd")
 const WaystoneSlice := preload("res://src/world/waystone_slice.gd")
@@ -1311,8 +1311,8 @@ func _step_mine() -> Array:
 	var wk: String = str(_work_last[0]) if not _work_last.is_empty() else ""; if not ok or _work_bar_note != "" or not wk in ["dig", "mine"] or _work_clip != WorkAnim.clip_of(wk): return [false, (_work_bar_note if _work_bar_note != "" else "the '%s' hold played '%s', not '%s'" % [wk, _work_clip, WorkAnim.clip_of(wk)]) if ok else "no block_mined (work held %.1f s)" % held]   # 281: the clip
 	# Phase 300 — the pit: up to 5 more holds (each held for its work time first, as a player digs: the dug chunk is
 	# built while the work runs, `EditPrebuild`) until it is 1 m deep and 1.5 m across. Phase 263: each edit is timed from its completion to its chunk's mesh attached.
-	var pit: Dictionary = await preload("res://src/tests/playtest_dig_pit.gd").run(self, c, y0, 1)
-	preload("res://src/tests/playtest_dig_pit.gd").hand_back(_root._inventory, pack0)
+	var pit: Dictionary = await _DigPit.run(self, c, y0, 1)
+	_DigPit.hand_back(_root._inventory, pack0)
 	var own := func() -> int: return remesh.samples.slice(n0).filter(func(s: Dictionary) -> bool: return bool(s["primary"])).size()
 	await _until(func(): return own.call() >= int(pit["holds"]), STEP_TIMEOUT_SECS)
 	_edit_visible = edit_visible_record(remesh.samples.slice(n0))
@@ -1910,21 +1910,19 @@ func _bare_hands_tools() -> String:
 		held.append(await _hold_work("block", "", TutorialMarker.to_vector(here), false, here))
 		GameBus.block_mine_requested.emit(TutorialMarker.to_vector(here), Vector3.UP, "", here)
 		await _until(func(): return _mined.size() > n, 4.0)
+	var out := TutorialMarker.tile_world_pos(tile + Vector2i(8, 0), 0.0); _teleport_to(out["chunk"], out["local"])   # a brush pit is body-wide: climb out 4 m
 	var dig_secs: float = held.slice(0, -1).reduce(func(a, b): return a + b, 0.0) if depth > 0 else 0.0
 	var rock_budget := WorkTime.seconds("Ferrite", "mine", "StonePick") + ROCK_BUDGET_SLACK
 	if depth == 0 or held.has(-1.0) or (depth > 1 and _root._inventory.get_item_count("Soil") <= int(had[0])) \
 			or _root._inventory.get_item_count("Ferrite") <= int(had[1]) or dig_secs >= DIG_TO_ROCK_BUDGET_S or float(held[-1]) > rock_budget:
+		_root._inventory.consume_items(_DigPit.leftovers(_root._inventory))   # a failed dig must not hold the pack at its cap
 		return "dig to rock at %s: Ferrite %d blocks down, held %s s (budgets: soil < %.1f s, rock <= %.1f s), mined %s" % [str(tile), depth, str(held), DIG_TO_ROCK_BUDGET_S, rock_budget, str(_mined.slice(-maxi(depth, 1)))]
 	print("[Playtest] bare hands: picked a branch and a stone, lashed %d tools, dug to Ferrite %d blocks down, %.1f m from the search, held %s s; %.1f s of the step left" % [BARE_HANDS_RECIPES.size(), depth, float(spot.get("distance", 0.0)), str(held), float(_step_deadline_ms - Time.get_ticks_msec()) * 0.001])
 	# The pack has a weight cap and the rest of the step adds research materials and ingots: what the bare-hands
 	# work left behind (ore, soil, spare loose items, the used stone tools; the knife stays for the harvest) goes.
 	# The tutorial reads what the pack gained a frame later (`TutorialWiring._scan_pack`): let it see the ore first.
 	await _until(func(): return false, 0.3)
-	var spent := {}
-	for item in ["Ferrite", "Soil", StoneTools.BRANCH, StoneTools.LOOSE_STONE, "StoneAxe", "StonePick", "StoneShovel"]:
-		if _root._inventory.get_item_count(item) > 0:
-			spent[item] = _root._inventory.get_item_count(item)
-	_root._inventory.consume_items(spent)
+	_root._inventory.consume_items(_DigPit.leftovers(_root._inventory))
 	return ""
 
 ## Craft `rid` where the body stands; "" once the host resolved it successfully, else why not.
@@ -2687,7 +2685,7 @@ func _mine_top(tile: Vector2i) -> bool:
 	var v = _root._voxel
 	var top: float = v.column_top_at_tile(tile)
 	var exact := tile_exact(tile, top)
-	GameBus.block_mine_requested.emit(_exact_xyz(exact), Vector3.UP, "", exact)
+	_DigPit.slab(v, func(): GameBus.block_mine_requested.emit(_exact_xyz(exact), Vector3.UP, "", exact))   # one column only
 	return float(v.column_top_at_tile(tile)) < top - 0.001
 
 ## Phase 213 — the arc, played. Beside home the bot founds a clan and builds as it, dismantles fresh blocks for half
