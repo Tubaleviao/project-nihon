@@ -40,14 +40,15 @@ work in order.
 | Priority | Phase | Title |
 |---|---|---|
 | 1 | 300 | Digging with a brush: one dig moves a shovelful, not a slab |
-| 2 | 301 | Shaping the ground: fill, flatten and smooth, and a dug surface that shows what it is |
-| 3 | 247 | Ground cover: grass and bushes by biome |
-| 4 | 235 | Roads |
-| 5 | 234 | Boats |
-| 6 | 258 | The public wiki and the community channels |
-| 7 | 299 | Many registries: signed entries, gossip and no single owner |
-| 8 | 236 | Changing hair style and colour (parked: picked up only when un-parked) |
-| 9 | 251 | A human playtest: what would make the game fun (a standing checkpoint, when the owner has time) |
+| 2 | 303 | Rock at hand: boulders round the newcomer and rocky mountains, mined with a pick |
+| 3 | 301 | Shaping the ground: fill, flatten and smooth, and a dug surface that shows what it is |
+| 4 | 247 | Ground cover: grass and bushes by biome |
+| 5 | 235 | Roads |
+| 6 | 234 | Boats |
+| 7 | 258 | The public wiki and the community channels |
+| 8 | 299 | Many registries: signed entries, gossip and no single owner |
+| 9 | 236 | Changing hair style and colour (parked: picked up only when un-parked) |
+| 10 | 251 | A human playtest: what would make the game fun (a standing checkpoint, when the owner has time) |
 
 Why this order:
 
@@ -73,6 +74,9 @@ Why this order:
   with 301's flatten brush.
 - **232 done (2026-11-27).** Lake shores, the frontier water ease, the spawn plain, mounts at fords and the planet bake
   wrapping east-west (worldgen 18, bake 18). Lake and river changes are gated by the chunk record version.
+- **303 right after 300 (2026-11-28, owner).** With the brush, bare hands dig soil only and rock needs a pick, so the
+  tutorial's "mine stone" must find rock a newcomer can reach: boulders near the spawn and mountains whose rock shows.
+  It turns the playtest `tutorial` step green again (red on main since the Phase 290 budget).
 - **258 late.** A public wiki and Discussions matter once there are players to read them.
 - **299 near the end.** It brings the host-key part of parked Phase 228 forward and needs parked Phase
   227 (design-only) first.
@@ -201,7 +205,7 @@ detail and caching (243–244), and later flight (237), the planet bake (245) an
 | 247 | Ground cover: grass and bushes by biome, culled by distance | Open |
 | 302 | The planet bake, part 2: hydraulic erosion, biomes, macro height from the bake and the host's copy | Done |
 
-### Arc: digging worth doing (Phases 300–301)
+### Arc: digging worth doing (Phases 300–301, 303)
 
 Filed by the owner on 2026-11-25 after reviewing [GDVoxelTerrain](https://github.com/JorisAR/GDVoxelTerrain)
 (MIT, Joris AR), a Godot smooth-voxel plugin whose edits are SDF brushes: a dig or a build is one small
@@ -217,6 +221,7 @@ rasterised into them.
 |---|---|---|
 | 300 | Digging with a brush: one dig moves a shovelful, not a slab | Open |
 | 301 | Shaping the ground: fill, flatten and smooth, and a dug surface that shows what it is | Open |
+| 303 | Rock at hand: boulders round the newcomer and rocky mountains, mined with a pick | Open |
 
 ### Next: foundations, the server's ceiling and a human playtest (Phases 248–251)
 
@@ -832,13 +837,18 @@ resolved `cuts`, unit volume), its validator and `tools/check_dig_brush.js` (CI)
 `src/terrain/dig_brush.gd` (`DigBrush`, the pure integer-mm rasteriser: `make_op`, `bounds`, `cut_cells`, `spans_of`,
 `rasterise`), `src/terrain/voxel_dig.gd` (`VoxelDig`: the host's plan from its own tool, Mining tier and runs; the dig,
 yield by volume with a per-player remainder saved in the player record as `dig_remainder`, vein depletion exactly what
-was yielded, work time by volume, the shared apply, the `dig` wire op), `VoxelEdit.mine_block` (a brush of at least
-`minRadius` is one op, smaller or a placed block keeps the single slab), `WorkHost.resolve` (duration by volume),
+was yielded, the work time (flat `digSeconds` since 2026-11-28), the shared apply, the `dig` wire op), `VoxelEdit.mine_block` (a brush of at least
+`minRadius` is one op, smaller or a placed block keeps the single slab), `WorkHost.resolve` (the brush's duration),
 `EditPrediction` (the whole brush predicted at once) and `src/tests/suites/dig_brush_tests.gd`. The op rides the JSON
 `block_changed` as action `dig` (`shape|radius_mm|k_mm|tool|cx,cy,cz|deplete`); Phase 256's binary tags are not extended.
 Since then: the native port `NativeBake.cut_cells` with the 200-random-brush parity test, the `dig_brush_synced`
 `tools/net_harness.sh` step and the playtest `mine` pit (`src/tests/playtest_dig_pit.gd`). A hold's timer is bound to
 the brush plan it was timed for (`WorkSession` `plan`): a completion with another normal or tool is refused.
+Owner's decisions (2026-11-28): one flat 1 s dig for bare hands and shovel, faster with Mining, the tool deciding only
+the size; a dug pit shows soil (`dugGround`, the soil half of Phase 301's "dug surface" item); bare hands never take
+rock or ore, only a pick does (the hands brush cuts soil and sand only). The playtest `tutorial` step's dig-to-rock
+(Phase 290, already red on main) moves to Phase 303, which gives the newcomer rock to mine with a pick; the `tower`,
+`travel` and `mount` playtest steps that the brush changed are deferred and do not block this phase.
 
 ## Phase 301 — Shaping the ground: fill, flatten and smooth, and a dug surface that shows what it is
 
@@ -860,6 +870,8 @@ material onto what it touched, which is what makes a dig read as a dig.
   material, below it the host rock, and on a vein its ore tint; a filled span shows its own material.
   The biome's surface material (grass) shows only on untouched natural ground, so a fresh pit is a
   brown hole with stone at its bottom. Phase 247 grows nothing on it.
+  Phase 300 already landed the first step (`TerrainWeights.apply_dug`: any vertex a step under a dug tile's
+  natural top weighs the fabric's one `dugGround` material); this phase replaces it with the depth rule above.
 - All three ops go through Phase 300's rasteriser, wire op, prediction and host checks; the fabric
   gives each tool the ops it can do (a shovel all three, a pick none of them).
 
@@ -873,6 +885,42 @@ material onto what it touched, which is what makes a dig read as a dig.
   material; a filled column shows the fill material.
 - A `tools/net_harness.sh` step: a flatten from one client gives identical runs on the host and the
   other client.
+
+## Phase 303 — Rock at hand: boulders round the newcomer and rocky mountains, mined with a pick
+
+Owner, 2026-11-28: bare hands do not mine at all (rock or ore), a pick does, and a new player must find rock to mine
+without digging a pit to a vein. Phase 300 already keeps rock and ore out of the hands' and the shovel's brush; the
+tutorial's `mine_stone` (Phase 290: dig to a Ferrite vein under at most 5 soil blocks) was written for slab digging
+and fails on main.
+
+- **Boulders:** small natural rock outcrops (about 0.5 to 1.5 m, the biome's host rock, some with a Ferrite
+  share) on the ground. Fabric: a `Boulders` world system with per-biome density, size range and ore share, and a
+  newcomer-grounds minimum (at least N boulders within the newcomer radius, Phase 262's ground beside the spawn).
+  They are natural ground (they mesh smooth and the pick's brush cuts them), never placed blocks. A world-gen
+  change: bump `TerrainSlice.WORLDGEN_VERSION` with a history line and golden values, and keep the stable-world
+  rule (recorded chunks never change; existing worlds gain boulders only on unrecorded land, plus the newcomer
+  minimum, which is placed as natural-ground edits by the host the first time a newcomer spawns there).
+- **Rocky mountains:** above a fabric relief or altitude threshold per biome, `topsoilDepth` thins to zero, so
+  steep and high ground is host rock at the surface: the rock the shader already draws on slopes is rock a pick
+  mines directly.
+- **Tools:** only a pick takes natural rock or ore, by brush or by single slab. A hold on rock with bare hands or
+  a shovel shows "needs a pick" (an i18n key, en and pt_BR) instead of a work bar.
+- **Tutorial:** `mine_stone` marks the nearest boulder or surface rock within 30 m (a new marker kind) and
+  completes on the first rock or ore gathered with a pick; `tools/check_tutorial.js` checks the newcomer minimum
+  can always satisfy the marker radius.
+
+Acceptance criteria:
+
+- `npm run validate`, `check-drift`, and a `tools/check_boulders.js` that proves the validator refuses a
+  negative density, a size over the brush radius cap and a newcomer minimum the radius cannot hold (CI step).
+- Suite tests: the worldgen golden values at the new version; on the pinned seed the newcomer ground holds at
+  least the fabric minimum of boulders within its radius; a boulder's cells classify as host rock (or Ferrite where
+  its share says); a column above the rocky threshold has rock at its natural top; a recorded chunk is unchanged
+  by the version bump; bare hands and a shovel on a boulder remove nothing and spend nothing, a stone pick removes
+  rock and yields it.
+- The playtest `tutorial` step passes: the bare-hands chapter crafts the stone tools, walks to the marked
+  boulder and mines it with the stone pick within the rock budget (`WorkTime` Ferrite or host rock with a
+  StonePick, plus the slack).
 
 ## Phase 251 — A human playtest: what would make the game fun
 
