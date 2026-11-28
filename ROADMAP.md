@@ -818,6 +818,11 @@ brush op; this phase does the same on top of the run columns.
 - The playtest `mine` step digs a 1 m deep pit 1.5 m wide with a stone shovel in at most 6 holds and
   meets its budget.
 
+**Progress:** the fabric half landed (tools-decide-the-brush): `fabric/gameplay/dig_brushes.js`
+(`DigBrushes` world system: radius cap, skill radius per tier, blend, min radius, per-tool brushes with
+resolved `cuts`, unit volume), its validator and `tools/check_dig_brush.js` (CI). Runtime (rasteriser, wire op,
+native port, yield, tests) pending.
+
 ## Phase 301 — Shaping the ground: fill, flatten and smooth, and a dug surface that shows what it is
 
 Phase 300 removes ground; building needs the other half. GDVoxelTerrain also paints the edit's

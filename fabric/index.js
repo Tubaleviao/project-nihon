@@ -34,6 +34,7 @@ const bed          = require('./gameplay/bed')
 const tutorial     = require('./gameplay/tutorial')
 const work         = require('./gameplay/work')
 const workTimes    = require('./gameplay/work_times')
+const digBrushes   = require('./gameplay/dig_brushes')
 const combos       = require('./gameplay/combos')
 const workClips    = require('./gameplay/work_clips')
 const stoneTools   = require('./gameplay/stone_tools')
@@ -73,6 +74,7 @@ writing.validateWriting(writing.writingData(), writing.writingRefs())
 work.validateWork(work.workData(), work.workRefs())
 equipment.validateEquipment(equipment.equipmentData(), equipment.equipmentRefs()) // Phase 295
 workTimes.validateWorkTimes(workTimes.workTimesData(), workTimes.workTimesRefs()) // Phase 259
+digBrushes.validateDigBrushes(digBrushes.digBrushesData(), digBrushes.digBrushesRefs()) // Phase 300
 combos.validateCombos(combos.combosData()) // Phase 287
 workClips.validateWorkClips(workClips.workClipsData()) // Phase 281
 skillWheel.validateSkillWheel(skillWheel.skillWheelData(), skillWheel.skillWheelRefs()) // Phase 271
@@ -399,6 +401,7 @@ module.exports = defineFabric({
       Equipment:           equipment.Equipment,
       GearTiers:           gearTiers.GearTiers,
       WorkTimes:           workTimes.WorkTimes,
+      DigBrushes:          digBrushes.DigBrushes,
       CombatCombos:        combos.CombatCombos,
       WorkClips:           workClips.WorkClips,
       SkillWheel:          skillWheel.SkillWheel,

@@ -344,6 +344,7 @@ const WORLD_SYSTEMS: Dictionary = {
 		"ClanTiers": preload("res://godot/world_systems/clantiers.tres"),
 		"CombatCombos": preload("res://godot/world_systems/combatcombos.tres"),
 		"CombatSystem": preload("res://godot/world_systems/combatsystem.tres"),
+		"DigBrushes": preload("res://godot/world_systems/digbrushes.tres"),
 		"Equipment": preload("res://godot/world_systems/equipment.tres"),
 		"GearTiers": preload("res://godot/world_systems/geartiers.tres"),
 		"GovernanceSystem": preload("res://godot/world_systems/governancesystem.tres"),
