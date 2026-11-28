@@ -1294,12 +1294,24 @@ func dig_brush_synced(h: Node) -> void:
 	if h._role == "host":
 		var bound: String = h._live_bound_id()
 		var pack: Node = h._root._registry.get_inventory(bound)
+		var before: Dictionary = pack.get_contents().duplicate()
 		var added: bool = pack.add_item("StoneShovel", 1)   # the client digs once it sees it in its pack
 		h._root._chest_wiring._push_inventory(bound)   # the client reads its own copy of the bag
 		var dug: bool = await h._await_until(func() -> bool: return not ops.is_empty(), h._step_timeout() * 4.0)
 		await h._await_settle(1.5 * h._time_scale)
 		detail = _dig_runs(voxel, ops) if dug else "no_dig_came-added%d-bound%s" % [int(added), bound]
 		ok = dug
+		# A shovelful is many units: take the yield back so later steps (loot pickup) find the pack under its carry
+		# limit. The shovel stays: the client may hold it, and a swing's held item must still be in the host's pack.
+		var extra: Dictionary = {}
+		var now: Dictionary = pack.get_contents()
+		for item in now:
+			var n: int = int(now[item]) - int(before.get(item, 0))
+			if n > 0 and item != "StoneShovel":
+				extra[item] = n
+		if not extra.is_empty():
+			pack.consume_items(extra)
+			h._root._chest_wiring._push_inventory(bound)
 	else:
 		var shovel: bool = await h._await_until(func() -> bool: return h._root._inventory.get_item_count("StoneShovel") >= 1, h._step_timeout() * 2.0)
 		if not shovel:

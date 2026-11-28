@@ -1816,7 +1816,12 @@ func _step_sand_settles() -> void:
 		_root._inventory.add_item("Sand", 1)
 		_root._inventory.add_item("StoneHammer", 1)   # Phase 260: building needs a hammer in hand
 		var placed: bool = voxel.place_block(Vector3(centre.x, base, centre.y), Vector3.UP, "Sand")
+		# Phase 300 — the step is about one slab under the sand: a brush dig would cut several steps (and the step
+		# checks the sand lands exactly one step down), so the slab is mined with the brush off.
+		var brush_was: bool = voxel._edit.brush_enabled
+		voxel._edit.brush_enabled = false
 		var mined: Dictionary = voxel.mine_block(Vector3((SAND_TILE.x + 1) * VoxelSlice.TILE_SIZE, base - VoxelSlice.STEP_HEIGHT * 0.5, centre.y), Vector3(1, 0, 0))
+		voxel._edit.brush_enabled = brush_was
 		if not placed or not bool(mined.get("success", false)):
 			_report("sand_settles", "fail", "edit_refused-place%d-mine%d" % [int(placed), int(bool(mined.get("success", false)))])
 			return
